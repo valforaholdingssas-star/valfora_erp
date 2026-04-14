@@ -1,0 +1,41 @@
+---
+description: 
+alwaysApply: true
+---
+
+---
+description: Reglas de seguridad para Valfora ERP
+globs: "**/*"
+alwaysApply: true
+---
+
+# Security Rules
+
+## Autenticación
+- JWT con access token (corta duración: 15 min) y refresh token (larga duración: 7 días)
+- Rotación de refresh tokens en cada uso
+- Blacklist de tokens revocados
+- Rate limiting en endpoints de login (máx 5 intentos por minuto)
+- Bloqueo temporal de cuenta tras intentos fallidos consecutivos
+
+## Autorización (RBAC)
+- Tres roles mínimos: SuperAdmin, Admin, Collaborator
+- Permisos granulares por módulo y acción (view, create, edit, delete)
+- Object-level permissions donde sea necesario
+- Validar permisos tanto en backend como en frontend
+
+## Datos Sensibles
+- NUNCA loguear passwords, tokens, API keys o datos personales
+- Encriptar datos sensibles en reposo (django-encrypted-model-fields si necesario)
+- Sanitizar todas las entradas del usuario
+- Validar y escapar outputs para prevenir XSS
+- Configurar Content Security Policy headers
+- NUNCA commitear archivos .env, secrets o credenciales
+
+## API Security
+- HTTPS obligatorio en producción
+- CORS configurado restrictivamente (solo dominios permitidos)
+- Rate limiting global y por usuario
+- Input validation en serializers y formularios
+- Output sanitization
+- Deshabilitar browsable API de DRF en producción

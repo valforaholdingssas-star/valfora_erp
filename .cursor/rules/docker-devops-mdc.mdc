@@ -1,0 +1,44 @@
+---
+description: 
+alwaysApply: true
+---
+
+---
+description: Reglas de Docker, Docker Compose y DevOps para Valfora ERP
+globs: "{Dockerfile,docker-compose*.yml,.env*,nginx/**,scripts/**}"
+alwaysApply: false
+---
+
+# Docker & DevOps Rules
+
+## Docker
+- Usa imágenes slim o alpine como base (python:3.12-slim, node:20-alpine)
+- Multi-stage builds para reducir tamaño de imagen
+- No corras procesos como root dentro del contenedor
+- Usa .dockerignore para excluir archivos innecesarios
+- Pin versiones de imágenes base (nunca usar :latest en producción)
+- Ordena capas de Dockerfile de menos a más cambiantes (deps primero, código después)
+- Usa COPY en lugar de ADD (excepto para descomprimir archives)
+
+## Docker Compose
+- Archivo base: docker-compose.yml (desarrollo)
+- Override para producción: docker-compose.prod.yml
+- Servicios mínimos: web (Django), db (PostgreSQL), redis, celery_worker, celery_beat
+- Opcional: nginx (producción), flower (monitoreo Celery)
+- Usa depends_on con condition: service_healthy y healthchecks
+- Named volumes para persistencia de datos (PostgreSQL, media files)
+- Variables de entorno en archivo .env (no en el compose directamente)
+- Usa restart: unless-stopped en producción
+
+## Configuración de Servicios
+- PostgreSQL 15+: volume para /var/lib/postgresql/data
+- Redis 7+: configurar maxmemory policy
+- Celery Worker: configura concurrency según cores disponibles
+- Celery Beat: una sola instancia, usar DatabaseScheduler
+- Nginx: servir static/media files, proxy pass a Django
+
+## Scripts de Utilidad
+- Script de entrypoint que espera a que PostgreSQL esté listo antes de iniciar Django
+- Script de inicialización de datos (fixtures, superusuario)
+- Script de backup de base de datos
+- Makefile con comandos comunes: make build, make up, make down, make migrate, make test, make shell

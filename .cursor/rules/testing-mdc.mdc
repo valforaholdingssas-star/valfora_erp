@@ -1,0 +1,42 @@
+---
+description: 
+alwaysApply: true
+---
+
+---
+description: Reglas de testing para Valfora ERP
+globs: "**/*test*,**/tests/**"
+alwaysApply: false
+---
+
+# Testing Rules
+
+## Backend (Python/Django)
+- Framework: pytest + pytest-django
+- Factories: factory_boy + faker
+- Coverage mínimo: 80%
+- Estructura de tests espejada a la estructura de la app
+- Cada test es independiente y puede ejecutarse en cualquier orden
+- Usa @pytest.mark.django_db para tests que acceden a la DB
+- Mockea servicios externos siempre (WhatsApp, IA, etc.)
+- Tests de integración para flujos completos de negocio
+
+## Frontend (React)
+- Framework: Jest + React Testing Library
+- Testa comportamiento del usuario, no implementación
+- Usa screen.getByRole, getByText, getByLabelText (no getByTestId como primera opción)
+- Mockea llamadas a API con msw (Mock Service Worker)
+- Testa estados: loading, error, empty, success
+- Testa navegación y rutas protegidas
+
+## Tipos de Tests
+1. Unit tests: funciones puras, servicios, utilidades
+2. Integration tests: endpoints API completos, flujos de usuario
+3. E2E tests (futuro): Cypress o Playwright para flujos críticos
+
+## Convenciones
+- Nombre del archivo: test_<nombre>.py (backend), <nombre>.test.jsx (frontend)
+- Nombre del test: test_<accion>_<condicion>_<resultado_esperado>
+- Usa arrange-act-assert (AAA) pattern
+- Un assert por test cuando sea posible
+- Datos de prueba creados con factories, nunca compartidos entre tests

@@ -1,0 +1,4 @@
+-r base.txt
+black>=24.0
+isort>=5.13
+ipython>=8.0

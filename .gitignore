@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+venv/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Django
+*.log
+local_settings.py
+/media/
+/staticfiles/
+/backend/staticfiles/
+/backend/media/
+
+# Node
+node_modules/
+frontend/dist/
+build/
+dist/
+npm-debug.log*
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Frontend env
+frontend/.env
+frontend/.env.local

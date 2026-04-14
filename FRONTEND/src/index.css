@@ -1,0 +1,644 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+
+:root {
+  --app-bg: linear-gradient(180deg, #f5f7fb 0%, #eef2f8 100%);
+  --app-surface: rgba(255, 255, 255, 0.88);
+  --app-shadow-sm: 0 8px 22px rgba(15, 23, 42, 0.08);
+  --app-shadow-md: 0 14px 28px rgba(15, 23, 42, 0.12);
+  --app-border: rgba(15, 23, 42, 0.1);
+  --app-muted-surface: rgba(243, 247, 253, 0.85);
+  --app-chat-agent: rgba(27, 113, 247, 0.12);
+}
+
+[data-bs-theme="dark"] {
+  --app-bg: radial-gradient(circle at top, #1c2535 0%, #121923 45%, #0f141c 100%);
+  --app-surface: rgba(18, 25, 35, 0.78);
+  --app-shadow-sm: 0 8px 22px rgba(0, 0, 0, 0.35);
+  --app-shadow-md: 0 14px 28px rgba(0, 0, 0, 0.45);
+  --app-border: rgba(148, 163, 184, 0.28);
+  --app-muted-surface: rgba(20, 30, 45, 0.78);
+  --app-chat-agent: rgba(59, 130, 246, 0.22);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  font-family: "Plus Jakarta Sans", "Segoe UI", Tahoma, sans-serif;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  background: var(--app-bg);
+  color: var(--bs-body-color);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: -0.01em;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+}
+
+.app-main {
+  flex: 1;
+  padding: 1.2rem;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.app-main > .container-fluid {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.app-page {
+  max-width: 1380px;
+}
+
+.app-page-narrow {
+  max-width: 980px;
+}
+
+.app-page-header {
+  padding: 0.15rem 0;
+}
+
+.app-kpi {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.app-header,
+.app-sidebar,
+.app-footer,
+.card,
+.table,
+.dropdown-menu,
+.pipeline-stage {
+  backdrop-filter: blur(6px);
+  background: var(--app-surface) !important;
+  border-color: var(--app-border) !important;
+  box-shadow: var(--app-shadow-sm);
+}
+
+.app-card {
+  border: 1px solid var(--app-border);
+}
+
+.app-sidebar {
+  width: 248px;
+  transition: width 180ms ease;
+  overflow: hidden;
+  position: sticky;
+  top: 56px;
+  align-self: flex-start;
+  height: calc(100vh - 56px);
+  padding-right: 0.4rem !important;
+}
+
+.app-sidebar.is-collapsed {
+  width: 76px;
+}
+
+.app-sidebar-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.app-sidebar-search {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding-bottom: 0.45rem;
+  background: var(--app-surface);
+}
+
+.app-sidebar-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 0.7rem;
+  scrollbar-gutter: stable;
+}
+
+.app-sidebar-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.app-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-sidebar-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.55);
+}
+
+.app-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.8);
+}
+
+[data-bs-theme="dark"] .app-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.42);
+}
+
+[data-bs-theme="dark"] .app-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.65);
+}
+
+.app-sidebar-group {
+  margin-bottom: 0.3rem;
+}
+
+.app-sidebar-group-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--bs-secondary-color);
+  font-size: 0.73rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0.45rem;
+  padding: 0.32rem 0.45rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 2.25rem;
+  z-index: 2;
+  backdrop-filter: blur(6px);
+  background: var(--app-surface);
+}
+
+.app-sidebar-group-toggle:hover {
+  color: var(--bs-body-color);
+  background: rgba(13, 110, 253, 0.1);
+}
+
+.app-sidebar-group-toggle .bi {
+  transition: transform 160ms ease;
+}
+
+.app-sidebar-group-toggle .bi.is-open {
+  transform: rotate(180deg);
+}
+
+.app-sidebar .nav-link {
+  color: var(--bs-body-color);
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.app-sidebar .nav-link:not(.active):hover {
+  background: rgba(13, 110, 253, 0.1);
+}
+
+.app-sidebar.is-collapsed .nav-link {
+  justify-content: center;
+}
+
+.app-sidebar .nav-link i {
+  width: 18px;
+  text-align: center;
+}
+
+.table {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.table th {
+  font-weight: 600;
+}
+
+.pipeline-stage {
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 10px;
+  min-width: 280px;
+  max-width: 320px;
+  width: 300px;
+  flex-shrink: 0;
+  min-height: 420px;
+}
+
+.pipeline-stage.pipeline-stage--colored {
+  border-top: 3px solid var(--stage-accent) !important;
+  background:
+    linear-gradient(180deg, var(--stage-tint) 0%, var(--app-surface) 26%, var(--app-surface) 100%) !important;
+}
+
+.pipeline-card {
+  border: 1px solid var(--app-border);
+  position: relative;
+  overflow: hidden;
+}
+
+.pipeline-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--deal-stage-accent, #3b82f6);
+}
+
+.pipeline-board {
+  display: flex;
+  gap: 0.85rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.5rem;
+  min-height: 420px;
+  width: 100%;
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+}
+
+.pipeline-stage.is-over {
+  border-color: rgba(13, 110, 253, 0.45) !important;
+  background: rgba(13, 110, 253, 0.06) !important;
+}
+
+.pipeline-card.is-dragging {
+  border-color: rgba(13, 110, 253, 0.5) !important;
+}
+
+.pipeline-drag-handle {
+  cursor: grab;
+}
+
+.pipeline-drag-handle:active {
+  cursor: grabbing;
+}
+
+.app-chat-sidebar {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 0.9rem;
+  box-shadow: var(--app-shadow-sm);
+}
+
+.app-chat-page {
+  min-height: calc(100vh - 160px);
+}
+
+.app-chat-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 290px) minmax(0, 1fr) minmax(245px, 300px);
+  gap: 0.85rem;
+  min-height: 72vh;
+}
+
+.app-chat-layout.app-chat-layout-meta-collapsed {
+  grid-template-columns: minmax(250px, 290px) minmax(0, 1fr) 76px;
+}
+
+.app-chat-panel {
+  backdrop-filter: blur(6px);
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 0.9rem;
+  box-shadow: var(--app-shadow-sm);
+}
+
+.app-chat-center {
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem;
+}
+
+.app-chat-sidebar-item {
+  border: 1px solid transparent;
+}
+
+.app-chat-sidebar-item.btn-light {
+  background: var(--app-muted-surface);
+  border-color: var(--app-border);
+  color: var(--bs-body-color);
+}
+
+.app-chat-filters-menu {
+  min-width: 300px;
+  border-radius: 0.75rem;
+  border: 1px solid var(--app-border);
+  box-shadow: var(--app-shadow-sm);
+}
+
+.app-chat-filter-summary {
+  border: 1px dashed var(--app-border);
+  background: var(--app-muted-surface);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.app-chat-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+}
+
+.app-chat-filter-remove {
+  color: inherit;
+  line-height: 1;
+}
+
+.app-chat-filter-remove .bi {
+  font-size: 0.65rem;
+}
+
+.app-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(13, 110, 253, 0.14);
+  color: var(--bs-emphasis-color);
+  font-size: 0.72rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.app-chat-topbar {
+  border: 1px solid var(--app-border);
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.app-chat-log {
+  background: var(--app-muted-surface) !important;
+  border-color: var(--app-border) !important;
+  border-radius: 0.75rem !important;
+}
+
+.app-chat-bubble {
+  display: inline-block;
+  max-width: min(520px, 92%);
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
+  padding: 0.35rem 0.5rem;
+  background: var(--app-surface);
+}
+
+.app-chat-bubble.is-agent {
+  background: var(--app-chat-agent);
+}
+
+.app-chat-composer .btn {
+  min-height: 40px;
+}
+
+.app-chat-meta {
+  padding: 0.8rem;
+}
+
+.app-chat-meta-block {
+  border-top: 1px solid var(--app-border);
+  padding-top: 0.65rem;
+  margin-top: 0.65rem;
+}
+
+.app-chat-new-msg-badge {
+  position: absolute;
+  right: 12px;
+  bottom: 18px;
+  border-radius: 999px;
+  box-shadow: 0 10px 18px rgba(13, 110, 253, 0.28);
+}
+
+.btn,
+.form-control,
+.form-select,
+.dropdown-menu {
+  font-size: 0.9rem;
+}
+
+.form-control,
+.form-select,
+.btn {
+  border-radius: 0.5rem;
+}
+
+@media (max-width: 991.98px) {
+  .app-main {
+    padding: 0.9rem;
+  }
+
+  .app-chat-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .app-sidebar {
+    width: 76px;
+    position: static;
+    top: auto;
+    height: auto;
+  }
+}
+
+.valfora-login-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 0.9fr;
+  background: #eff3f8;
+}
+
+.valfora-login-form-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem;
+}
+
+.valfora-login-form-wrap {
+  width: min(100%, 520px);
+}
+
+.valfora-login-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: rgba(31, 115, 236, 0.12);
+  border: 1px solid rgba(31, 115, 236, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #1f73ec;
+  margin-bottom: 1rem;
+}
+
+.valfora-login-title {
+  font-size: 2rem;
+  margin: 0;
+  color: #0b2146;
+}
+
+.valfora-login-subtitle {
+  color: #6d7e9b;
+  margin-top: 0.35rem;
+  margin-bottom: 1.4rem;
+}
+
+.valfora-login-form {
+  width: 100%;
+}
+
+.valfora-input-group {
+  position: relative;
+}
+
+.valfora-input-icon {
+  position: absolute;
+  top: 50%;
+  left: 0.95rem;
+  transform: translateY(-50%);
+  color: #3973cb;
+  z-index: 2;
+}
+
+.valfora-input {
+  min-height: 50px;
+  border-radius: 15px;
+  border: 1px solid #bfd5f6;
+  background: #f6faff;
+  padding-left: 2.6rem;
+}
+
+.valfora-input:focus {
+  border-color: #5a9af1;
+  box-shadow: 0 0 0 0.2rem rgba(90, 154, 241, 0.2);
+  background: #ffffff;
+}
+
+.valfora-password-toggle {
+  position: absolute;
+  right: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: #3973cb;
+  padding: 0.15rem;
+}
+
+.valfora-link-btn {
+  border: 0;
+  background: transparent;
+  color: #0f2e63;
+  font-weight: 500;
+}
+
+.valfora-link-btn:hover {
+  color: #1f73ec;
+}
+
+.valfora-login-submit {
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(100deg, #2c84ff 0%, #0e5dc8 100%);
+  box-shadow: 0 12px 24px rgba(14, 93, 200, 0.28);
+}
+
+.valfora-login-hero-panel {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background:
+    radial-gradient(circle at 16% 18%, rgba(194, 151, 75, 0.15), transparent 44%),
+    radial-gradient(circle at 84% 78%, rgba(36, 73, 136, 0.14), transparent 52%),
+    linear-gradient(150deg, #dce5f2 0%, #ced9e9 50%, #c3d0e4 100%);
+}
+
+.valfora-login-hero-panel::before,
+.valfora-login-hero-panel::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(1px);
+}
+
+.valfora-login-hero-panel::before {
+  width: 460px;
+  height: 460px;
+  right: -180px;
+  bottom: -80px;
+  background: radial-gradient(circle at 42% 42%, rgba(16, 52, 114, 0.18), transparent 70%);
+}
+
+.valfora-login-hero-panel::after {
+  width: 360px;
+  height: 360px;
+  left: -130px;
+  top: -120px;
+  background: radial-gradient(circle at 50% 50%, rgba(201, 157, 79, 0.22), transparent 72%);
+}
+
+.valfora-login-hero-inner {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  max-width: 460px;
+}
+
+.valfora-login-hero-logo {
+  width: min(320px, 64%);
+  height: auto;
+  object-fit: contain;
+  margin-bottom: 1rem;
+  filter:
+    drop-shadow(0 12px 22px rgba(12, 33, 72, 0.25))
+    drop-shadow(0 0 14px rgba(255, 255, 255, 0.1));
+}
+
+.valfora-login-hero-title {
+  color: #113567;
+  font-size: clamp(1.65rem, 2.4vw, 2.2rem);
+  margin-bottom: 0.6rem;
+  letter-spacing: 0.01em;
+}
+
+.valfora-login-hero-copy {
+  color: #4b6488;
+  font-size: 1.02rem;
+}
+
+@media (max-width: 992px) {
+  .valfora-login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .valfora-login-hero-panel {
+    display: none;
+  }
+
+  .valfora-login-form-panel {
+    padding: 1.2rem 1rem;
+  }
+
+  .valfora-login-title {
+    font-size: 1.6rem;
+  }
+}

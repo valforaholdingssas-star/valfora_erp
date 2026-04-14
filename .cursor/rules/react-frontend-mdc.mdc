@@ -1,0 +1,119 @@
+---
+description: 
+alwaysApply: true
+---
+
+---
+description: Reglas de React JS y frontend para Valfora ERP
+globs: "frontend/**/*.{js,jsx,ts,tsx,css,scss}"
+alwaysApply: false
+---
+
+# React Frontend Rules
+
+## Principios Clave
+- Eres un experto en React 18+, React-Bootstrap, JavaScript ES6+, y desarrollo de SaaS
+- El template base es Jampack - React-Bootstrap SaaS App Template
+- Mantén consistencia visual con el sistema de diseño del template
+- Prioriza la experiencia de usuario (UX) y accesibilidad
+- Componentes funcionales con Hooks, nunca class components
+
+## Estructura del Frontend
+frontend/
+├── public/
+├── src/
+│   ├── api/              # Servicios de API (axios instances, endpoints)
+│   ├── assets/           # Imágenes, fuentes, iconos
+│   ├── components/       # Componentes reutilizables globales
+│   │   ├── common/       # Botones, inputs, modals, tables genéricos
+│   │   ├── layout/       # Sidebar, Header, Footer, MainLayout
+│   │   └── ui/           # Componentes de UI del template Jampack
+│   ├── contexts/         # React Context providers
+│   ├── features/         # Módulos de negocio (feature-based)
+│   │   ├── auth/         # Login, registro, recuperación
+│   │   ├── crm/          # Módulo CRM
+│   │   ├── chat/         # Módulo de chat/WhatsApp
+│   │   ├── ai-config/    # Configuración de IA
+│   │   └── settings/     # Configuración general
+│   ├── hooks/            # Custom hooks globales
+│   ├── routes/           # Configuración de rutas
+│   ├── services/         # Lógica de negocio frontend
+│   ├── store/            # Estado global (Context o Zustand)
+│   ├── styles/           # Estilos globales, variables SCSS
+│   ├── utils/            # Funciones utilitarias
+│   ├── App.jsx
+│   └── index.js
+├── .env
+├── .eslintrc.js
+├── .prettierrc
+└── package.json
+
+## Componentes
+- Usa componentes funcionales con arrow functions
+- Define PropTypes o interfaces TypeScript para todas las props
+- Usa React.memo() para componentes que reciben props estables
+- Implementa Error Boundaries para capturar errores de renderizado
+- Divide componentes grandes en subcomponentes más pequeños
+- Cada componente en su propio archivo
+- Exporta componentes como default export
+
+## Estado y Datos
+- Usa useState y useReducer para estado local
+- Usa React Context para estado global ligero (auth, theme, sidebar)
+- Para estado complejo, considera Zustand
+- Usa custom hooks para lógica reutilizable de estado
+- Para fetching de datos: usa axios con interceptors para JWT
+- Implementa loading states, error states y empty states en cada vista
+
+## Comunicación con API
+- Centraliza la configuración de axios en api/axiosConfig.js
+- Interceptor para agregar JWT token automáticamente
+- Interceptor para manejar token refresh automático
+- Interceptor para manejar errores globales (401, 403, 500)
+- Agrupa endpoints por módulo en archivos separados (api/crm.js, api/chat.js)
+
+## Rutas y Navegación
+- Usa React Router v6+
+- Implementa rutas protegidas con PrivateRoute component
+- Implementa rutas basadas en roles (admin, collaborator)
+- Usa lazy loading (React.lazy + Suspense) para code splitting por módulo
+- Breadcrumbs dinámicos basados en la ruta actual
+
+## Estilos
+- Usa el sistema de estilos del template Jampack (React-Bootstrap + SCSS)
+- No mezcles frameworks CSS (no Tailwind si ya usas Bootstrap)
+- Variables SCSS para colores, tipografía y spacing del brand
+- Componentes responsivos (mobile-first)
+- Usa CSS Modules o styled-components solo si el template lo requiere
+
+## Formularios
+- Usa react-hook-form para formularios complejos
+- Validación con yup o zod
+- Muestra errores de validación inline
+- Implementa autosave para formularios largos
+- Deshabilita submit button mientras se procesa
+
+## WebSockets / Real-time
+- Usa la API nativa de WebSocket o socket.io-client
+- Implementa reconexión automática con backoff exponencial
+- Usa Context para proveer la conexión WebSocket a toda la app
+- Maneja estados: connecting, connected, disconnected, error
+
+## Accesibilidad
+- Usa etiquetas semánticas HTML5
+- Implementa aria-labels en elementos interactivos
+- Asegura navegación por teclado (Tab, Enter, Escape)
+- Contraste de colores WCAG AA mínimo
+- Textos alternativos en imágenes
+
+## Performance
+- Lazy loading de imágenes y componentes pesados
+- Memoización con useMemo y useCallback donde sea necesario
+- Virtualización de listas largas (react-window o react-virtualized)
+- Optimiza re-renders con React.memo y keys estables
+- Bundle analysis periódico
+
+## Internacionalización
+- Prepara el proyecto para i18n aunque inicialmente sea solo en español
+- Usa constantes para textos de UI, no strings hardcodeados
+- Formatos de fecha y moneda localizados

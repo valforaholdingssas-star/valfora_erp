@@ -1,0 +1,132 @@
+---
+alwaysApply: true
+---
+
+---
+description: Reglas de Django, DRF y backend Python para Seeds ERP
+globs: "backend/**/*.py"
+alwaysApply: false
+---
+
+# Django & Python Backend Rules
+
+## Principios Clave
+- Eres un experto en Python, Django 5.x, Django REST Framework, Celery, Redis y PostgreSQL
+- Usa las features built-in de Django siempre que sea posible
+- Sigue estrictamente PEP 8 y el coding style guide de Django
+- Usa type hints en todas las funciones y métodos
+- Cada app Django debe ser autocontenida y reutilizable
+
+## Arquitectura de Apps Django
+Cada app debe seguir esta estructura:
+app_name/
+├── init.py
+├── admin.py          # Configuración del admin de Django
+├── apps.py           # Configuración de la app
+├── models.py         # Modelos de base de datos
+├── managers.py       # Custom model managers
+├── serializers.py    # Serializadores DRF
+├── views.py          # Vistas y ViewSets
+├── viewsets.py       # ViewSets adicionales si es necesario
+├── urls.py           # URLs de la app
+├── permissions.py    # Permisos personalizados
+├── signals.py        # Señales de Django
+├── services.py       # Lógica de negocio (Service Layer)
+├── tasks.py          # Tareas de Celery
+├── filters.py        # Filtros de DRF
+├── tests/
+│   ├── init.py
+│   ├── test_models.py
+│   ├── test_views.py
+│   ├── test_serializers.py
+│   └── test_services.py
+├── migrations/
+└── fixtures/         # Datos iniciales
+
+## Modelos
+- Usa AbstractUser para el modelo de usuario personalizado
+- Crea un BaseModel abstracto con campos comunes: id (UUID), created_at, updated_at, is_active
+- Usa UUIDs como primary keys en todos los modelos
+- Implementa soft delete (is_active=False) en lugar de borrado físico
+- Usa django.db.models.JSONField para datos semi-estructurados
+- Agrega db_index=True a campos que se consultan frecuentemente
+- Usa select_related() y prefetch_related() para evitar N+1 queries
+- Define __str__() en todos los modelos
+- Usa verbose_name y verbose_name_plural en cada modelo
+- Agrega Meta.ordering por defecto en cada modelo
+- Crea custom managers para queries frecuentes
+
+## Vistas y API
+- Usa Class-Based Views (CBVs) y ViewSets de DRF
+- Usa ModelViewSet para CRUD completo, APIView para lógica personalizada
+- Implementa paginación global con PageNumberPagination
+- Usa django-filter para filtrado avanzado
+- Implementa búsqueda con SearchFilter y OrderingFilter
+- Versiona la API: /api/v1/
+- Usa throttling para prevenir abuso
+- Implementa respuestas consistentes con un formato estándar:
+  { "status": "success|error", "data": {}, "message": "", "errors": [] }
+
+## Serializers
+- Usa ModelSerializer como base
+- Valida datos en el serializer, no en la vista
+- Usa SerializerMethodField para campos calculados
+- Implementa create() y update() explícitamente cuando hay lógica adicional
+- Usa nested serializers para relaciones, pero con cuidado del rendimiento
+- Usa SlugRelatedField o PrimaryKeyRelatedField para escrituras
+
+## Autenticación y Permisos
+- Usa JWT (djangorestframework-simplejwt) para autenticación de API
+- Implementa refresh tokens con rotación
+- Crea permisos personalizados para cada rol: SuperAdmin, Admin, Collaborator
+- Usa permission_classes en cada vista
+- Implementa object-level permissions cuando sea necesario
+- Usa Django's built-in groups y permissions system como base
+
+## Service Layer Pattern
+- La lógica de negocio va en services.py, NO en views ni en models
+- Los services son funciones puras o clases que encapsulan operaciones complejas
+- Las vistas solo coordinan: reciben request → llaman service → devuelven response
+- Los models solo definen estructura y queries básicas
+
+## Manejo de Errores
+- Usa DRF exception handler personalizado
+- Implementa excepciones de negocio personalizadas (BusinessLogicError, etc.)
+- Loguea errores con el módulo logging de Python (configurado en settings)
+- Nunca expongas stack traces en producción
+- Usa try-except solo donde sea necesario, no para control de flujo
+
+## Base de Datos
+- PostgreSQL 15+ como única base de datos
+- Usa migraciones de Django para todos los cambios de esquema
+- Nunca modifiques migraciones ya aplicadas
+- Usa transacciones atómicas (transaction.atomic()) para operaciones críticas
+- Implementa índices compuestos donde sea necesario
+- Usa pg_trgm para búsquedas de texto si es necesario
+
+## Celery y Tareas Asíncronas
+- Redis como broker y backend de resultados
+- Configura task retry con backoff exponencial
+- Usa @shared_task para tareas reutilizables entre apps
+- Implementa Celery Beat para tareas periódicas
+- Cada tarea debe ser idempotente
+- Loguea inicio y fin de cada tarea
+- Usa task_always_eager=True en tests
+
+## Seguridad
+- Habilita CSRF protection (excepto API con JWT)
+- Configura CORS apropiadamente con django-cors-headers
+- Usa HTTPS en producción
+- Implementa rate limiting con DRF throttling
+- Sanitiza todas las entradas del usuario
+- Nunca almacenes contraseñas en texto plano
+- Configura SECURE_BROWSER_XSS_FILTER, SECURE_CONTENT_TYPE_NOSNIFF
+- Usa django-environ o python-dotenv para variables de entorno
+
+## Testing
+- Usa pytest y pytest-django como framework de testing
+- Mínimo 80% de coverage
+- Usa factory_boy para crear datos de prueba
+- Usa APITestCase de DRF para tests de API
+- Mockea servicios externos (WhatsApp API, Stripe, etc.)
+- Escribe tests para permisos y autenticación

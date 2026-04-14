@@ -1,0 +1,56 @@
+---
+alwaysApply: true
+---
+
+---
+description: Regla global del proyecto Seeds ERP de Valfora Holdings
+globs: "**/*"
+alwaysApply: true
+---
+
+# Seeds ERP — Reglas Globales del Proyecto
+
+## Identidad del Proyecto
+- Nombre: Seeds ERP
+- Empresa: Valfora Holdings
+- Stack: Django 5.x (backend), React JS (frontend), PostgreSQL 15+ (DB), Redis 7+ (cache/broker), Celery 5.x (tareas asíncronas), Docker + Docker Compose (contenedores)
+- El frontend usa el template Jampack - React-Bootstrap SaaS App Template como base visual
+
+## Principios de Desarrollo
+- Escribe código limpio, legible y bien documentado
+- Sigue PEP 8 para Python y ESLint/Prettier para JavaScript/React
+- Aplica el principio DRY (Don't Repeat Yourself) en todo momento
+- Prioriza la seguridad en cada decisión de diseño
+- Todo endpoint debe estar protegido por autenticación y permisos
+- Usa variables de entorno para toda configuración sensible (nunca hardcodear secrets)
+- Escribe tests unitarios y de integración para cada feature
+- Documenta cada módulo, modelo y endpoint con docstrings
+
+## Convenciones de Nombres
+- Python: snake_case para variables, funciones, módulos y archivos
+- Python: PascalCase para clases y modelos
+- React: PascalCase para componentes, camelCase para funciones y variables
+- Archivos React: PascalCase.jsx o PascalCase.tsx
+- URLs de API: kebab-case (ej: /api/v1/crm-contacts/)
+- Constantes: UPPER_SNAKE_CASE
+- Nombres de tablas DB: snake_case en plural (ej: crm_contacts, chat_messages)
+
+## Estructura de Archivos
+- Backend: cada app Django sigue la estructura estándar con archivos adicionales: serializers.py, permissions.py, signals.py, tasks.py, services.py, urls.py
+- Frontend: organización por features/módulos, no por tipo de archivo
+- Los archivos de configuración van en la raíz del proyecto
+- Variables de entorno en .env (nunca commitear al repositorio)
+
+## Idioma
+- Código fuente, variables, funciones, clases: SIEMPRE en inglés
+- Comentarios y documentación: en español cuando sea documentación de negocio, en inglés para documentación técnica
+- Mensajes de commit: en inglés, siguiendo Conventional Commits (feat:, fix:, docs:, refactor:, test:, chore:)
+- Interfaz de usuario: en español (es la lengua de los usuarios finales)
+
+## Control de Versiones
+- Usar Conventional Commits: feat:, fix:, docs:, refactor:, test:, chore:
+- Rama principal: main (protegida)
+- Ramas de desarrollo: develop
+- Ramas de features: feature/nombre-del-feature
+- Ramas de bugfix: bugfix/descripcion-del-bug
+- Ramas de hotfix: hotfix/descripcion-del-fix

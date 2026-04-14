@@ -1,0 +1,38 @@
+---
+alwaysApply: true
+---
+
+---
+description: Reglas para integración de WhatsApp y sistema de chat
+globs: "backend/chat/**,frontend/src/features/chat/**"
+alwaysApply: false
+---
+
+# WhatsApp & Chat Rules
+
+## Integración WhatsApp
+- Usa la API oficial de WhatsApp Business (Meta Cloud API)
+- Implementa webhooks para recibir mensajes entrantes
+- Verifica la firma del webhook para seguridad
+- Encola mensajes salientes con Celery para no bloquear el request
+- Implementa retry con backoff exponencial para envíos fallidos
+- Almacena todos los mensajes en la base de datos para historial
+
+## Chat en Tiempo Real
+- Usa Django Channels con WebSocket para la interfaz de chat
+- Redis como channel layer backend
+- Autenticación WebSocket con JWT token en la query string o primer mensaje
+- Grupos de WebSocket por conversación (chat_room_{contact_id})
+- Envía typing indicators y read receipts
+
+## Modelo de Datos de Chat
+- ChatConversation: referencia al contacto CRM, estado (active, archived), último mensaje
+- ChatMessage: conversación, remitente (user/contact/ai), contenido, tipo (text, image, document), timestamp, estado (sent, delivered, read, failed)
+- Almacena mensajes de WhatsApp y de la interfaz interna en la misma tabla
+
+## Modo IA
+- Cuando el modo IA está activo, los mensajes entrantes se procesan automáticamente
+- La IA consulta el RAG (contexto del cliente, documentos, historial de chat)
+- La IA respeta la configuración del módulo de IA (tono, objetivo, restricciones)
+- Siempre hay opción de desactivar el modo IA y tomar el control manual
+- Los mensajes generados por IA se marcan explícitamente como tal en la DB

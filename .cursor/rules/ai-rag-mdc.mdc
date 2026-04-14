@@ -1,0 +1,32 @@
+---
+description: 
+alwaysApply: true
+---
+
+---
+description: Reglas para la integración de IA y RAG en Valfora ERP
+globs: "backend/ai_config/**,backend/chat/**/services.py"
+alwaysApply: false
+---
+
+# AI & RAG Rules
+
+## Arquitectura RAG
+- Usa un vector store (pgvector en PostgreSQL o Pinecone/Weaviate)
+- Indexa: mensajes de chat del cliente, documentos adjuntos del CRM, configuración de IA
+- Implementa chunking inteligente de documentos (por párrafos o secciones)
+- Embeddings: usa OpenAI Ada o un modelo de embeddings apropiado
+- Retrieval: busca los K chunks más relevantes antes de generar respuesta
+
+## Configuración de IA
+- Modelo configurable: almacena system prompt, tono, objetivo, restricciones en la DB
+- Cada configuración de IA puede asociarse a una empresa, módulo o usuario
+- Parámetros configurables: temperatura, max_tokens, modelo LLM
+- Historial de conversación como contexto (últimos N mensajes)
+
+## Seguridad de IA
+- Nunca expongas API keys de LLM al frontend
+- Todas las llamadas a LLM pasan por el backend
+- Implementa content moderation en respuestas generadas
+- Limita tokens por request y por usuario
+- Loguea todas las interacciones con el LLM para auditoría

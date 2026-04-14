@@ -1,0 +1,7 @@
+Usuario superadmin creado.
+
+Credenciales:
+
+Email: superadmin@vlf.local
+Password: jbUJE7Ea%KiTsWJh
+Puedes iniciar sesión en http://localhost:3000/login.
