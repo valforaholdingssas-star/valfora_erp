@@ -56,6 +56,28 @@ curl -I http://erp.tu-dominio.com
 
 Cuando responda, ya puedes continuar con TLS/HTTPS.
 
+## 1.2) Despliegue temporal por IP (mientras propagan NS)
+
+Si tu dominio todavía no resuelve, puedes salir a producción temporalmente por IP pública o Elastic IP.
+
+Supongamos que tu IP pública es `3.120.45.67`.
+
+En `.env.production` usa temporalmente:
+
+```env
+DJANGO_ALLOWED_HOSTS=3.120.45.67,localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=http://3.120.45.67
+VITE_API_URL=/api/v1
+VITE_WS_URL=ws://3.120.45.67/ws
+DJANGO_SECURE_SSL_REDIRECT=False
+SECURE_HSTS_SECONDS=0
+```
+
+Notas:
+- En modo IP normalmente operarás por `http` (sin certificado TLS válido para IP).
+- Mantén esto solo como estado transitorio.
+- Security Group debe permitir `80/tcp`.
+
 ## 2) Preparar servidor (solo primera vez)
 
 Conéctate por SSH y ejecuta:
@@ -143,6 +165,35 @@ Recomendado: terminar TLS en un ALB o CloudFront.
 - Si TLS termina en Nginx del host:
   - Extiende `nginx/nginx.prod.conf` con bloque `listen 443 ssl`.
   - Monta certificados válidos.
+
+## 5.1) Cambio de IP temporal a dominio (cuando ya propagó DNS)
+
+Cuando `dig +short erp.tu-dominio.com` ya resuelva correctamente:
+
+1. Edita `.env.production` y reemplaza valores temporales:
+
+```env
+DJANGO_ALLOWED_HOSTS=erp.tu-dominio.com
+CORS_ALLOWED_ORIGINS=https://erp.tu-dominio.com
+VITE_API_URL=/api/v1
+VITE_WS_URL=wss://erp.tu-dominio.com/ws
+DJANGO_SECURE_SSL_REDIRECT=True
+SECURE_HSTS_SECONDS=31536000
+```
+
+2. Rebuild + redeploy (importante: el frontend necesita rebuild por `VITE_WS_URL`):
+
+```bash
+cd /opt/vlf_erp
+./scripts/deploy_production.sh /opt/vlf_erp
+```
+
+3. Valida:
+
+```bash
+curl -I https://erp.tu-dominio.com
+curl -f https://erp.tu-dominio.com/api/v1/health/
+```
 
 ## 6) Actualización de versión (deploy continuo)
 

@@ -14,8 +14,8 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY BACKEND/requirements/production.txt /tmp/requirements.txt
-RUN pip install --upgrade pip && pip install -r /tmp/requirements.txt
+COPY BACKEND/requirements /tmp/requirements
+RUN pip install --upgrade pip && pip install -r /tmp/requirements/production.txt
 
 COPY BACKEND /app
 
