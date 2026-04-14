@@ -100,6 +100,19 @@ curl -I https://erp.tu-dominio.com
 curl -f https://erp.tu-dominio.com/api/v1/health/
 ```
 
+### Caso actual `erp.valfora.com` (TLS en Nginx del repo)
+
+```bash
+sudo dnf install -y certbot
+cd /opt/vlf_erp
+sudo docker compose -f docker-compose.production.yml --env-file .env.production stop nginx
+sudo certbot certonly --standalone -d erp.valfora.com --agree-tos -m TU_EMAIL --non-interactive
+
+# luego de git pull (compose/nginx ya incluyen 443 + cert mount)
+sudo docker compose -f docker-compose.production.yml --env-file .env.production up -d --build
+curl -I https://erp.valfora.com
+```
+
 ## 7) Regla de seguridad para compartir por Gist
 
 - Nunca publiques valores reales de:

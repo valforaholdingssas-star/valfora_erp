@@ -163,8 +163,27 @@ Recomendado: terminar TLS en un ALB o CloudFront.
   - Solicita certificado en ACM para `erp.tu-dominio.com` (o wildcard `*.tu-dominio.com`) y asócialo al listener `443`.
 
 - Si TLS termina en Nginx del host:
-  - Extiende `nginx/nginx.prod.conf` con bloque `listen 443 ssl`.
-  - Monta certificados válidos.
+  - Este repo ya trae configuración HTTPS para `erp.valfora.com` en `nginx/nginx.prod.conf`.
+  - `docker-compose.production.yml` ya expone `443` y monta `/etc/letsencrypt`.
+
+### 5.0) Comandos exactos para activar SSL en este repo (erp.valfora.com)
+
+```bash
+# 1) Emitir certificado
+sudo dnf install -y certbot
+cd /opt/vlf_erp
+sudo docker compose -f docker-compose.production.yml --env-file .env.production stop nginx
+sudo certbot certonly --standalone -d erp.valfora.com --agree-tos -m TU_EMAIL --non-interactive
+
+# 2) Traer cambios HTTPS de git y levantar stack
+cd /opt/vlf_erp
+git pull
+sudo docker compose -f docker-compose.production.yml --env-file .env.production up -d --build
+
+# 3) Validar
+curl -I https://erp.valfora.com
+curl -f https://erp.valfora.com/api/v1/health/
+```
 
 ## 5.1) Cambio de IP temporal a dominio (cuando ya propagó DNS)
 
