@@ -11,6 +11,51 @@ Este runbook deja la plataforma desplegada en una EC2 Linux con Docker Compose.
   - `443/tcp` público.
 - DNS apuntando a la IP pública de la EC2 (ej. `erp.tu-dominio.com`).
 
+## 1.1) Configuración de dominio (si aún no lo has asociado)
+
+Si acabas de lanzar la instancia y no tienes dominio enlazado, sigue este flujo:
+
+1. Define la estrategia de dominio.
+- Opción recomendada: usar subdominio para ERP (`erp.tu-dominio.com`).
+- Mantén el dominio raíz (`tu-dominio.com`) para sitio corporativo o landing.
+
+2. Si no tienes dominio, cómpralo.
+- Puedes comprar en Route 53 o en cualquier registrador (Namecheap, GoDaddy, Cloudflare, etc.).
+
+3. Crea zona hospedada en Route 53.
+- En AWS: `Route 53 > Hosted zones > Create hosted zone`.
+- Tipo: `Public hosted zone`.
+- Dominio: `tu-dominio.com`.
+
+4. Configura los Name Servers del dominio.
+- Route 53 te dará 4 `NS`.
+- En tu registrador, reemplaza los `NS` actuales por los de Route 53.
+- La propagación puede tardar desde minutos hasta 24h.
+
+5. Crea registro DNS hacia tu instancia.
+- Si usarás EC2 directamente:
+  - Crea un `A record` para `erp.tu-dominio.com` apuntando a la `Elastic IP` de la EC2.
+  - Recomendado: asignar primero una Elastic IP a la instancia para que no cambie.
+- Si usarás ALB:
+  - Crea `A record (Alias)` apuntando al DNS del ALB.
+
+6. Verifica resolución DNS antes del deploy final.
+
+```bash
+dig +short erp.tu-dominio.com
+nslookup erp.tu-dominio.com
+```
+
+Debe resolver a tu Elastic IP (o al ALB).
+
+7. Prueba acceso HTTP.
+
+```bash
+curl -I http://erp.tu-dominio.com
+```
+
+Cuando responda, ya puedes continuar con TLS/HTTPS.
+
 ## 2) Preparar servidor (solo primera vez)
 
 Conéctate por SSH y ejecuta:
@@ -31,13 +76,39 @@ git clone <URL_DEL_REPO> .
 cp .env.production.example .env.production
 ```
 
-Edita `.env.production` y completa como mínimo:
+Edita `.env.production` y completa como mínimo (si no tienes claves, genéralas así):
 
-- `DJANGO_SECRET_KEY`
-- `DJANGO_ALLOWED_HOSTS` (ej. `erp.tu-dominio.com`)
-- `CORS_ALLOWED_ORIGINS` (ej. `https://erp.tu-dominio.com`)
-- `POSTGRES_PASSWORD`
-- `VITE_API_URL` y `VITE_WS_URL`
+```bash
+# En el servidor, dentro de /opt/vlf_erp
+openssl rand -base64 48    # para DJANGO_SECRET_KEY
+openssl rand -base64 32    # para POSTGRES_PASSWORD
+```
+
+Valores recomendados (ejemplo realista):
+
+```env
+DJANGO_SECRET_KEY=<pega_aqui_salida_de_openssl_rand_base64_48>
+POSTGRES_PASSWORD=<pega_aqui_salida_de_openssl_rand_base64_32>
+
+# Tu dominio público (sin protocolo)
+DJANGO_ALLOWED_HOSTS=erp.tu-dominio.com
+
+# Origen permitido del frontend (con https)
+CORS_ALLOWED_ORIGINS=https://erp.tu-dominio.com
+
+# URL del API que usará el frontend en build
+# Si frontend y backend salen por el mismo dominio con nginx, deja ruta relativa:
+VITE_API_URL=/api/v1
+
+# WebSocket público
+VITE_WS_URL=wss://erp.tu-dominio.com/ws
+```
+
+Notas rápidas:
+- No inventes `DJANGO_SECRET_KEY`/`POSTGRES_PASSWORD` manualmente: usa `openssl`.
+- `DJANGO_ALLOWED_HOSTS` no lleva `https://`, solo host.
+- `CORS_ALLOWED_ORIGINS` sí lleva protocolo (`https://`).
+- Si luego cambias dominio, actualiza estos 4 campos y vuelve a desplegar.
 
 ## 4) Primer despliegue
 
@@ -67,6 +138,7 @@ Recomendado: terminar TLS en un ALB o CloudFront.
   - Mantén Nginx interno en `:80`.
   - Asegura `DJANGO_SECURE_SSL_REDIRECT=True`.
   - Configura healthcheck del target group a `/api/v1/health/`.
+  - Solicita certificado en ACM para `erp.tu-dominio.com` (o wildcard `*.tu-dominio.com`) y asócialo al listener `443`.
 
 - Si TLS termina en Nginx del host:
   - Extiende `nginx/nginx.prod.conf` con bloque `listen 443 ssl`.
