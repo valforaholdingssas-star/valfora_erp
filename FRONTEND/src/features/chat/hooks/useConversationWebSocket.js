@@ -9,6 +9,7 @@ export const useConversationWebSocket = ({
   conversationId,
   token,
   onMessageCreated,
+  onMessageUpdated,
   onTyping,
 }) => {
   const wsRef = useRef(null);
@@ -43,6 +44,10 @@ export const useConversationWebSocket = ({
           const payload = JSON.parse(ev.data);
           if (payload.event === "message.created" && payload.message) {
             onMessageCreated?.(payload.message);
+            return;
+          }
+          if (payload.event === "message.updated" && payload.message) {
+            onMessageUpdated?.(payload.message);
             return;
           }
           if (payload.event === "typing") {
@@ -89,7 +94,7 @@ export const useConversationWebSocket = ({
       reconnectAttemptRef.current = 0;
       setStatus("disconnected");
     };
-  }, [conversationId, token, onMessageCreated, onTyping]);
+  }, [conversationId, token, onMessageCreated, onMessageUpdated, onTyping]);
 
   const sendJson = (payload) => {
     const ws = wsRef.current;

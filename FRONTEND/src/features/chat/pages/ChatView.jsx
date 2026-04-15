@@ -205,6 +205,15 @@ const ChatView = () => {
     }));
   }, [mergeIncomingMessage]);
 
+  const handleWsMessageUpdated = useCallback((incoming) => {
+    setMessages((prev) => ({
+      ...prev,
+      results: (prev.results || []).map((msg) =>
+        String(msg.id) === String(incoming.id) ? { ...msg, ...incoming } : msg,
+      ),
+    }));
+  }, []);
+
   const handleWsTyping = useCallback((payload) => {
     if (payload.user_id && currentUserId && payload.user_id === currentUserId) return;
     setPeerTyping(Boolean(payload.typing));
@@ -218,6 +227,7 @@ const ChatView = () => {
     conversationId: activeId,
     token,
     onMessageCreated: handleWsMessageCreated,
+    onMessageUpdated: handleWsMessageUpdated,
     onTyping: handleWsTyping,
   });
 
@@ -492,19 +502,20 @@ const ChatView = () => {
     if (m.status === "failed" || m.status === "dead_letter") {
       return (
         <>
-          <Badge bg="danger" className="ms-1">
-            Envío: {m.status === "dead_letter" ? "sin reintentos" : "fallido"}
-          </Badge>
+          <span className="app-msg-status app-msg-status--failed">
+            {m.status === "dead_letter" ? "Sin reintentos" : "Envío fallido"}
+          </span>
           {detail && <span className="text-danger small ms-2">{detail}</span>}
         </>
       );
     }
     if (m.status === "pending" || m.status === "sending") {
       return (
-        <Badge bg="warning" text="dark" className="ms-1">
-          Enviando…
-        </Badge>
+        <span className="app-msg-status app-msg-status--sending">Enviando…</span>
       );
+    }
+    if (m.status === "sent" || m.status === "delivered" || m.status === "read") {
+      return <span className="app-msg-status app-msg-status--ok">{m.status}</span>;
     }
     return null;
   };

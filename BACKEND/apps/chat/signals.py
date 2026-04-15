@@ -47,22 +47,26 @@ def detect_handoff_from_contact_text(sender, instance: Message, created: bool, *
 @receiver(post_save, sender=Message)
 def broadcast_new_chat_message(sender, instance: Message, created: bool, **kwargs) -> None:
     """Push new messages to Channels groups and refresh conversation ordering."""
-    if not created:
-        return
-
-    Conversation.objects.filter(pk=instance.conversation_id).update(
-        last_message_at=instance.created_at,
-        updated_at=timezone.now(),
-    )
     layer = get_channel_layer()
     if layer is None:
         return
+
+    if created:
+        Conversation.objects.filter(pk=instance.conversation_id).update(
+            last_message_at=instance.created_at,
+            updated_at=timezone.now(),
+        )
+
     payload = _to_channel_safe(MessageSerializer(instance).data)
+    evt = "message.created" if created else "message.updated"
     event = {
         "type": "chat.event",
-        "payload": {"event": "message.created", "message": payload},
+        "payload": {"event": evt, "message": payload},
     }
     async_to_sync(layer.group_send)(f"chat_conversation_{instance.conversation_id}", event)
+
+    if not created:
+        return
 
     conv = Conversation.objects.get(pk=instance.conversation_id)
     if conv.assigned_to_id:

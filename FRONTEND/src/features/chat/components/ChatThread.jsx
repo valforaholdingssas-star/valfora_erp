@@ -151,30 +151,32 @@ const ChatThread = ({
                 key={m.id}
                 className={`mb-2 small ${m.sender_type === "user" ? "text-end" : ""}`}
               >
-                <span className="badge bg-secondary me-1">{senderLabel(m)}</span>
-                {m.is_ai_generated && (
-                  <Badge bg="info" className="me-1">
-                    Generado por IA
-                  </Badge>
-                )}
-                {statusWarning(m)}
-                {m.status === "failed" && String(m.id).startsWith("temp-") && (
-                  <button
-                    type="button"
-                    className="btn btn-link btn-sm p-0 ms-2 align-baseline"
-                    onClick={() => {
-                      void onRetry(m);
-                    }}
-                  >
-                    Reintentar
-                  </button>
-                )}
                 <div className={`mt-1 app-chat-bubble ${m.sender_type === "user" ? "is-agent" : ""}`}>
                   <MediaMessageBubble message={m} />
                   {m.sender_type === "user" && (
                     <span className="d-inline-flex align-items-center">
                       <MessageStatusTicks status={m.status} />
                     </span>
+                  )}
+                </div>
+                <div className={`app-chat-msg-meta ${m.sender_type === "user" ? "justify-content-end" : "justify-content-start"}`}>
+                  <span className="app-chat-msg-author">{senderLabel(m)}</span>
+                  {m.is_ai_generated && (
+                    <Badge bg="info" className="me-1">
+                      IA
+                    </Badge>
+                  )}
+                  {statusWarning(m)}
+                  {m.status === "failed" && String(m.id).startsWith("temp-") && (
+                    <button
+                      type="button"
+                      className="btn btn-link btn-sm p-0 ms-1 align-baseline"
+                      onClick={() => {
+                        void onRetry(m);
+                      }}
+                    >
+                      Reintentar
+                    </button>
                   )}
                 </div>
               </div>

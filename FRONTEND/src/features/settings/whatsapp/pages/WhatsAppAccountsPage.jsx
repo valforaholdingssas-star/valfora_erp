@@ -31,7 +31,26 @@ const WhatsAppAccountsPage = () => {
   const load = async () => {
     try {
       const data = await fetchWhatsAppAccounts({ page_size: 100 });
-      setAccounts(data.results || []);
+      const rows = data.results || [];
+      setAccounts(rows);
+      setVerifyMap((prev) => {
+        const next = { ...prev };
+        rows.forEach((a) => {
+          if (next[a.id] === undefined) next[a.id] = { ok: null };
+        });
+        return next;
+      });
+
+      await Promise.all(
+        rows.map(async (a) => {
+          try {
+            const result = await verifyWhatsAppAccount(a.id);
+            setVerifyMap((prev) => ({ ...prev, [a.id]: result }));
+          } catch {
+            setVerifyMap((prev) => ({ ...prev, [a.id]: { ok: false } }));
+          }
+        }),
+      );
     } catch {
       setError("No se pudieron cargar las cuentas de WhatsApp.");
     }
