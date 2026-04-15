@@ -487,11 +487,16 @@ const ChatView = () => {
   };
 
   const statusWarning = (m) => {
+    const detailRaw = m?.metadata?.detail || m?.metadata?.error || "";
+    const detail = typeof detailRaw === "string" ? detailRaw.slice(0, 180) : "";
     if (m.status === "failed" || m.status === "dead_letter") {
       return (
-        <Badge bg="danger" className="ms-1">
-          Envío: {m.status === "dead_letter" ? "sin reintentos" : "fallido"}
-        </Badge>
+        <>
+          <Badge bg="danger" className="ms-1">
+            Envío: {m.status === "dead_letter" ? "sin reintentos" : "fallido"}
+          </Badge>
+          {detail && <span className="text-danger small ms-2">{detail}</span>}
+        </>
       );
     }
     if (m.status === "pending" || m.status === "sending") {

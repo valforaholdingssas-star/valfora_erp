@@ -15,7 +15,7 @@ from apps.chat.models import Conversation, Message
 from apps.whatsapp.models import WhatsAppPhoneNumber, WhatsAppTemplate
 from apps.whatsapp.services.template_manager import sync_templates_for_phone
 from apps.whatsapp.services.webhook_processor import process_webhook_payload
-from apps.whatsapp.services.whatsapp_api_service import WhatsAppAPIService
+from apps.whatsapp.services.whatsapp_api_service import WhatsAppAPIError, WhatsAppAPIService
 
 logger = logging.getLogger(__name__)
 
@@ -67,39 +67,60 @@ def send_whatsapp_message(self, message_id: str) -> None:
     attachment = message.attachments.filter(is_active=True).order_by("-created_at").first()
     uploaded_media_id = None
 
-    if message.message_type == "text":
-        response = service.send_text_message(to=to_number, body=message.content)
-    elif message.message_type == "image":
-        media_id = (message.metadata or {}).get("whatsapp_uploaded_media_id")
-        if attachment and not media_id:
-            media_id = service.upload_media(
-                attachment.file.path,
-                attachment.file_type or "image/jpeg",
-            )
-        uploaded_media_id = media_id
-        if media_id:
-            response = service.send_image_message(to=to_number, image_id=media_id, caption=message.content)
+    try:
+        if message.message_type == "text":
+            response = service.send_text_message(to=to_number, body=message.content)
+        elif message.message_type == "image":
+            media_id = (message.metadata or {}).get("whatsapp_uploaded_media_id")
+            if attachment and not media_id:
+                media_id = service.upload_media(
+                    attachment.file.path,
+                    attachment.file_type or "image/jpeg",
+                )
+            uploaded_media_id = media_id
+            if media_id:
+                response = service.send_image_message(to=to_number, image_id=media_id, caption=message.content)
+            else:
+                response = service.send_image_message(to=to_number, image_url=(message.metadata or {}).get("link"), caption=message.content)
+        elif message.message_type == "document":
+            media_id = (message.metadata or {}).get("whatsapp_uploaded_media_id")
+            if attachment and not media_id:
+                media_id = service.upload_media(
+                    attachment.file.path,
+                    attachment.file_type or "application/octet-stream",
+                )
+            uploaded_media_id = media_id
+            if media_id:
+                response = service.send_document_message(
+                    to=to_number,
+                    document_id=media_id,
+                    filename=attachment.file_name if attachment else None,
+                    caption=message.content,
+                )
+            else:
+                response = service.send_document_message(to=to_number, document_url=(message.metadata or {}).get("link"), caption=message.content)
         else:
-            response = service.send_image_message(to=to_number, image_url=(message.metadata or {}).get("link"), caption=message.content)
-    elif message.message_type == "document":
-        media_id = (message.metadata or {}).get("whatsapp_uploaded_media_id")
-        if attachment and not media_id:
-            media_id = service.upload_media(
-                attachment.file.path,
-                attachment.file_type or "application/octet-stream",
-            )
-        uploaded_media_id = media_id
-        if media_id:
-            response = service.send_document_message(
-                to=to_number,
-                document_id=media_id,
-                filename=attachment.file_name if attachment else None,
-                caption=message.content,
-            )
-        else:
-            response = service.send_document_message(to=to_number, document_url=(message.metadata or {}).get("link"), caption=message.content)
-    else:
-        response = service.send_text_message(to=to_number, body=message.content)
+            response = service.send_text_message(to=to_number, body=message.content)
+    except WhatsAppAPIError as exc:
+        detail = str(exc)[:800]
+        message.status = "failed"
+        message.metadata = {
+            **(message.metadata or {}),
+            "error": "WHATSAPP_API_ERROR",
+            "detail": detail,
+        }
+        message.save(update_fields=["status", "metadata", "updated_at"])
+        logger.warning("WhatsApp API rejected message %s: %s", message.id, detail)
+        return
+    except Exception as exc:  # noqa: BLE001
+        detail = str(exc)[:800]
+        message.metadata = {
+            **(message.metadata or {}),
+            "error": "WHATSAPP_SEND_EXCEPTION",
+            "detail": detail,
+        }
+        message.save(update_fields=["metadata", "updated_at"])
+        raise
 
     wa_id = ((response.get("messages") or [{}])[0]).get("id")
     message.status = "sent"
@@ -145,12 +166,37 @@ def send_whatsapp_template(self, message_id: str, template_id: str, variables: l
 
     service = WhatsAppAPIService(phone)
     to_number = (conv.contact.whatsapp_number or conv.contact.phone_number or "").strip()
-    response = service.send_template_message(
-        to=to_number,
-        template_name=template.name,
-        language=template.language,
-        components=components,
-    )
+    try:
+        response = service.send_template_message(
+            to=to_number,
+            template_name=template.name,
+            language=template.language,
+            components=components,
+        )
+    except WhatsAppAPIError as exc:
+        detail = str(exc)[:800]
+        message.status = "failed"
+        message.metadata = {
+            **(message.metadata or {}),
+            "error": "WHATSAPP_TEMPLATE_API_ERROR",
+            "detail": detail,
+            "template_id": str(template.id),
+            "template_variables": variables or [],
+        }
+        message.save(update_fields=["status", "metadata", "updated_at"])
+        logger.warning("WhatsApp template rejected for message %s: %s", message.id, detail)
+        return
+    except Exception as exc:  # noqa: BLE001
+        detail = str(exc)[:800]
+        message.metadata = {
+            **(message.metadata or {}),
+            "error": "WHATSAPP_TEMPLATE_SEND_EXCEPTION",
+            "detail": detail,
+            "template_id": str(template.id),
+            "template_variables": variables or [],
+        }
+        message.save(update_fields=["metadata", "updated_at"])
+        raise
     wa_id = ((response.get("messages") or [{}])[0]).get("id")
     message.status = "sent"
     message.whatsapp_message_id = wa_id or message.whatsapp_message_id
