@@ -5,6 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 
 import { fetchWikiDocuments } from "../../api/wiki.js";
 import { useAuth } from "../../contexts/AuthContext.jsx";
+import { useNotifications } from "../../contexts/NotificationContext.jsx";
 
 const linkClass = ({ isActive }) =>
   `nav-link rounded d-flex align-items-center gap-2 px-2 ${isActive ? "active bg-primary text-white" : ""}`;
@@ -17,6 +18,7 @@ const itemIsActive = (pathname, to) => {
 const Sidebar = ({ collapsed }) => {
   const { pathname } = useLocation();
   const { hasModuleAccess } = useAuth();
+  const { chatUnreadCount } = useNotifications();
   const [query, setQuery] = useState("");
   const [openGroups, setOpenGroups] = useState({});
 
@@ -201,6 +203,11 @@ const Sidebar = ({ collapsed }) => {
             section.items.map((item) => (
               <NavLink key={item.to} to={item.to} end={item.to === "/"} className={linkClass}>
                 <i className={`bi ${item.icon}`} />
+                {item.to === "/chat" && chatUnreadCount > 0 && (
+                  <span className="badge rounded-pill bg-danger ms-auto">
+                    {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                  </span>
+                )}
               </NavLink>
             )),
           )}
@@ -236,6 +243,11 @@ const Sidebar = ({ collapsed }) => {
                         <NavLink key={item.to} to={item.to} end={item.to === "/"} className={linkClass}>
                           <i className={`bi ${item.icon}`} />
                           <span>{item.label}</span>
+                          {item.to === "/chat" && chatUnreadCount > 0 && (
+                            <span className="badge rounded-pill bg-danger ms-auto">
+                              {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                            </span>
+                          )}
                         </NavLink>
                       ))}
                     </Nav>
