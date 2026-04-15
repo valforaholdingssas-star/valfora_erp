@@ -16,7 +16,7 @@ const ChatComposer = ({
   const fileInputRef = useRef(null);
   return (
     <Form onSubmit={onSubmit} className="app-chat-composer">
-      <div className="d-flex gap-2">
+      <div className="d-flex gap-2 app-chat-composer-row">
         <input
           ref={fileInputRef}
           type="file"

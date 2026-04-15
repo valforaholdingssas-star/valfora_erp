@@ -118,7 +118,7 @@ const ChatThread = ({
           </div>
         </div>
       )}
-      {peerTyping && <p className="text-muted small fst-italic mb-2">Escribiendo…</p>}
+      {peerTyping && <p className="text-muted small fst-italic mb-2 px-1">Escribiendo…</p>}
       {activeConv?.human_handoff_requested && (
         <Alert variant="warning" className="py-2 small mb-2">
           El contacto solicitó atención humana (o la IA fue bloqueada por políticas).{" "}
@@ -134,11 +134,10 @@ const ChatThread = ({
           </button>
         </Alert>
       )}
-      <div className="position-relative">
+      <div className="position-relative app-chat-thread-wrap">
         <div
           ref={containerRef}
-          className="flex-grow-1 border rounded p-2 mb-2 bg-body-secondary app-chat-log"
-          style={{ maxHeight: "50vh", overflowY: "auto" }}
+          className="flex-grow-1 border rounded p-3 mb-2 bg-body-secondary app-chat-log"
           role="log"
           aria-live="polite"
           aria-relevant="additions"

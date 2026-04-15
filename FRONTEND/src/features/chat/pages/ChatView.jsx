@@ -50,6 +50,7 @@ const ChatView = () => {
   const [input, setInput] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [channelFilter, setChannelFilter] = useState(dealId ? "internal" : "whatsapp");
   const [filters, setFilters] = useState({
     dealStage: "",
     dealOpenedFrom: "",
@@ -120,6 +121,7 @@ const ChatView = () => {
     setLoadingList(true);
     const params = {
       page_size: 50,
+      channel: channelFilter || undefined,
       search_text: searchQuery || undefined,
       search: searchQuery || undefined,
       deal_stage: filters.dealStage || undefined,
@@ -131,13 +133,20 @@ const ChatView = () => {
       .then(setConversations)
       .catch(() => {})
       .finally(() => setLoadingList(false));
-  }, [searchQuery, filters]);
+  }, [searchQuery, filters, channelFilter]);
 
-  const extractApiError = (error, fallback = "No fue posible completar la operación.") =>
-    error?.response?.data?.detail
-    || error?.response?.data?.data?.detail
-    || error?.response?.data?.message
-    || fallback;
+  const extractApiError = (error, fallback = "No fue posible completar la operación.") => {
+    const payload = error?.response?.data?.data ?? error?.response?.data ?? {};
+    if (typeof payload?.detail === "string" && payload.detail.trim()) return payload.detail;
+    if (typeof payload?.message === "string" && payload.message.trim()) return payload.message;
+    if (payload && typeof payload === "object") {
+      const firstKey = Object.keys(payload)[0];
+      const firstVal = firstKey ? payload[firstKey] : null;
+      if (Array.isArray(firstVal) && firstVal.length > 0) return String(firstVal[0]);
+      if (typeof firstVal === "string" && firstVal.trim()) return firstVal;
+    }
+    return fallback;
+  };
 
   useEffect(() => {
     loadConversations();
@@ -178,6 +187,10 @@ const ChatView = () => {
         .catch(() => {});
     }
   }, [dealId, activeId, loadConversations]);
+
+  useEffect(() => {
+    setChannelFilter(dealId ? "internal" : "whatsapp");
+  }, [dealId]);
 
   useEffect(() => {
     if (activeId) {
@@ -652,6 +665,8 @@ const ChatView = () => {
           onSelect={selectConv}
           query={searchQuery}
           onQueryChange={setSearchQuery}
+          channelFilter={channelFilter}
+          onChannelFilterChange={setChannelFilter}
           filters={filters}
           onApplyFilters={setFilters}
           onClearFilters={() =>
@@ -670,77 +685,81 @@ const ChatView = () => {
           )}
           {activeId && (
             <>
-              {canManageAiConfigs && (
-                <Form.Group className="mb-2" controlId="conv-ai-config">
-                  <Form.Label className="small text-muted mb-0">
-                    Configuración IA (esta conversación)
-                  </Form.Label>
-                  <Form.Select
-                    size="sm"
-                    value={aiConfigId || ""}
-                    onChange={(e) => {
-                      void handleAiConfigChange(e);
-                    }}
-                    disabled={savingAiConfig}
-                    aria-busy={savingAiConfig}
-                  >
-                    <option value="">Predeterminada del sistema</option>
-                    {aiConfigs.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                        {c.is_default ? " (predeterminada)" : ""}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Form.Group>
-              )}
-              {!canManageAiConfigs && activeConv?.ai_configuration_name && (
-                <p className="small text-muted mb-2">
-                  Configuración IA: <strong>{activeConv.ai_configuration_name}</strong>
-                </p>
-              )}
-              <ChatThread
-                loading={loadingMsg}
-                messages={messages.results || []}
-                activeConv={activeConv}
-                wsStatus={wsStatus}
-                peerTyping={peerTyping}
-                aiEnabled={aiEnabled}
-                clearingHandoff={clearingHandoff}
-                onToggleAi={handleToggleAi}
-                onClearHandoff={handleClearHandoff}
-                onRetry={handleRetry}
-                senderLabel={senderLabel}
-                statusWarning={statusWarning}
-              />
-              <ChatComposer
-                value={input}
-                onChange={handleInputChange}
-                onSubmit={handleSend}
-                disabled={!activeId}
-                canFreeMessage={canSendFreeMessage}
-                onOpenTemplate={() => setShowTemplateSelector(true)}
-                selectedFileName={selectedFile?.name || ""}
-                onPickFile={(file) => {
-                  const validationError = validateSelectedFile(file);
-                  if (validationError) {
-                    setComposerError(validationError);
+              <div className="app-chat-center-head">
+                {canManageAiConfigs && (
+                  <Form.Group className="mb-0" controlId="conv-ai-config">
+                    <Form.Label className="small text-muted mb-1">
+                      Configuración IA (esta conversación)
+                    </Form.Label>
+                    <Form.Select
+                      size="sm"
+                      value={aiConfigId || ""}
+                      onChange={(e) => {
+                        void handleAiConfigChange(e);
+                      }}
+                      disabled={savingAiConfig}
+                      aria-busy={savingAiConfig}
+                    >
+                      <option value="">Predeterminada del sistema</option>
+                      {aiConfigs.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                          {c.is_default ? " (predeterminada)" : ""}
+                        </option>
+                      ))}
+                    </Form.Select>
+                  </Form.Group>
+                )}
+                {!canManageAiConfigs && activeConv?.ai_configuration_name && (
+                  <p className="small text-muted mb-0">
+                    Configuración IA: <strong>{activeConv.ai_configuration_name}</strong>
+                  </p>
+                )}
+              </div>
+              <div className="app-chat-center-body">
+                <ChatThread
+                  loading={loadingMsg}
+                  messages={messages.results || []}
+                  activeConv={activeConv}
+                  wsStatus={wsStatus}
+                  peerTyping={peerTyping}
+                  aiEnabled={aiEnabled}
+                  clearingHandoff={clearingHandoff}
+                  onToggleAi={handleToggleAi}
+                  onClearHandoff={handleClearHandoff}
+                  onRetry={handleRetry}
+                  senderLabel={senderLabel}
+                  statusWarning={statusWarning}
+                />
+                <ChatComposer
+                  value={input}
+                  onChange={handleInputChange}
+                  onSubmit={handleSend}
+                  disabled={!activeId}
+                  canFreeMessage={canSendFreeMessage}
+                  onOpenTemplate={() => setShowTemplateSelector(true)}
+                  selectedFileName={selectedFile?.name || ""}
+                  onPickFile={(file) => {
+                    const validationError = validateSelectedFile(file);
+                    if (validationError) {
+                      setComposerError(validationError);
+                      setSelectedFile(null);
+                      return;
+                    }
+                    setComposerError("");
+                    setSelectedFile(file || null);
+                  }}
+                  onClearFile={() => {
                     setSelectedFile(null);
-                    return;
-                  }
-                  setComposerError("");
-                  setSelectedFile(file || null);
-                }}
-                onClearFile={() => {
-                  setSelectedFile(null);
-                  setComposerError("");
-                }}
-              />
-              {composerError && (
-                <Alert variant="warning" className="py-2 px-3 small mt-2 mb-0">
-                  {composerError}
-                </Alert>
-              )}
+                    setComposerError("");
+                  }}
+                />
+                {composerError && (
+                  <Alert variant="warning" className="py-2 px-3 small mt-2 mb-0">
+                    {composerError}
+                  </Alert>
+                )}
+              </div>
               <TemplateSelector
                 show={showTemplateSelector}
                 onHide={() => setShowTemplateSelector(false)}
@@ -748,7 +767,7 @@ const ChatView = () => {
               />
             </>
           )}
-          <div className="mt-3">
+          <div className="app-chat-backlink">
             <Link to="/crm/contacts">← Volver al CRM</Link>
           </div>
         </div>

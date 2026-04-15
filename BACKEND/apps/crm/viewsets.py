@@ -87,7 +87,7 @@ class CRMBaseViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             action="update",
             instance=instance,
-            changes=dict(serializer.validated_data),
+            changes=_serialize_changes(dict(serializer.validated_data)),
             request=self.request,
         )
 
