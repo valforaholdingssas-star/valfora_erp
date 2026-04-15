@@ -220,6 +220,33 @@ h6 {
   text-align: center;
 }
 
+.wiki-document-content {
+  line-height: 1.55;
+}
+
+.wiki-document-content h1,
+.wiki-document-content h2,
+.wiki-document-content h3,
+.wiki-document-content h4,
+.wiki-document-content h5,
+.wiki-document-content h6 {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.wiki-document-content p,
+.wiki-document-content ul,
+.wiki-document-content ol,
+.wiki-document-content pre,
+.wiki-document-content blockquote {
+  margin-bottom: 0.8rem;
+}
+
+.wiki-document-content img,
+.wiki-document-content table {
+  max-width: 100%;
+}
+
 .table {
   border-radius: 0.75rem;
   overflow: hidden;

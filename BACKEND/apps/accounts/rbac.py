@@ -14,6 +14,7 @@ MODULES = (
     "users",
     "whatsapp",
     "ai_config",
+    "wiki",
 )
 
 DEFAULT_ROLE_MATRIX = {
@@ -26,6 +27,7 @@ DEFAULT_ROLE_MATRIX = {
         "users": {"view": True, "edit": True},
         "whatsapp": {"view": True, "edit": True},
         "ai_config": {"view": True, "edit": True},
+        "wiki": {"view": True, "edit": True},
     },
     "collaborator": {
         "crm": {"view": True, "edit": True},
@@ -35,6 +37,7 @@ DEFAULT_ROLE_MATRIX = {
         "users": {"view": False, "edit": False},
         "whatsapp": {"view": False, "edit": False},
         "ai_config": {"view": False, "edit": False},
+        "wiki": {"view": True, "edit": False},
     },
 }
 
@@ -105,4 +108,3 @@ def user_has_module_permission(user, module: str, action: str) -> bool:
     if role == "super_admin":
         return True
     return bool(effective_module_permissions_for_role(role).get(module, {}).get(action, False))
-

@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "apps.calendar_app",
     "apps.finance",
     "apps.whatsapp",
+    "apps.wiki",
 ]
 
 # CRM: días sin contacto para alertas Celery (tareas periódicas)
@@ -199,6 +200,7 @@ LOGGING = {
         "apps.chat": {"level": "INFO", "propagate": True},
         "apps.whatsapp": {"level": "INFO", "propagate": True},
         "apps.ai_config": {"level": "INFO", "propagate": True},
+        "apps.wiki": {"level": "INFO", "propagate": True},
         "celery": {"level": "INFO", "propagate": True},
     },
 }

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Form, Nav } from "react-bootstrap";
 import { NavLink, useLocation } from "react-router-dom";
 
+import { fetchWikiDocuments } from "../../api/wiki.js";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 
 const linkClass = ({ isActive }) =>
@@ -25,8 +26,41 @@ const Sidebar = ({ collapsed }) => {
   const showAiSettings = hasModuleAccess("ai_config", "view");
   const showUserSettings = hasModuleAccess("users", "view");
   const showFinance = hasModuleAccess("finance", "view");
+  const showWiki = hasModuleAccess("wiki", "view");
+  const canEditWiki = hasModuleAccess("wiki", "edit");
   const showWhatsAppSettings = hasModuleAccess("whatsapp", "view");
   const showSettingsSection = showAiSettings || showUserSettings || showWhatsAppSettings;
+  const [wikiItems, setWikiItems] = useState([]);
+
+  useEffect(() => {
+    if (!showWiki) {
+      setWikiItems([]);
+      return;
+    }
+
+    let mounted = true;
+    const loadWikiItems = async () => {
+      try {
+        const data = await fetchWikiDocuments({ published: true, ordering: "menu_order,title", page_size: 200 });
+        if (!mounted) return;
+        const items = (data.results || []).map((doc) => ({
+          to: `/wiki/${doc.slug}`,
+          label: doc.title,
+          icon: "bi-file-earmark-richtext",
+        }));
+        setWikiItems(items);
+      } catch {
+        if (!mounted) return;
+        setWikiItems([]);
+      }
+    };
+
+    void loadWikiItems();
+    return () => {
+      mounted = false;
+    };
+  }, [showWiki, pathname]);
+
   const sections = useMemo(() => {
     const base = [
       {
@@ -64,6 +98,16 @@ const Sidebar = ({ collapsed }) => {
           : [],
       },
       {
+        key: "wiki",
+        label: "Wiki",
+        items: showWiki
+          ? [
+              canEditWiki ? { to: "/wiki", label: "Gestión Wiki", icon: "bi-journal-code" } : null,
+              ...wikiItems,
+            ].filter(Boolean)
+          : [],
+      },
+      {
         key: "settings",
         label: "Configuración",
         items: showSettingsSection
@@ -89,6 +133,9 @@ const Sidebar = ({ collapsed }) => {
     showCalendar,
     showChat,
     showFinance,
+    showWiki,
+    canEditWiki,
+    wikiItems,
     showSettingsSection,
     showUserSettings,
     showWhatsAppSettings,

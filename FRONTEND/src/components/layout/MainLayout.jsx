@@ -26,6 +26,8 @@ import PaymentForm from "../../features/finance/pages/PaymentForm.jsx";
 import PaymentsList from "../../features/finance/pages/PaymentsList.jsx";
 import ReceivablesView from "../../features/finance/pages/ReceivablesView.jsx";
 import UsersManagementPage from "../../features/users/pages/UsersManagementPage.jsx";
+import WikiDocumentViewPage from "../../features/wiki/pages/WikiDocumentViewPage.jsx";
+import WikiDocumentsPage from "../../features/wiki/pages/WikiDocumentsPage.jsx";
 import WhatsAppAccountsPage from "../../features/settings/whatsapp/pages/WhatsAppAccountsPage.jsx";
 import WhatsAppPhoneNumbersPage from "../../features/settings/whatsapp/pages/WhatsAppPhoneNumbersPage.jsx";
 import WhatsAppTemplatesPage from "../../features/settings/whatsapp/pages/WhatsAppTemplatesPage.jsx";
@@ -49,6 +51,7 @@ const MainLayout = () => {
   const canViewCalendar = hasModuleAccess("calendar", "view");
   const canViewFinance = hasModuleAccess("finance", "view");
   const canViewUsers = hasModuleAccess("users", "view");
+  const canViewWiki = hasModuleAccess("wiki", "view");
   const canViewWhatsapp = hasModuleAccess("whatsapp", "view");
   const canViewAIConfig = hasModuleAccess("ai_config", "view");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -111,6 +114,8 @@ const MainLayout = () => {
               <Route path="/finance/payments/new" element={canViewFinance ? <PaymentForm /> : <Navigate to="/" replace />} />
               <Route path="/finance/receivables" element={canViewFinance ? <ReceivablesView /> : <Navigate to="/" replace />} />
               <Route path="/finance/dashboard" element={canViewFinance ? <FinanceDashboard /> : <Navigate to="/" replace />} />
+              <Route path="/wiki" element={canViewWiki ? <WikiDocumentsPage /> : <Navigate to="/" replace />} />
+              <Route path="/wiki/:slug" element={canViewWiki ? <WikiDocumentViewPage /> : <Navigate to="/" replace />} />
               <Route path="/settings/ai" element={canViewAIConfig ? <AIConfigPage /> : <Navigate to="/" replace />} />
               <Route path="/settings/users" element={canViewUsers ? <UsersManagementPage /> : <Navigate to="/" replace />} />
               <Route path="/settings/whatsapp/accounts" element={canViewWhatsapp ? <WhatsAppAccountsPage /> : <Navigate to="/" replace />} />
