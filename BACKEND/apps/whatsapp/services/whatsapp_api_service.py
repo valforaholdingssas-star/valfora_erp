@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import mimetypes
+import os
 from typing import Any
 
 import requests
@@ -148,9 +150,14 @@ class WhatsAppAPIService:
         return self._post("messages", {"messaging_product": "whatsapp", "status": "read", "message_id": message_id})
 
     def upload_media(self, file_path: str, mime_type: str) -> str:
+        normalized_mime = _normalize_mime_type(file_path=file_path, mime_type=mime_type)
+        filename = os.path.basename(file_path) or "upload.bin"
         with open(file_path, "rb") as fh:
-            files = {"file": fh}
-            data = {"messaging_product": "whatsapp", "type": mime_type}
+            files = {"file": (filename, fh, normalized_mime)}
+            # Let Meta infer media type from the uploaded file.
+            # Sending an explicit "type" can trigger false validation errors
+            # when upstream mime detection differs from browser-provided content_type.
+            data = {"messaging_product": "whatsapp"}
             response = requests.post(
                 f"{self.api_url}/media",
                 headers={"Authorization": self.headers["Authorization"]},
@@ -228,3 +235,13 @@ def _extract_template_body(item: dict[str, Any]) -> str:
         if (component.get("type") or "").upper() == "BODY":
             return component.get("text") or ""
     return ""
+
+
+def _normalize_mime_type(*, file_path: str, mime_type: str) -> str:
+    raw = (mime_type or "").split(";", 1)[0].strip().lower()
+    if raw and raw != "application/octet-stream":
+        return raw
+    guessed, _ = mimetypes.guess_type(file_path)
+    if guessed:
+        return guessed.lower()
+    return "application/octet-stream"

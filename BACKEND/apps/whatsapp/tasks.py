@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import mimetypes
 from datetime import timedelta
 
 from celery import shared_task
@@ -18,6 +19,22 @@ from apps.whatsapp.services.webhook_processor import process_webhook_payload
 from apps.whatsapp.services.whatsapp_api_service import WhatsAppAPIError, WhatsAppAPIService
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_attachment_mime_type(
+    *,
+    file_path: str | None,
+    attachment_mime: str | None,
+    default_mime: str,
+) -> str:
+    normalized = (attachment_mime or "").split(";", 1)[0].strip().lower()
+    if normalized and normalized != "application/octet-stream":
+        return normalized
+    if file_path:
+        guessed, _ = mimetypes.guess_type(file_path)
+        if guessed:
+            return guessed.lower()
+    return default_mime
 
 
 @shared_task(name="whatsapp.tasks.process_whatsapp_webhook")
@@ -73,9 +90,15 @@ def send_whatsapp_message(self, message_id: str) -> None:
         elif message.message_type == "image":
             media_id = (message.metadata or {}).get("whatsapp_uploaded_media_id")
             if attachment and not media_id:
+                attachment_path = getattr(getattr(attachment, "file", None), "path", None)
+                mime_type = _resolve_attachment_mime_type(
+                    file_path=attachment_path,
+                    attachment_mime=attachment.file_type,
+                    default_mime="image/jpeg",
+                )
                 media_id = service.upload_media(
                     attachment.file.path,
-                    attachment.file_type or "image/jpeg",
+                    mime_type,
                 )
             uploaded_media_id = media_id
             if media_id:
@@ -85,9 +108,15 @@ def send_whatsapp_message(self, message_id: str) -> None:
         elif message.message_type == "document":
             media_id = (message.metadata or {}).get("whatsapp_uploaded_media_id")
             if attachment and not media_id:
+                attachment_path = getattr(getattr(attachment, "file", None), "path", None)
+                mime_type = _resolve_attachment_mime_type(
+                    file_path=attachment_path,
+                    attachment_mime=attachment.file_type,
+                    default_mime="application/octet-stream",
+                )
                 media_id = service.upload_media(
                     attachment.file.path,
-                    attachment.file_type or "application/octet-stream",
+                    mime_type,
                 )
             uploaded_media_id = media_id
             if media_id:
