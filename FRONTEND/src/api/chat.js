@@ -20,9 +20,7 @@ export const fetchMessages = (conversationId, params) =>
 
 export const sendMessage = (conversationId, payload) =>
   api
-    .post(`/chat/conversations/${conversationId}/messages/`, payload, payload instanceof FormData ? {
-      headers: { "Content-Type": "multipart/form-data" },
-    } : undefined)
+    .post(`/chat/conversations/${conversationId}/messages/`, payload)
     .then(unwrap);
 
 export const toggleAi = (conversationId) =>
