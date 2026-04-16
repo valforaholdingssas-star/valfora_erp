@@ -66,10 +66,7 @@ def build_openai_messages(*, trigger_message: Message, config: AIConfiguration) 
         lines.append(f"Notas CRM:\n{notes}")
 
     context_block = "\n".join(lines)
-    system = (
-        (config.system_prompt or "").strip()
-        or "Eres un asistente comercial profesional. Responde en español, de forma breve y útil."
-    )
+    system = _build_system_prompt(config)
     rag_block = ""
     if getattr(config, "rag_enabled", True):
         try:
@@ -126,10 +123,7 @@ def _map_sender_to_openai_role(sender_type: str) -> str:
 
 def build_openai_test_messages(*, config: AIConfiguration, user_message: str) -> list[dict[str, Any]]:
     """System + user only (no CRM contact, no RAG) for admin test calls."""
-    system = (
-        (config.system_prompt or "").strip()
-        or "Eres un asistente comercial profesional. Responde en español, de forma breve y útil."
-    )
+    system = _build_system_prompt(config)
     text = (user_message or "").strip()[:8000]
     return [
         {"role": "system", "content": system},
@@ -182,3 +176,28 @@ def moderate_openai_text(text: str) -> tuple[bool, dict[str, Any]]:
     flagged = bool(first.flagged)
     audit: dict[str, Any] = {"moderation_flagged": flagged}
     return not flagged, audit
+
+
+def _build_system_prompt(config: AIConfiguration) -> str:
+    """Compose final system prompt from structured fields + free-form prompt."""
+    blocks: list[str] = []
+    role = (getattr(config, "role", "") or "").strip()
+    objective = (getattr(config, "objective", "") or "").strip()
+    tone = (getattr(config, "tone", "") or "").strip()
+    style = (getattr(config, "style", "") or "").strip()
+    raw = (config.system_prompt or "").strip()
+
+    if role:
+        blocks.append(f"Rol: {role}")
+    if objective:
+        blocks.append(f"Objetivo: {objective}")
+    if tone:
+        blocks.append(f"Tono: {tone}")
+    if style:
+        blocks.append(f"Estilo: {style}")
+    if raw:
+        blocks.append(raw)
+
+    if not blocks:
+        return "Eres un asistente comercial profesional. Responde en español, de forma breve y útil."
+    return "\n".join(blocks)

@@ -58,6 +58,10 @@ class AIConfiguration(BaseModel):
         blank=True,
         help_text="Instrucciones base para el asistente (idioma, tono, límites).",
     )
+    objective = models.TextField(blank=True, help_text="Objetivo principal de la IA en las conversaciones.")
+    role = models.CharField(max_length=160, blank=True, help_text="Rol que debe asumir la IA.")
+    tone = models.CharField(max_length=120, blank=True, help_text="Tono de comunicación esperado.")
+    style = models.CharField(max_length=160, blank=True, help_text="Estilo de redacción deseado.")
     temperature = models.FloatField(default=0.7)
     max_tokens = models.PositiveIntegerField(default=512)
     llm_model = models.CharField(max_length=80, default="gpt-4o-mini")
@@ -104,6 +108,7 @@ class AIRuntimeSettings(BaseModel):
     openai_api_key = EncryptedTextField(blank=True)
     openai_embedding_model = models.CharField(max_length=120, default="text-embedding-3-small")
     openai_moderation_disabled = models.BooleanField(default=False)
+    global_ai_mode_enabled = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "AI runtime settings"

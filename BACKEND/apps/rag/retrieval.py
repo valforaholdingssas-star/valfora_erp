@@ -27,10 +27,14 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def documents_for_contact(contact_id: UUID) -> Any:
-    """CRM documents tied to this contact or to deals of this contact."""
+    """CRM documents tied to this contact/deals + global knowledge docs."""
     return (
         Document.objects.filter(is_active=True)
-        .filter(Q(contact_id=contact_id) | Q(deal__contact_id=contact_id))
+        .filter(
+            Q(contact_id=contact_id)
+            | Q(deal__contact_id=contact_id)
+            | Q(is_global_knowledge=True)
+        )
         .distinct()
     )
 

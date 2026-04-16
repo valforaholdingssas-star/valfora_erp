@@ -15,6 +15,7 @@ from apps.chat.handoff import text_requests_human_handoff
 from apps.chat.models import Conversation, Message
 from apps.chat.serializers import MessageSerializer
 from apps.notifications.services import notify_inbound_chat_message
+from apps.ai_config.runtime import resolve_global_ai_mode_enabled
 
 
 def _to_channel_safe(value):
@@ -102,7 +103,7 @@ def enqueue_ai_reply_after_contact_message(
         .filter(pk=instance.conversation_id)
         .first()
     )
-    if not conv or not conv.ai_mode_enabled or conv.human_handoff_requested:
+    if not conv or (not conv.ai_mode_enabled and not resolve_global_ai_mode_enabled()) or conv.human_handoff_requested:
         return
 
     def _enqueue() -> None:

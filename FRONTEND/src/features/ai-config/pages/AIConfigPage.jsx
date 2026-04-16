@@ -11,11 +11,16 @@ import {
   patchAiRuntimeSettings,
   testAiConfiguration,
 } from "../../../api/aiConfig.js";
+import { deleteDocument, fetchDocuments, uploadDocument } from "../../../api/crm.js";
 import { useAuth } from "../../../contexts/AuthContext.jsx";
 
 const emptyForm = () => ({
   name: "Nueva configuración",
   system_prompt: "",
+  objective: "",
+  role: "",
+  tone: "",
+  style: "",
   temperature: 0.7,
   max_tokens: 512,
   llm_model: "gpt-4o-mini",
@@ -48,9 +53,16 @@ const AIConfigPage = () => {
     clear_openai_api_key: false,
     openai_embedding_model: "text-embedding-3-small",
     openai_moderation_disabled: false,
+    global_ai_mode_enabled: false,
     has_openai_api_key: false,
     openai_api_key_masked: "",
   });
+  const [knowledgeDocs, setKnowledgeDocs] = useState([]);
+  const [knowledgeUploadFile, setKnowledgeUploadFile] = useState(null);
+  const [knowledgeDocName, setKnowledgeDocName] = useState("");
+  const [knowledgeDocDescription, setKnowledgeDocDescription] = useState("");
+  const [knowledgeSaving, setKnowledgeSaving] = useState(false);
+  const [knowledgeError, setKnowledgeError] = useState(null);
 
   const canEdit = user && ["admin", "super_admin"].includes(user.role);
 
@@ -58,6 +70,10 @@ const AIConfigPage = () => {
     setForm({
       name: row.name || "",
       system_prompt: row.system_prompt || "",
+      objective: row.objective || "",
+      role: row.role || "",
+      tone: row.tone || "",
+      style: row.style || "",
       temperature: row.temperature ?? 0.7,
       max_tokens: row.max_tokens ?? 512,
       llm_model: row.llm_model || "gpt-4o-mini",
@@ -74,18 +90,21 @@ const AIConfigPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const [data, runtime] = await Promise.all([
+      const [data, runtime, docs] = await Promise.all([
         fetchAiConfigurations({ page_size: 100 }),
         fetchAiRuntimeSettings(),
+        fetchDocuments({ is_global_knowledge: true, page_size: 200 }),
       ]);
       const rows = data.results || [];
       setItems(rows);
+      setKnowledgeDocs(docs.results || []);
       setRuntimeForm((prev) => ({
         ...prev,
         openai_api_key: "",
         clear_openai_api_key: false,
         openai_embedding_model: runtime.openai_embedding_model || "text-embedding-3-small",
         openai_moderation_disabled: Boolean(runtime.openai_moderation_disabled),
+        global_ai_mode_enabled: Boolean(runtime.global_ai_mode_enabled),
         has_openai_api_key: Boolean(runtime.has_openai_api_key),
         openai_api_key_masked: runtime.openai_api_key_masked || "",
       }));
@@ -141,6 +160,10 @@ const AIConfigPage = () => {
     try {
       await patchAiConfiguration(selectedId, {
         name: form.name.trim() || "Sin nombre",
+        objective: form.objective,
+        role: form.role,
+        tone: form.tone,
+        style: form.style,
         system_prompt: form.system_prompt,
         temperature: Number(form.temperature),
         max_tokens: Number(form.max_tokens),
@@ -209,6 +232,7 @@ const AIConfigPage = () => {
       const payload = {
         openai_embedding_model: runtimeForm.openai_embedding_model.trim() || "text-embedding-3-small",
         openai_moderation_disabled: Boolean(runtimeForm.openai_moderation_disabled),
+        global_ai_mode_enabled: Boolean(runtimeForm.global_ai_mode_enabled),
         clear_openai_api_key: Boolean(runtimeForm.clear_openai_api_key),
       };
       if ((runtimeForm.openai_api_key || "").trim()) {
@@ -221,6 +245,7 @@ const AIConfigPage = () => {
         clear_openai_api_key: false,
         openai_embedding_model: updated.openai_embedding_model || "text-embedding-3-small",
         openai_moderation_disabled: Boolean(updated.openai_moderation_disabled),
+        global_ai_mode_enabled: Boolean(updated.global_ai_mode_enabled),
         has_openai_api_key: Boolean(updated.has_openai_api_key),
         openai_api_key_masked: updated.openai_api_key_masked || "",
       }));
@@ -231,6 +256,49 @@ const AIConfigPage = () => {
       setRuntimeError(typeof msg === "string" ? msg : "No se pudo guardar la configuración runtime.");
     } finally {
       setRuntimeSaving(false);
+    }
+  };
+
+  const handleUploadKnowledgeDocument = async (e) => {
+    e.preventDefault();
+    if (!knowledgeUploadFile) {
+      setKnowledgeError("Debes seleccionar un archivo.");
+      return;
+    }
+    setKnowledgeSaving(true);
+    setKnowledgeError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", knowledgeUploadFile);
+      fd.append("name", (knowledgeDocName || "").trim() || knowledgeUploadFile.name);
+      fd.append("description", (knowledgeDocDescription || "").trim());
+      fd.append("is_global_knowledge", "true");
+      await uploadDocument(fd);
+      setKnowledgeUploadFile(null);
+      setKnowledgeDocName("");
+      setKnowledgeDocDescription("");
+      const docs = await fetchDocuments({ is_global_knowledge: true, page_size: 200 });
+      setKnowledgeDocs(docs.results || []);
+    } catch (err) {
+      const d = err?.response?.data;
+      const msg = d?.message || d?.detail || "No se pudo cargar el documento.";
+      setKnowledgeError(typeof msg === "string" ? msg : "No se pudo cargar el documento.");
+    } finally {
+      setKnowledgeSaving(false);
+    }
+  };
+
+  const handleDeleteKnowledgeDocument = async (docId) => {
+    if (!window.confirm("¿Eliminar este documento de conocimiento global?")) return;
+    setKnowledgeSaving(true);
+    setKnowledgeError(null);
+    try {
+      await deleteDocument(docId);
+      setKnowledgeDocs((prev) => prev.filter((d) => d.id !== docId));
+    } catch {
+      setKnowledgeError("No se pudo eliminar el documento.");
+    } finally {
+      setKnowledgeSaving(false);
     }
   };
 
@@ -299,6 +367,17 @@ const AIConfigPage = () => {
                   }
                 />
               </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Check
+                  type="switch"
+                  id="runtime-global-ai-enabled"
+                  label="Modo IA global para todos los chats (ON/OFF masivo)"
+                  checked={runtimeForm.global_ai_mode_enabled}
+                  onChange={(e) =>
+                    setRuntimeForm((prev) => ({ ...prev, global_ai_mode_enabled: e.target.checked }))
+                  }
+                />
+              </Form.Group>
               <div className="d-flex gap-2 align-items-center">
                 <Button type="submit" size="sm" disabled={runtimeSaving}>
                   {runtimeSaving ? "Guardando…" : "Guardar runtime"}
@@ -313,6 +392,11 @@ const AIConfigPage = () => {
             <Button type="button" variant="outline-primary" size="sm" onClick={() => void handleNew()} disabled={saving}>
               Nueva configuración
             </Button>
+            {selectedId && (
+              <Button type="button" variant="primary" size="sm" onClick={(e) => void handleSubmit(e)} disabled={saving}>
+                {saving ? "Guardando..." : "Guardar cambios"}
+              </Button>
+            )}
           </div>
           <Table responsive hover size="sm" className="mb-3">
             <thead>
@@ -361,6 +445,36 @@ const AIConfigPage = () => {
                   rows={6}
                   value={form.system_prompt}
                   onChange={(e) => setForm((p) => ({ ...p, system_prompt: e.target.value }))}
+                />
+              </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Label>Objetivo</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={2}
+                  value={form.objective}
+                  onChange={(e) => setForm((p) => ({ ...p, objective: e.target.value }))}
+                />
+              </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Label>Rol</Form.Label>
+                <Form.Control
+                  value={form.role}
+                  onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
+                />
+              </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Label>Tono</Form.Label>
+                <Form.Control
+                  value={form.tone}
+                  onChange={(e) => setForm((p) => ({ ...p, tone: e.target.value }))}
+                />
+              </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Label>Estilo</Form.Label>
+                <Form.Control
+                  value={form.style}
+                  onChange={(e) => setForm((p) => ({ ...p, style: e.target.value }))}
                 />
               </Form.Group>
               <Form.Group className="mb-2">
@@ -460,6 +574,74 @@ const AIConfigPage = () => {
               </div>
             </Form>
           )}
+
+          <div className="border rounded p-3 bg-body-tertiary mb-3">
+            <h2 className="h6 mb-2">Contexto IA (RAG optimizado)</h2>
+            <p className="small text-muted mb-2">
+              Carga documentos como conocimiento global. La IA no envía el documento completo al modelo: recupera solo
+              fragmentos relevantes (top-K), reduciendo tokens.
+            </p>
+            <Form onSubmit={handleUploadKnowledgeDocument}>
+              <Form.Group className="mb-2">
+                <Form.Label>Archivo</Form.Label>
+                <Form.Control
+                  type="file"
+                  onChange={(e) => setKnowledgeUploadFile(e.target.files?.[0] || null)}
+                />
+              </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Label>Nombre visible</Form.Label>
+                <Form.Control
+                  value={knowledgeDocName}
+                  onChange={(e) => setKnowledgeDocName(e.target.value)}
+                  placeholder="Opcional (si lo dejas vacío toma el nombre del archivo)"
+                />
+              </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Label>Descripción</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={2}
+                  value={knowledgeDocDescription}
+                  onChange={(e) => setKnowledgeDocDescription(e.target.value)}
+                />
+              </Form.Group>
+              <Button type="submit" size="sm" disabled={knowledgeSaving}>
+                {knowledgeSaving ? "Cargando..." : "Subir documento global"}
+              </Button>
+            </Form>
+            {knowledgeError && <Alert variant="warning" className="mt-2 mb-0 small">{knowledgeError}</Alert>}
+            <div className="mt-3">
+              <h3 className="h6 mb-2">Documentos globales cargados</h3>
+              {knowledgeDocs.length === 0 ? (
+                <p className="small text-muted mb-0">No hay documentos globales todavía.</p>
+              ) : (
+                <div className="d-flex flex-column gap-1">
+                  {knowledgeDocs.map((doc) => (
+                    <div key={doc.id} className="d-flex justify-content-between align-items-center border rounded px-2 py-1">
+                      <div className="small">
+                        <strong>{doc.name}</strong>
+                        {doc.file_size ? (
+                          <span className="text-muted ms-2">
+                            {(Number(doc.file_size) / 1024 / 1024).toFixed(2)} MB
+                          </span>
+                        ) : null}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline-danger"
+                        onClick={() => void handleDeleteKnowledgeDocument(doc.id)}
+                        disabled={knowledgeSaving}
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
           {selectedId && (
             <div className="border rounded p-3 bg-body-secondary">

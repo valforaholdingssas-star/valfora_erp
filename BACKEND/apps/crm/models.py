@@ -252,6 +252,11 @@ class Document(BaseModel):
     file_type = models.CharField(max_length=120, blank=True)
     file_size = models.PositiveIntegerField(default=0)
     description = models.TextField(blank=True)
+    is_global_knowledge = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Disponible como contexto global en RAG para cualquier conversación.",
+    )
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

@@ -13,6 +13,7 @@ from apps.ai_config.services import (
     resolve_ai_configuration_for_conversation,
     moderate_openai_text,
 )
+from apps.ai_config.runtime import resolve_global_ai_mode_enabled
 from django.core.files.base import ContentFile
 
 from apps.chat import services
@@ -62,7 +63,7 @@ def generate_ai_reply_for_message(inbound_message_id: str) -> None:
     if conv.human_handoff_requested:
         logger.info("Skipping AI reply: human handoff requested for conversation %s", conv.id)
         return
-    if not conv.ai_mode_enabled:
+    if not conv.ai_mode_enabled and not resolve_global_ai_mode_enabled():
         return
     if inbound.sender_type != "contact" or inbound.is_ai_generated:
         return

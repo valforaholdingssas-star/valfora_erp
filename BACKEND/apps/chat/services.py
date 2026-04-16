@@ -14,6 +14,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
+from apps.ai_config.runtime import resolve_global_ai_mode_enabled
 from apps.chat.models import Conversation, Message
 from apps.crm.models import Contact
 
@@ -51,6 +52,7 @@ def get_or_create_whatsapp_conversation(contact: Contact) -> tuple[Conversation,
                 "contact": contact,
                 "assigned_to": contact.assigned_to,
                 "status": "active",
+                "ai_mode_enabled": resolve_global_ai_mode_enabled(),
             },
         )
     else:
@@ -61,6 +63,7 @@ def get_or_create_whatsapp_conversation(contact: Contact) -> tuple[Conversation,
             defaults={
                 "assigned_to": contact.assigned_to,
                 "status": "active",
+                "ai_mode_enabled": resolve_global_ai_mode_enabled(),
             },
         )
     return conv, created

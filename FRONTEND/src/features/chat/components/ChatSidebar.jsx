@@ -23,6 +23,10 @@ const ChatSidebar = ({
   onApplyFilters,
   onClearFilters,
   responsibleOptions,
+  showGlobalAiSwitch,
+  globalAiModeEnabled,
+  globalAiModeLoading,
+  onToggleGlobalAiMode,
 }) => {
   const [draftFilters, setDraftFilters] = useState(filters);
 
@@ -94,6 +98,21 @@ const ChatSidebar = ({
             Todos
           </Button>
         </div>
+        {showGlobalAiSwitch && (
+          <div className="d-flex align-items-center justify-content-between mb-2 border rounded px-2 py-1">
+            <span className="small fw-semibold mb-0 d-flex align-items-center gap-1">
+              <i className="bi bi-robot" />
+              Modo IA global
+            </span>
+            <Form.Check
+              type="switch"
+              id="global-ai-mode-switch"
+              checked={Boolean(globalAiModeEnabled)}
+              disabled={globalAiModeLoading}
+              onChange={(e) => onToggleGlobalAiMode?.(e.target.checked)}
+            />
+          </div>
+        )}
         <div className="d-flex align-items-center justify-content-between mb-2">
           <Dropdown align="end" className="app-chat-filter-dropdown">
             <Dropdown.Toggle size="sm" variant="outline-secondary" id="chat-filters-toggle" className="d-flex align-items-center gap-2">
@@ -259,6 +278,10 @@ ChatSidebar.propTypes = {
   onApplyFilters: PropTypes.func.isRequired,
   onClearFilters: PropTypes.func.isRequired,
   responsibleOptions: PropTypes.arrayOf(PropTypes.object),
+  showGlobalAiSwitch: PropTypes.bool,
+  globalAiModeEnabled: PropTypes.bool,
+  globalAiModeLoading: PropTypes.bool,
+  onToggleGlobalAiMode: PropTypes.func,
 };
 
 export default ChatSidebar;

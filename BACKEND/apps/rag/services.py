@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from django.db import transaction
 
+from apps.ai_config.runtime import resolve_openai_embedding_model
 from apps.crm.models import Document
 from apps.rag.chunking import chunk_text
 from apps.rag.embeddings import embed_texts
@@ -41,7 +41,7 @@ def index_document(*, document_id) -> int:
     if not pieces:
         return 0
 
-    model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    model = resolve_openai_embedding_model()
     with transaction.atomic():
         DocumentChunk.objects.filter(document_id=doc.id).delete()
         created = 0

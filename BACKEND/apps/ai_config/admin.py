@@ -12,6 +12,8 @@ class AIConfigurationAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "llm_model",
+        "role",
+        "tone",
         "rag_enabled",
         "rag_top_k",
         "moderation_enabled",
@@ -32,6 +34,7 @@ class AIRuntimeSettingsAdmin(admin.ModelAdmin):
         "singleton_key",
         "openai_embedding_model",
         "openai_moderation_disabled",
+        "global_ai_mode_enabled",
         "is_active",
         "updated_at",
     )

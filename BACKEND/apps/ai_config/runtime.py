@@ -48,3 +48,12 @@ def resolve_openai_moderation_disabled() -> bool:
         return bool(get_or_create_runtime_settings().openai_moderation_disabled)
     except Exception:  # noqa: BLE001
         return False
+
+
+def resolve_global_ai_mode_enabled() -> bool:
+    """Resolve global AI mode switch from runtime settings."""
+
+    try:
+        return bool(get_or_create_runtime_settings().global_ai_mode_enabled)
+    except Exception:  # noqa: BLE001
+        return False

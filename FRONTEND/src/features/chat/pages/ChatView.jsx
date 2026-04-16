@@ -6,12 +6,14 @@ import { fetchAiConfigurations } from "../../../api/aiConfig.js";
 import {
   clearHandoff,
   createOrOpenConversation,
+  fetchGlobalAiMode,
   fetchConversations,
   fetchMessages,
   markRead,
   patchConversation,
   sendMessage,
   sendTemplateMessage,
+  setGlobalAiMode,
   toggleAi,
 } from "../../../api/chat.js";
 import { fetchDeal, moveDealStage, updateDeal } from "../../../api/crm.js";
@@ -72,6 +74,8 @@ const ChatView = () => {
   const [savingDeal, setSavingDeal] = useState(false);
   const [dealSaveError, setDealSaveError] = useState("");
   const [dealPanelCollapsed, setDealPanelCollapsed] = useState(false);
+  const [globalAiModeEnabled, setGlobalAiModeEnabled] = useState(false);
+  const [globalAiModeLoading, setGlobalAiModeLoading] = useState(false);
   const typingTimerRef = useRef(null);
   const typingStopRef = useRef(null);
 
@@ -162,6 +166,13 @@ const ChatView = () => {
     if (!canManageAiConfigs) return;
     fetchAiConfigurations({ page_size: 100 })
       .then((data) => setAiConfigs(data.results || []))
+      .catch(() => {});
+  }, [canManageAiConfigs]);
+
+  useEffect(() => {
+    if (!canManageAiConfigs) return;
+    fetchGlobalAiMode()
+      .then((data) => setGlobalAiModeEnabled(Boolean(data?.enabled)))
       .catch(() => {});
   }, [canManageAiConfigs]);
 
@@ -413,6 +424,27 @@ const ChatView = () => {
       results:
         prev.results?.map((c) => (c.id === activeId ? { ...c, ai_mode_enabled: on } : c)) ?? [],
     }));
+  };
+
+  const handleToggleGlobalAiMode = async (enabled) => {
+    if (!canManageAiConfigs) return;
+    const previous = globalAiModeEnabled;
+    setGlobalAiModeEnabled(Boolean(enabled));
+    setGlobalAiModeLoading(true);
+    try {
+      const data = await setGlobalAiMode(Boolean(enabled));
+      setGlobalAiModeEnabled(Boolean(data?.enabled));
+      setConversations((prev) => ({
+        ...prev,
+        results: (prev.results || []).map((c) => ({ ...c, ai_mode_enabled: Boolean(data?.enabled) })),
+      }));
+      setAiEnabled(Boolean(data?.enabled));
+    } catch (error) {
+      setGlobalAiModeEnabled(previous);
+      setComposerError(extractApiError(error, "No se pudo actualizar el modo IA global."));
+    } finally {
+      setGlobalAiModeLoading(false);
+    }
   };
 
   const handleClearHandoff = async () => {
@@ -694,6 +726,10 @@ const ChatView = () => {
             })
           }
           responsibleOptions={responsibleOptions}
+          showGlobalAiSwitch={Boolean(canManageAiConfigs)}
+          globalAiModeEnabled={globalAiModeEnabled}
+          globalAiModeLoading={globalAiModeLoading}
+          onToggleGlobalAiMode={handleToggleGlobalAiMode}
         />
         <div className="app-chat-panel app-chat-center">
           {!activeId && (

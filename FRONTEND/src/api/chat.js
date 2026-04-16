@@ -35,6 +35,12 @@ export const clearHandoff = (conversationId) =>
 export const sendTemplateMessage = (conversationId, payload) =>
   api.post(`/chat/conversations/${conversationId}/send-template/`, payload).then(unwrap);
 
+export const fetchGlobalAiMode = () =>
+  api.get("/chat/conversations/ai-mode-global/").then(unwrap);
+
+export const setGlobalAiMode = (enabled) =>
+  api.post("/chat/conversations/ai-mode-global/", { enabled }).then(unwrap);
+
 export function getChatWebSocketUrl(conversationId, token) {
   const fromEnv = import.meta.env.VITE_WS_URL?.replace(/\/$/, "");
   const base =

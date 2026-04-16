@@ -67,5 +67,7 @@ export const uploadDocument = (formData) =>
     headers: { "Content-Type": "multipart/form-data" },
   }).then(unwrap);
 
+export const deleteDocument = (id) => api.delete(`/crm/documents/${id}/`).then(unwrap);
+
 export const bulkReactivateContacts = (payload) =>
   api.post("/crm/contacts/bulk-reactivate/", payload).then(unwrap);

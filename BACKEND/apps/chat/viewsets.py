@@ -9,6 +9,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdminOrSuperAdmin
+from apps.ai_config.runtime import get_or_create_runtime_settings, resolve_global_ai_mode_enabled
 from apps.common.audit import write_audit_log
 from apps.chat.models import Conversation, Message, MessageAttachment
 from apps.chat.permissions import IsChatUser
@@ -136,6 +137,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
             "is_active": True,
             "ai_configuration": ai_cfg,
             "deal": deal,
+            "ai_mode_enabled": resolve_global_ai_mode_enabled(),
         }
         if deal:
             conv, created = Conversation.objects.update_or_create(
@@ -339,6 +341,32 @@ class ConversationViewSet(viewsets.ModelViewSet):
             request=request,
         )
         return Response(ConversationSerializer(conv, context={"request": request}).data)
+
+    @action(detail=False, methods=["get", "post"], url_path="ai-mode-global")
+    def ai_mode_global(self, request):
+        """Read/update AI mode globally for all active conversations."""
+        settings_row = get_or_create_runtime_settings()
+        if request.method == "GET":
+            return Response({"enabled": bool(settings_row.global_ai_mode_enabled)})
+
+        if getattr(request.user, "role", None) not in {"admin", "super_admin"}:
+            return Response({"detail": "No autorizado para cambiar el modo IA global."}, status=status.HTTP_403_FORBIDDEN)
+
+        enabled = bool(request.data.get("enabled", False))
+        updated = Conversation.objects.filter(is_active=True).update(
+            ai_mode_enabled=enabled,
+            updated_at=timezone.now(),
+        )
+        settings_row.global_ai_mode_enabled = enabled
+        settings_row.save(update_fields=["global_ai_mode_enabled", "updated_at"])
+        write_audit_log(
+            user=request.user,
+            action="update",
+            instance=settings_row,
+            changes={"global_ai_mode_enabled": enabled, "conversations_updated": int(updated)},
+            request=request,
+        )
+        return Response({"enabled": enabled, "updated": int(updated)})
 
     @action(detail=True, methods=["post"], url_path="mark-read")
     def mark_read(self, request, pk=None):

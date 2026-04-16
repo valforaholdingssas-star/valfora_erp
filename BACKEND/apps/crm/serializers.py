@@ -161,11 +161,19 @@ class DocumentSerializer(serializers.ModelSerializer):
     def validate(self, attrs: dict) -> dict:
         contact = attrs.get("contact")
         deal = attrs.get("deal")
+        is_global_knowledge = attrs.get("is_global_knowledge")
         if self.instance:
             contact = contact if "contact" in attrs else self.instance.contact
             deal = deal if "deal" in attrs else self.instance.deal
-        if not contact and not deal:
-            raise serializers.ValidationError("Debe asociar el documento a un contacto o a un deal.")
+            is_global_knowledge = (
+                is_global_knowledge
+                if "is_global_knowledge" in attrs
+                else self.instance.is_global_knowledge
+            )
+        if not contact and not deal and not is_global_knowledge:
+            raise serializers.ValidationError(
+                "Debe asociar el documento a un contacto/deal o marcarlo como conocimiento global."
+            )
         return attrs
 
     class Meta:
@@ -179,6 +187,7 @@ class DocumentSerializer(serializers.ModelSerializer):
             "file_type",
             "file_size",
             "description",
+            "is_global_knowledge",
             "uploaded_by",
             "is_active",
             "created_at",

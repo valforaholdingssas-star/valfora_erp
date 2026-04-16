@@ -14,6 +14,10 @@ class AIConfigurationSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "system_prompt",
+            "objective",
+            "role",
+            "tone",
+            "style",
             "temperature",
             "max_tokens",
             "llm_model",
@@ -62,6 +66,7 @@ class AIRuntimeSettingsSerializer(serializers.ModelSerializer):
             "clear_openai_api_key",
             "openai_embedding_model",
             "openai_moderation_disabled",
+            "global_ai_mode_enabled",
             "updated_at",
         )
         read_only_fields = (
