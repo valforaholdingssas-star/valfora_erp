@@ -19,3 +19,9 @@ export const deleteAiConfiguration = (id) => api.delete(`/ai-config/configuratio
 
 export const testAiConfiguration = (id, payload) =>
   api.post(`/ai-config/configurations/${id}/test/`, payload).then(unwrap);
+
+export const fetchAiRuntimeSettings = () =>
+  api.get("/ai-config/runtime-settings/current/").then(unwrap);
+
+export const patchAiRuntimeSettings = (payload) =>
+  api.patch("/ai-config/runtime-settings/current/", payload).then(unwrap);

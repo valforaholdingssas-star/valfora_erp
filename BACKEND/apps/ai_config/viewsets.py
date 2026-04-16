@@ -3,11 +3,17 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsAdminOrSuperAdmin
 from apps.ai_config.permissions import HasAIConfigPermission
 from apps.ai_config.models import AIConfiguration
-from apps.ai_config.serializers import AIConfigurationSerializer, AIConfigurationTestSerializer
+from apps.ai_config.runtime import get_or_create_runtime_settings
+from apps.ai_config.serializers import (
+    AIConfigurationSerializer,
+    AIConfigurationTestSerializer,
+    AIRuntimeSettingsSerializer,
+)
 from apps.ai_config.services import build_openai_test_messages, generate_chat_completion
 from apps.common.audit import write_audit_log
 
@@ -74,3 +80,28 @@ class AIConfigurationViewSet(viewsets.ModelViewSet):
                 "total_tokens": result.total_tokens,
             },
         )
+
+
+class AIRuntimeSettingsView(APIView):
+    """Read/update runtime OpenAI credentials without server restart."""
+
+    permission_classes = [IsAdminOrSuperAdmin, HasAIConfigPermission]
+
+    def get(self, request):
+        instance = get_or_create_runtime_settings()
+        data = AIRuntimeSettingsSerializer(instance).data
+        return Response(data)
+
+    def patch(self, request):
+        instance = get_or_create_runtime_settings()
+        serializer = AIRuntimeSettingsSerializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated = serializer.save()
+        write_audit_log(
+            user=request.user,
+            action="update",
+            instance=updated,
+            changes={k: ("***" if "key" in k else v) for k, v in serializer.validated_data.items()},
+            request=request,
+        )
+        return Response(AIRuntimeSettingsSerializer(updated).data)

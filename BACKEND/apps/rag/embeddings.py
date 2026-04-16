@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import logging
-import os
-from typing import Any
 
 from openai import OpenAI
+from apps.ai_config.runtime import resolve_openai_api_key, resolve_openai_embedding_model
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +14,10 @@ def embed_texts(texts: list[str], *, model: str | None = None) -> list[list[floa
     """Return embedding vectors for each non-empty text."""
     if not texts:
         return []
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    api_key = resolve_openai_api_key()
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured")
-    m = model or os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    m = model or resolve_openai_embedding_model()
     client = OpenAI(api_key=api_key)
     resp = client.embeddings.create(model=m, input=texts)
     data = sorted(resp.data, key=lambda x: x.index)

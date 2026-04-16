@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 from typing import Any
 
 from openai import OpenAI
 
 from apps.ai_config.models import AIConfiguration
+from apps.ai_config.runtime import resolve_openai_api_key, resolve_openai_moderation_disabled
 from apps.chat.models import Message
 from apps.crm.models import Contact
 
@@ -139,7 +139,7 @@ def build_openai_test_messages(*, config: AIConfiguration, user_message: str) ->
 
 def generate_chat_completion(*, messages: list[dict[str, Any]], config: AIConfiguration) -> CompletionResult:
     """Call OpenAI Chat Completions (server-side only)."""
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    api_key = resolve_openai_api_key()
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured")
 
@@ -169,10 +169,10 @@ def moderate_openai_text(text: str) -> tuple[bool, dict[str, Any]]:
     Returns (allowed_to_send, audit_dict).
     If moderation is disabled or API key missing, allows and records skip reason.
     """
-    if os.getenv("OPENAI_MODERATION_DISABLED", "").lower() in ("1", "true", "yes"):
-        return True, {"moderation": "disabled_by_env"}
+    if resolve_openai_moderation_disabled():
+        return True, {"moderation": "disabled_by_settings"}
 
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    api_key = resolve_openai_api_key()
     if not api_key:
         return True, {"moderation": "skipped_no_api_key"}
 

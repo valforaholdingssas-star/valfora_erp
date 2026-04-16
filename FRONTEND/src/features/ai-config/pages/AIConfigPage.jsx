@@ -6,7 +6,9 @@ import {
   createAiConfiguration,
   deleteAiConfiguration,
   fetchAiConfigurations,
+  fetchAiRuntimeSettings,
   patchAiConfiguration,
+  patchAiRuntimeSettings,
   testAiConfiguration,
 } from "../../../api/aiConfig.js";
 import { useAuth } from "../../../contexts/AuthContext.jsx";
@@ -38,6 +40,17 @@ const AIConfigPage = () => {
   const [testMeta, setTestMeta] = useState(null);
   const [testLoading, setTestLoading] = useState(false);
   const [testError, setTestError] = useState(null);
+  const [runtimeSaving, setRuntimeSaving] = useState(false);
+  const [runtimeError, setRuntimeError] = useState(null);
+  const [runtimeSuccess, setRuntimeSuccess] = useState(null);
+  const [runtimeForm, setRuntimeForm] = useState({
+    openai_api_key: "",
+    clear_openai_api_key: false,
+    openai_embedding_model: "text-embedding-3-small",
+    openai_moderation_disabled: false,
+    has_openai_api_key: false,
+    openai_api_key_masked: "",
+  });
 
   const canEdit = user && ["admin", "super_admin"].includes(user.role);
 
@@ -61,9 +74,21 @@ const AIConfigPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchAiConfigurations({ page_size: 100 });
+      const [data, runtime] = await Promise.all([
+        fetchAiConfigurations({ page_size: 100 }),
+        fetchAiRuntimeSettings(),
+      ]);
       const rows = data.results || [];
       setItems(rows);
+      setRuntimeForm((prev) => ({
+        ...prev,
+        openai_api_key: "",
+        clear_openai_api_key: false,
+        openai_embedding_model: runtime.openai_embedding_model || "text-embedding-3-small",
+        openai_moderation_disabled: Boolean(runtime.openai_moderation_disabled),
+        has_openai_api_key: Boolean(runtime.has_openai_api_key),
+        openai_api_key_masked: runtime.openai_api_key_masked || "",
+      }));
       setSelectedId((prev) => {
         if (prev && rows.some((r) => r.id === prev)) return prev;
         return rows[0]?.id ?? null;
@@ -175,6 +200,40 @@ const AIConfigPage = () => {
     }
   };
 
+  const handleSaveRuntime = async (e) => {
+    e.preventDefault();
+    setRuntimeSaving(true);
+    setRuntimeError(null);
+    setRuntimeSuccess(null);
+    try {
+      const payload = {
+        openai_embedding_model: runtimeForm.openai_embedding_model.trim() || "text-embedding-3-small",
+        openai_moderation_disabled: Boolean(runtimeForm.openai_moderation_disabled),
+        clear_openai_api_key: Boolean(runtimeForm.clear_openai_api_key),
+      };
+      if ((runtimeForm.openai_api_key || "").trim()) {
+        payload.openai_api_key = runtimeForm.openai_api_key.trim();
+      }
+      const updated = await patchAiRuntimeSettings(payload);
+      setRuntimeForm((prev) => ({
+        ...prev,
+        openai_api_key: "",
+        clear_openai_api_key: false,
+        openai_embedding_model: updated.openai_embedding_model || "text-embedding-3-small",
+        openai_moderation_disabled: Boolean(updated.openai_moderation_disabled),
+        has_openai_api_key: Boolean(updated.has_openai_api_key),
+        openai_api_key_masked: updated.openai_api_key_masked || "",
+      }));
+      setRuntimeSuccess("Credenciales/configuración runtime guardadas correctamente.");
+    } catch (err) {
+      const d = err?.response?.data;
+      const msg = d?.message || d?.detail || err?.message || "No se pudo guardar la configuración runtime.";
+      setRuntimeError(typeof msg === "string" ? msg : "No se pudo guardar la configuración runtime.");
+    } finally {
+      setRuntimeSaving(false);
+    }
+  };
+
   if (!canEdit) {
     return <Navigate to="/" replace />;
   }
@@ -186,14 +245,70 @@ const AIConfigPage = () => {
       </div>
       <h1 className="h4 mb-3">Configuración de IA (chat)</h1>
       <p className="text-muted small">
-        Las claves de API (OpenAI) solo se configuran en el servidor (.env). Aquí defines perfiles de prompt y
-        modelo. La prueba usa solo el system prompt y tu mensaje (sin CRM ni RAG).
+        Aquí puedes configurar runtime de OpenAI sin reiniciar el servidor y definir perfiles de prompt/modelo.
+        La prueba sandbox usa solo el system prompt y tu mensaje (sin CRM ni RAG).
       </p>
       {error && <Alert variant="danger">{error}</Alert>}
       {loading ? (
         <Spinner animation="border" />
       ) : (
         <>
+          <div className="border rounded p-3 bg-body-tertiary mb-3">
+            <h2 className="h6 mb-2">Runtime OpenAI (sin reinicio)</h2>
+            <p className="small text-muted mb-2">
+              Si guardas una API key aquí, el backend la usa en caliente inmediatamente.
+            </p>
+            <Form onSubmit={handleSaveRuntime}>
+              <Form.Group className="mb-2">
+                <Form.Label>API Key OpenAI</Form.Label>
+                <Form.Control
+                  type="password"
+                  placeholder={runtimeForm.has_openai_api_key ? "Dejar vacío para conservar la actual" : "sk-..."}
+                  value={runtimeForm.openai_api_key}
+                  onChange={(e) => setRuntimeForm((prev) => ({ ...prev, openai_api_key: e.target.value }))}
+                />
+                {runtimeForm.openai_api_key_masked && (
+                  <div className="small text-muted mt-1">
+                    Clave actual: {runtimeForm.openai_api_key_masked}
+                  </div>
+                )}
+                <Form.Check
+                  className="mt-2"
+                  type="checkbox"
+                  id="clear-openai-key"
+                  label="Eliminar API key guardada en base de datos"
+                  checked={runtimeForm.clear_openai_api_key}
+                  onChange={(e) => setRuntimeForm((prev) => ({ ...prev, clear_openai_api_key: e.target.checked }))}
+                />
+              </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Label>Modelo de embeddings (RAG)</Form.Label>
+                <Form.Control
+                  value={runtimeForm.openai_embedding_model}
+                  onChange={(e) => setRuntimeForm((prev) => ({ ...prev, openai_embedding_model: e.target.value }))}
+                />
+              </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Check
+                  type="switch"
+                  id="runtime-mod-disabled"
+                  label="Deshabilitar moderación OpenAI globalmente (runtime)"
+                  checked={runtimeForm.openai_moderation_disabled}
+                  onChange={(e) =>
+                    setRuntimeForm((prev) => ({ ...prev, openai_moderation_disabled: e.target.checked }))
+                  }
+                />
+              </Form.Group>
+              <div className="d-flex gap-2 align-items-center">
+                <Button type="submit" size="sm" disabled={runtimeSaving}>
+                  {runtimeSaving ? "Guardando…" : "Guardar runtime"}
+                </Button>
+                {runtimeSuccess && <span className="small text-success">{runtimeSuccess}</span>}
+              </div>
+              {runtimeError && <Alert variant="warning" className="mt-2 mb-0 small">{runtimeError}</Alert>}
+            </Form>
+          </div>
+
           <div className="d-flex gap-2 mb-3 flex-wrap">
             <Button type="button" variant="outline-primary" size="sm" onClick={() => void handleNew()} disabled={saving}>
               Nueva configuración

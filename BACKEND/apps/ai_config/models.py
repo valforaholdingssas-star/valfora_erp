@@ -1,8 +1,53 @@
 """Models for LLM configuration (per deployment / tenant)."""
 
+from __future__ import annotations
+
+import base64
+import hashlib
+
+from cryptography.fernet import Fernet, InvalidToken
+from django.conf import settings
 from django.db import models
 
 from apps.common.models import BaseModel
+
+
+def _build_fernet() -> Fernet:
+    """Derive symmetric encryption key from project secret."""
+
+    raw = str(settings.SECRET_KEY).encode("utf-8")
+    digest = hashlib.sha256(raw).digest()
+    key = base64.urlsafe_b64encode(digest)
+    return Fernet(key)
+
+
+class EncryptedTextField(models.TextField):
+    """Text field transparently encrypted at rest using Fernet."""
+
+    description = "Encrypted text"
+
+    def from_db_value(self, value, expression, connection):  # noqa: ANN001
+        return self.to_python(value)
+
+    def to_python(self, value):  # noqa: ANN001
+        if value is None or value == "":
+            return value
+        if isinstance(value, str) and value.startswith("enc::"):
+            token = value.replace("enc::", "", 1).encode("utf-8")
+            try:
+                decrypted = _build_fernet().decrypt(token)
+                return decrypted.decode("utf-8")
+            except (InvalidToken, ValueError):
+                return ""
+        return value
+
+    def get_prep_value(self, value):  # noqa: ANN001
+        if value is None or value == "":
+            return value
+        if isinstance(value, str) and value.startswith("enc::"):
+            return value
+        encrypted = _build_fernet().encrypt(str(value).encode("utf-8")).decode("utf-8")
+        return f"enc::{encrypted}"
 
 
 class AIConfiguration(BaseModel):
@@ -50,3 +95,19 @@ class AIConfiguration(BaseModel):
         if self.is_default:
             AIConfiguration.objects.filter(is_default=True).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
+
+
+class AIRuntimeSettings(BaseModel):
+    """Mutable runtime credentials/settings for OpenAI integration."""
+
+    singleton_key = models.CharField(max_length=32, unique=True, default="default")
+    openai_api_key = EncryptedTextField(blank=True)
+    openai_embedding_model = models.CharField(max_length=120, default="text-embedding-3-small")
+    openai_moderation_disabled = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "AI runtime settings"
+        verbose_name_plural = "AI runtime settings"
+
+    def __str__(self) -> str:
+        return f"AI Runtime ({self.singleton_key})"
