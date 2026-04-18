@@ -1,3 +1,9 @@
 import api from "./axiosConfig.js";
 
-export const fetchActivityLogs = (params) => api.get("/activity-logs/", { params }).then((r) => r.data);
+const unwrap = (res) => {
+  const body = res.data;
+  if (body && body.data !== undefined) return body.data;
+  return body;
+};
+
+export const fetchActivityLogs = (params) => api.get("/activity-logs/", { params }).then(unwrap);
