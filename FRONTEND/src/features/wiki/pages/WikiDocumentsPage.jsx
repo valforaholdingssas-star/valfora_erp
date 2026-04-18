@@ -27,6 +27,20 @@ const WikiDocumentsPage = () => {
   const [selectedId, setSelectedId] = useState("");
   const [form, setForm] = useState(emptyForm);
 
+  const parseApiError = (err, fallback) => {
+    const data = err?.response?.data;
+    const payload = data?.data ?? data ?? {};
+    if (typeof payload?.detail === "string" && payload.detail.trim()) return payload.detail;
+    if (typeof payload?.message === "string" && payload.message.trim()) return payload.message;
+    if (payload && typeof payload === "object") {
+      const firstKey = Object.keys(payload)[0];
+      const firstVal = firstKey ? payload[firstKey] : null;
+      if (Array.isArray(firstVal) && firstVal.length) return String(firstVal[0]);
+      if (typeof firstVal === "string" && firstVal.trim()) return firstVal;
+    }
+    return fallback;
+  };
+
   const selected = useMemo(() => rows.find((r) => r.id === selectedId) || null, [rows, selectedId]);
 
   const load = async () => {
@@ -78,8 +92,8 @@ const WikiDocumentsPage = () => {
       }
       await load();
       resetForm();
-    } catch {
-      setError("No se pudo guardar el documento.");
+    } catch (err) {
+      setError(parseApiError(err, "No se pudo guardar el documento."));
     } finally {
       setSaving(false);
     }
@@ -93,8 +107,8 @@ const WikiDocumentsPage = () => {
       await deleteWikiDocument(selectedId);
       await load();
       resetForm();
-    } catch {
-      setError("No se pudo eliminar el documento.");
+    } catch (err) {
+      setError(parseApiError(err, "No se pudo eliminar el documento."));
     }
   };
 
@@ -234,4 +248,3 @@ const WikiDocumentsPage = () => {
 };
 
 export default WikiDocumentsPage;
-
