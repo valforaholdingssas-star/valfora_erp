@@ -12,6 +12,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from apps.common.audit import write_audit_log
+
 from .permissions import HasUsersModulePermission, IsAdminOrSuperAdmin
 from .models import Permission, RolePermissionProfile
 from .rbac import MODULES, clear_rbac_cache
@@ -58,6 +60,13 @@ class LoginView(TokenObtainPairView):
         if client_ip:
             user.last_login_ip = client_ip
             user.save(update_fields=["last_login_ip"])
+        write_audit_log(
+            user=user,
+            action="login",
+            instance=user,
+            changes={},
+            request=request,
+        )
         return response
 
 
@@ -90,6 +99,13 @@ class LogoutView(APIView):
         refresh_token = request.data.get("refresh")
         token = RefreshToken(refresh_token)
         token.blacklist()
+        write_audit_log(
+            user=request.user,
+            action="logout",
+            instance=request.user,
+            changes={},
+            request=request,
+        )
         return Response(
             {
                 "status": "success",

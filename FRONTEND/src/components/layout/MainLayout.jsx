@@ -37,6 +37,7 @@ import WhatsAppAnalyticsPage from "../../features/settings/whatsapp/pages/WhatsA
 import LeadEngineConfigPage from "../../features/settings/lead-engine/pages/LeadEngineConfigPage.jsx";
 import PipelineAutomationPage from "../../features/settings/lead-engine/pages/PipelineAutomationPage.jsx";
 import LeadEngineDashboardPage from "../../features/settings/lead-engine/pages/LeadEngineDashboardPage.jsx";
+import ActivityLogPage from "../../features/settings/audit/pages/ActivityLogPage.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 import { useI18n } from "../../contexts/I18nContext.jsx";
 import Footer from "./Footer.jsx";
@@ -118,6 +119,7 @@ const MainLayout = () => {
               <Route path="/wiki/:slug" element={canViewWiki ? <WikiDocumentViewPage /> : <Navigate to="/" replace />} />
               <Route path="/settings/ai" element={canViewAIConfig ? <AIConfigPage /> : <Navigate to="/" replace />} />
               <Route path="/settings/users" element={canViewUsers ? <UsersManagementPage /> : <Navigate to="/" replace />} />
+              <Route path="/settings/activity-log" element={canViewUsers ? <ActivityLogPage /> : <Navigate to="/" replace />} />
               <Route path="/settings/whatsapp/accounts" element={canViewWhatsapp ? <WhatsAppAccountsPage /> : <Navigate to="/" replace />} />
               <Route path="/settings/whatsapp/phone-numbers" element={canViewWhatsapp ? <WhatsAppPhoneNumbersPage /> : <Navigate to="/" replace />} />
               <Route path="/settings/whatsapp/templates" element={canViewWhatsapp ? <WhatsAppTemplatesPage /> : <Navigate to="/" replace />} />

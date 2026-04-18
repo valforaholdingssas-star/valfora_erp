@@ -7,7 +7,7 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
-from apps.common.views import health_check, platform_dashboard
+from apps.common.views import ActivityLogListView, health_check, platform_dashboard
 
 _schema_perms = [AllowAny] if settings.DEBUG else [IsAuthenticated]
 
@@ -15,6 +15,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/health/", health_check, name="health"),
     path("api/v1/platform/dashboard/", platform_dashboard, name="platform-dashboard"),
+    path("api/v1/activity-logs/", ActivityLogListView.as_view(), name="activity-logs"),
     path("api/v1/auth/", include("apps.accounts.auth_urls")),
     path("api/v1/", include("apps.accounts.resource_urls")),
     path("api/v1/crm/", include("apps.crm.urls")),

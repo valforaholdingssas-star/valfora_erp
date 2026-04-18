@@ -115,6 +115,7 @@ const Sidebar = ({ collapsed }) => {
         items: showSettingsSection
           ? [
               showUserSettings ? { to: "/settings/users", label: "Usuarios", icon: "bi-person-gear" } : null,
+              showUserSettings ? { to: "/settings/activity-log", label: "Log de actividad", icon: "bi-journal-text" } : null,
               showAiSettings ? { to: "/settings/ai", label: "Configuración IA", icon: "bi-cpu" } : null,
               showWhatsAppSettings ? { to: "/settings/whatsapp/accounts", label: "WhatsApp Cuentas", icon: "bi-whatsapp" } : null,
               showWhatsAppSettings ? { to: "/settings/whatsapp/phone-numbers", label: "WhatsApp Números", icon: "bi-telephone" } : null,
