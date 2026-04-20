@@ -53,7 +53,7 @@ const LoginPage = () => {
             <i className="bi bi-box-arrow-in-right" />
           </div>
           <h1 className="valfora-login-title">Inicia sesión</h1>
-          <p className="valfora-login-subtitle">Accede con tu usuario para continuar</p>
+          <p className="valfora-login-subtitle">Plataforma de gestión financiera y contable.</p>
 
           <div className="valfora-login-form-card">
             {error && (
@@ -113,14 +113,6 @@ const LoginPage = () => {
         </div>
       </section>
 
-      <aside className="valfora-login-hero-panel">
-        <div className="valfora-login-hero-inner">
-          <h2 className="valfora-login-hero-title">Gestión empresarial en un solo lugar</h2>
-          <p className="valfora-login-hero-copy">
-            CRM, operaciones, finanzas y automatización IA en una experiencia unificada.
-          </p>
-        </div>
-      </aside>
     </div>
   );
 };
