@@ -638,44 +638,78 @@ h6 {
 .valfora-login-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 1fr 0.9fr;
-  background: #eff3f8;
+  grid-template-columns: minmax(0, 1.08fr) minmax(430px, 0.92fr);
+  background:
+    radial-gradient(circle at 6% 10%, rgba(61, 95, 202, 0.24), transparent 36%),
+    radial-gradient(circle at 82% 84%, rgba(12, 29, 68, 0.12), transparent 34%),
+    linear-gradient(125deg, #ecf2ff 0%, #e5ecfb 54%, #dce7fb 100%);
 }
 
 .valfora-login-form-panel {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1.25rem;
+  grid-column: 2;
+  padding: 2rem 2.2rem;
 }
 
 .valfora-login-form-wrap {
-  width: min(100%, 520px);
+  width: min(100%, 510px);
 }
 
-.valfora-login-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  background: rgba(31, 115, 236, 0.12);
-  border: 1px solid rgba(31, 115, 236, 0.2);
+.valfora-login-brand {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  color: #1f73ec;
+  gap: 0.6rem;
   margin-bottom: 1rem;
 }
 
+.valfora-login-brand-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  opacity: 0.76;
+  filter: saturate(0.75);
+}
+
+.valfora-login-brand-name {
+  font-size: 0.9rem;
+  color: #4d5f81;
+  letter-spacing: 0.02em;
+}
+
+.valfora-login-form-card {
+  border: 1px solid rgba(38, 78, 158, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 20px;
+  box-shadow: 0 20px 44px rgba(32, 61, 119, 0.13);
+  backdrop-filter: blur(10px);
+  padding: 1.2rem;
+}
+
+.valfora-login-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: rgba(29, 101, 206, 0.11);
+  border: 1px solid rgba(29, 101, 206, 0.16);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #1f63c7;
+  margin-bottom: 0.75rem;
+}
+
 .valfora-login-title {
-  font-size: 2rem;
+  font-size: clamp(1.6rem, 2.4vw, 2rem);
   margin: 0;
-  color: #0b2146;
+  color: #0b2553;
 }
 
 .valfora-login-subtitle {
-  color: #6d7e9b;
+  color: #6b7c99;
   margin-top: 0.35rem;
-  margin-bottom: 1.4rem;
+  margin-bottom: 1rem;
 }
 
 .valfora-login-form {
@@ -696,16 +730,16 @@ h6 {
 }
 
 .valfora-input {
-  min-height: 50px;
-  border-radius: 15px;
-  border: 1px solid #bfd5f6;
-  background: #f6faff;
+  min-height: 52px;
+  border-radius: 13px;
+  border: 1px solid #c7d5ef;
+  background: #f9fbff;
   padding-left: 2.6rem;
 }
 
 .valfora-input:focus {
-  border-color: #5a9af1;
-  box-shadow: 0 0 0 0.2rem rgba(90, 154, 241, 0.2);
+  border-color: #4986e8;
+  box-shadow: 0 0 0 0.2rem rgba(73, 134, 232, 0.18);
   background: #ffffff;
 }
 
@@ -723,7 +757,7 @@ h6 {
 .valfora-link-btn {
   border: 0;
   background: transparent;
-  color: #0f2e63;
+  color: #103466;
   font-weight: 500;
 }
 
@@ -732,14 +766,15 @@ h6 {
 }
 
 .valfora-login-submit {
-  min-height: 48px;
+  min-height: 50px;
   border: 0;
-  border-radius: 14px;
-  background: linear-gradient(100deg, #2c84ff 0%, #0e5dc8 100%);
-  box-shadow: 0 12px 24px rgba(14, 93, 200, 0.28);
+  border-radius: 13px;
+  background: linear-gradient(102deg, #2e79e8 0%, #0d4cad 100%);
+  box-shadow: 0 14px 28px rgba(13, 76, 173, 0.3);
 }
 
 .valfora-login-hero-panel {
+  grid-column: 1;
   position: relative;
   overflow: hidden;
   display: flex;
@@ -747,9 +782,9 @@ h6 {
   justify-content: center;
   padding: 2rem;
   background:
-    radial-gradient(circle at 16% 18%, rgba(194, 151, 75, 0.15), transparent 44%),
-    radial-gradient(circle at 84% 78%, rgba(36, 73, 136, 0.14), transparent 52%),
-    linear-gradient(150deg, #dce5f2 0%, #ced9e9 50%, #c3d0e4 100%);
+    radial-gradient(circle at 16% 18%, rgba(99, 129, 230, 0.35), transparent 44%),
+    radial-gradient(circle at 84% 78%, rgba(33, 76, 167, 0.3), transparent 52%),
+    linear-gradient(150deg, #143d8a 0%, #1a4fb5 42%, #163f93 100%);
 }
 
 .valfora-login-hero-panel::before,
@@ -761,48 +796,42 @@ h6 {
 }
 
 .valfora-login-hero-panel::before {
-  width: 460px;
-  height: 460px;
-  right: -180px;
-  bottom: -80px;
-  background: radial-gradient(circle at 42% 42%, rgba(16, 52, 114, 0.18), transparent 70%);
+  width: 560px;
+  height: 560px;
+  right: -220px;
+  bottom: -170px;
+  background: radial-gradient(circle at 42% 42%, rgba(15, 38, 90, 0.44), transparent 70%);
 }
 
 .valfora-login-hero-panel::after {
-  width: 360px;
-  height: 360px;
-  left: -130px;
-  top: -120px;
-  background: radial-gradient(circle at 50% 50%, rgba(201, 157, 79, 0.22), transparent 72%);
+  width: 430px;
+  height: 430px;
+  left: -170px;
+  top: -130px;
+  background: radial-gradient(circle at 50% 50%, rgba(162, 191, 255, 0.22), transparent 72%);
 }
 
 .valfora-login-hero-inner {
   position: relative;
   z-index: 1;
-  text-align: center;
-  max-width: 460px;
-}
-
-.valfora-login-hero-logo {
-  width: min(320px, 64%);
-  height: auto;
-  object-fit: contain;
-  margin-bottom: 1rem;
-  filter:
-    drop-shadow(0 12px 22px rgba(12, 33, 72, 0.25))
-    drop-shadow(0 0 14px rgba(255, 255, 255, 0.1));
+  text-align: left;
+  max-width: 540px;
+  padding-inline: clamp(0.6rem, 2vw, 1.6rem);
 }
 
 .valfora-login-hero-title {
-  color: #113567;
-  font-size: clamp(1.65rem, 2.4vw, 2.2rem);
-  margin-bottom: 0.6rem;
+  color: #f3f7ff;
+  font-size: clamp(2.1rem, 3vw, 2.9rem);
+  line-height: 1.12;
+  margin-bottom: 1rem;
   letter-spacing: 0.01em;
 }
 
 .valfora-login-hero-copy {
-  color: #4b6488;
-  font-size: 1.02rem;
+  color: rgba(239, 246, 255, 0.92);
+  max-width: 40ch;
+  font-size: 1.04rem;
+  line-height: 1.55;
 }
 
 @media (max-width: 992px) {
@@ -816,9 +845,14 @@ h6 {
 
   .valfora-login-form-panel {
     padding: 1.2rem 1rem;
+    grid-column: 1;
   }
 
   .valfora-login-title {
     font-size: 1.6rem;
+  }
+
+  .valfora-login-form-card {
+    padding: 1rem;
   }
 }

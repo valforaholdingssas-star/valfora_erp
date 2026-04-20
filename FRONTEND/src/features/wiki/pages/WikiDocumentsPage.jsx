@@ -30,8 +30,25 @@ const WikiDocumentsPage = () => {
   const parseApiError = (err, fallback) => {
     const data = err?.response?.data;
     const payload = data?.data ?? data ?? {};
+    const fieldErrors = payload?.errors;
+    if (fieldErrors && typeof fieldErrors === "object") {
+      const firstKey = Object.keys(fieldErrors)[0];
+      const firstVal = firstKey ? fieldErrors[firstKey] : null;
+      if (Array.isArray(firstVal) && firstVal.length) {
+        return `${firstKey}: ${String(firstVal[0])}`;
+      }
+      if (typeof firstVal === "string" && firstVal.trim()) {
+        return `${firstKey}: ${firstVal}`;
+      }
+    }
     if (typeof payload?.detail === "string" && payload.detail.trim()) return payload.detail;
-    if (typeof payload?.message === "string" && payload.message.trim()) return payload.message;
+    if (
+      typeof payload?.message === "string"
+      && payload.message.trim()
+      && payload.message.trim().toLowerCase() !== "validation error."
+    ) {
+      return payload.message;
+    }
     if (payload && typeof payload === "object") {
       const firstKey = Object.keys(payload)[0];
       const firstVal = firstKey ? payload[firstKey] : null;

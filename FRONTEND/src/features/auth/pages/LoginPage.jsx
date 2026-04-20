@@ -41,73 +41,84 @@ const LoginPage = () => {
     <div className="valfora-login-shell">
       <section className="valfora-login-form-panel">
         <div className="valfora-login-form-wrap">
+          <div className="valfora-login-brand">
+            <img
+              src={valforaLogo}
+              alt="Valfora Holdings"
+              className="valfora-login-brand-logo"
+            />
+            <span className="valfora-login-brand-name">Valfora ERP</span>
+          </div>
           <div className="valfora-login-icon">
             <i className="bi bi-box-arrow-in-right" />
           </div>
           <h1 className="valfora-login-title">Inicia sesión</h1>
           <p className="valfora-login-subtitle">Accede con tu usuario para continuar</p>
 
-          {error && (
-            <Alert variant="danger" className="py-2 mb-3">
-              {error}
-            </Alert>
-          )}
+          <div className="valfora-login-form-card">
+            {error && (
+              <Alert variant="danger" className="py-2 mb-3">
+                {error}
+              </Alert>
+            )}
 
-          <Form onSubmit={handleSubmit} className="valfora-login-form">
-            <Form.Group className="mb-3 valfora-input-group" controlId="loginEmail">
-              <i className="bi bi-at valfora-input-icon" />
-              <Form.Control
-                type="email"
-                autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="Correo corporativo"
-                className="valfora-input"
-              />
-            </Form.Group>
-            <Form.Group className="mb-2 valfora-input-group" controlId="loginPassword">
-              <i className="bi bi-key valfora-input-icon" />
-              <Form.Control
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="Contraseña"
-                className="valfora-input pe-5"
-              />
-              <button
-                type="button"
-                className="valfora-password-toggle"
-                onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+            <Form onSubmit={handleSubmit} className="valfora-login-form">
+              <Form.Group className="mb-3 valfora-input-group" controlId="loginEmail">
+                <i className="bi bi-at valfora-input-icon" />
+                <Form.Control
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="Correo corporativo"
+                  className="valfora-input"
+                />
+              </Form.Group>
+              <Form.Group className="mb-2 valfora-input-group" controlId="loginPassword">
+                <i className="bi bi-key valfora-input-icon" />
+                <Form.Control
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  placeholder="Contraseña"
+                  className="valfora-input pe-5"
+                />
+                <button
+                  type="button"
+                  className="valfora-password-toggle"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                >
+                  <i className={`bi ${showPassword ? "bi-eye-slash" : "bi-eye"}`} />
+                </button>
+              </Form.Group>
+              <div className="text-end mb-4">
+                <button type="button" className="valfora-link-btn">
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </div>
+              <Button
+                variant="primary"
+                type="submit"
+                className="w-100 valfora-login-submit"
+                disabled={submitting}
               >
-                <i className={`bi ${showPassword ? "bi-eye-slash" : "bi-eye"}`} />
-              </button>
-            </Form.Group>
-            <div className="text-end mb-4">
-              <button type="button" className="valfora-link-btn">
-                ¿Olvidaste tu contraseña?
-              </button>
-            </div>
-            <Button
-              variant="primary"
-              type="submit"
-              className="w-100 valfora-login-submit"
-              disabled={submitting}
-            >
-              {submitting ? "Entrando..." : "Iniciar sesión"}
-            </Button>
-          </Form>
+                {submitting ? "Entrando..." : "Iniciar sesión"}
+              </Button>
+            </Form>
+          </div>
         </div>
       </section>
 
       <aside className="valfora-login-hero-panel">
         <div className="valfora-login-hero-inner">
-          <img src={valforaLogo} alt="Valfora Holdings Logo" className="valfora-login-hero-logo" />
-          <h2 className="valfora-login-hero-title">Valfora Holdings ERP</h2>
-          <p className="valfora-login-hero-copy">Bienvenidos a nuestro portal empresarial.</p>
+          <h2 className="valfora-login-hero-title">Gestión empresarial en un solo lugar</h2>
+          <p className="valfora-login-hero-copy">
+            CRM, operaciones, finanzas y automatización IA en una experiencia unificada.
+          </p>
         </div>
       </aside>
     </div>
