@@ -158,10 +158,23 @@ class ActivitySerializer(serializers.ModelSerializer):
 class DocumentSerializer(serializers.ModelSerializer):
     """Serializer for Document uploads."""
 
+    @staticmethod
+    def _coerce_bool(value) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        if isinstance(value, (int, float)):
+            return bool(value)
+        text = str(value).strip().lower()
+        return text in {"1", "true", "t", "yes", "y", "on"}
+
     def validate(self, attrs: dict) -> dict:
         contact = attrs.get("contact")
         deal = attrs.get("deal")
         is_global_knowledge = attrs.get("is_global_knowledge")
+        if "is_global_knowledge" in attrs:
+            is_global_knowledge = self._coerce_bool(is_global_knowledge)
         if self.instance:
             contact = contact if "contact" in attrs else self.instance.contact
             deal = deal if "deal" in attrs else self.instance.deal
@@ -170,6 +183,15 @@ class DocumentSerializer(serializers.ModelSerializer):
                 if "is_global_knowledge" in attrs
                 else self.instance.is_global_knowledge
             )
+        else:
+            # Multipart/form-data can provide booleans as strings.
+            if "is_global_knowledge" not in attrs:
+                raw = None
+                if hasattr(self, "initial_data"):
+                    raw = self.initial_data.get("is_global_knowledge")
+                if raw is not None:
+                    is_global_knowledge = self._coerce_bool(raw)
+                    attrs["is_global_knowledge"] = is_global_knowledge
         if not contact and not deal and not is_global_knowledge:
             raise serializers.ValidationError(
                 "Debe asociar el documento a un contacto/deal o marcarlo como conocimiento global."

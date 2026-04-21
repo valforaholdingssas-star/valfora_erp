@@ -45,6 +45,9 @@ const toNumberOr = (value, fallback) => {
 };
 
 const parseApiError = (err, fallback) => {
+  if (err?.response?.status === 413) {
+    return "El archivo excede el tamaño máximo permitido por el servidor (110 MB).";
+  }
   const d = err?.response?.data;
   if (typeof d?.message === "string" && d.message.trim()) return d.message;
   if (typeof d?.detail === "string" && d.detail.trim()) return d.detail;
@@ -343,9 +346,7 @@ const AIConfigPage = () => {
       const docs = await fetchDocuments({ is_global_knowledge: true, page_size: 200 });
       setKnowledgeDocs(docs.results || []);
     } catch (err) {
-      const d = err?.response?.data;
-      const msg = d?.message || d?.detail || "No se pudo cargar el documento.";
-      setKnowledgeError(typeof msg === "string" ? msg : "No se pudo cargar el documento.");
+      setKnowledgeError(parseApiError(err, "No se pudo cargar el documento."));
     } finally {
       setKnowledgeSaving(false);
     }
