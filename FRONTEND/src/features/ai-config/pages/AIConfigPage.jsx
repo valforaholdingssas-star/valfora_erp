@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Form, Spinner, Table } from "react-bootstrap";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Alert, Badge, Button, Card, Col, Form, Row, Spinner } from "react-bootstrap";
 import { Link, Navigate } from "react-router-dom";
 
 import {
@@ -32,11 +32,37 @@ const emptyForm = () => ({
   rag_top_k: 5,
 });
 
+const MODEL_OPTIONS = [
+  { value: "gpt-4o-mini", label: "gpt-4o-mini (rápido/económico)" },
+  { value: "gpt-4o", label: "gpt-4o (calidad balanceada)" },
+  { value: "gpt-4.1-mini", label: "gpt-4.1-mini (instrucciones fuertes)" },
+  { value: "gpt-4.1", label: "gpt-4.1 (mayor calidad)" },
+];
+
+const toNumberOr = (value, fallback) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const parseApiError = (err, fallback) => {
+  const d = err?.response?.data;
+  if (typeof d?.message === "string" && d.message.trim()) return d.message;
+  if (typeof d?.detail === "string" && d.detail.trim()) return d.detail;
+  if (d && typeof d === "object") {
+    const first = Object.keys(d)[0];
+    const value = first ? d[first] : null;
+    if (Array.isArray(value) && value.length > 0) return String(value[0]);
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return fallback;
+};
+
 const AIConfigPage = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [saveSuccess, setSaveSuccess] = useState(null);
   const [items, setItems] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -65,6 +91,29 @@ const AIConfigPage = () => {
   const [knowledgeError, setKnowledgeError] = useState(null);
 
   const canEdit = user && ["admin", "super_admin"].includes(user.role);
+
+  const selectedRow = useMemo(
+    () => items.find((row) => row.id === selectedId) || null,
+    [items, selectedId],
+  );
+
+  const isKnownModel = useMemo(
+    () => MODEL_OPTIONS.some((opt) => opt.value === form.llm_model),
+    [form.llm_model],
+  );
+
+  const effectivePromptPreview = useMemo(() => {
+    const blocks = [];
+    if ((form.role || "").trim()) blocks.push(`Rol: ${form.role.trim()}`);
+    if ((form.objective || "").trim()) blocks.push(`Objetivo: ${form.objective.trim()}`);
+    if ((form.tone || "").trim()) blocks.push(`Tono: ${form.tone.trim()}`);
+    if ((form.style || "").trim()) blocks.push(`Estilo: ${form.style.trim()}`);
+    if ((form.system_prompt || "").trim()) blocks.push(form.system_prompt.trim());
+    if (!blocks.length) {
+      return "Eres un asistente comercial profesional. Responde en español, de forma breve y útil.";
+    }
+    return blocks.join("\n");
+  }, [form.objective, form.role, form.style, form.system_prompt, form.tone]);
 
   const setFormFromRow = useCallback((row) => {
     setForm({
@@ -132,6 +181,7 @@ const AIConfigPage = () => {
   const handleSelect = (row) => {
     setSelectedId(row.id);
     setFormFromRow(row);
+    setSaveSuccess(null);
     setTestReply("");
     setTestMeta(null);
     setTestError(null);
@@ -140,11 +190,15 @@ const AIConfigPage = () => {
   const handleNew = async () => {
     setSaving(true);
     setError(null);
+    setSaveSuccess(null);
     try {
-      const created = await createAiConfiguration(emptyForm());
-      setSelectedId(created.id);
-      setFormFromRow(created);
+      const created = await createAiConfiguration({
+        ...emptyForm(),
+        name: `Agente ${items.length + 1}`,
+      });
       await load();
+      setSelectedId(created.id);
+      setSaveSuccess("Agente creado correctamente.");
     } catch {
       setError("No se pudo crear la configuración.");
     } finally {
@@ -157,27 +211,35 @@ const AIConfigPage = () => {
     if (!selectedId) return;
     setSaving(true);
     setError(null);
+    setSaveSuccess(null);
     try {
-      await patchAiConfiguration(selectedId, {
+      const payload = {
         name: form.name.trim() || "Sin nombre",
-        objective: form.objective,
-        role: form.role,
-        tone: form.tone,
-        style: form.style,
-        system_prompt: form.system_prompt,
-        temperature: Number(form.temperature),
-        max_tokens: Number(form.max_tokens),
-        llm_model: form.llm_model.trim(),
+        objective: (form.objective || "").trim(),
+        role: (form.role || "").trim(),
+        tone: (form.tone || "").trim(),
+        style: (form.style || "").trim(),
+        system_prompt: (form.system_prompt || "").trim(),
+        temperature: toNumberOr(form.temperature, 0.7),
+        max_tokens: Math.max(1, Math.floor(toNumberOr(form.max_tokens, 512))),
+        llm_model: (form.llm_model || "").trim() || "gpt-4o-mini",
         is_default: Boolean(form.is_default),
-        max_history_messages: Number(form.max_history_messages),
+        max_history_messages: Math.max(1, Math.floor(toNumberOr(form.max_history_messages, 20))),
         moderation_enabled: Boolean(form.moderation_enabled),
-        daily_token_budget_per_conversation: Number(form.daily_token_budget_per_conversation),
+        daily_token_budget_per_conversation: Math.max(
+          0,
+          Math.floor(toNumberOr(form.daily_token_budget_per_conversation, 100000)),
+        ),
         rag_enabled: Boolean(form.rag_enabled),
-        rag_top_k: Number(form.rag_top_k),
-      });
+        rag_top_k: Math.max(1, Math.min(20, Math.floor(toNumberOr(form.rag_top_k, 5)))),
+      };
+      const updated = await patchAiConfiguration(selectedId, payload);
+      setItems((prev) => prev.map((r) => (r.id === selectedId ? { ...r, ...updated } : r)));
+      setFormFromRow(updated);
+      setSaveSuccess("Cambios guardados. Este agente ya usa los campos Rol/Objetivo/Tono/Estilo en el prompt.");
       await load();
-    } catch {
-      setError("No se pudo guardar.");
+    } catch (err) {
+      setError(parseApiError(err, "No se pudo guardar."));
     } finally {
       setSaving(false);
     }
@@ -187,13 +249,14 @@ const AIConfigPage = () => {
     if (!selectedId || !window.confirm("¿Desactivar esta configuración?")) return;
     setSaving(true);
     setError(null);
+    setSaveSuccess(null);
     try {
       await deleteAiConfiguration(selectedId);
       setSelectedId(null);
       setForm(emptyForm());
       await load();
-    } catch {
-      setError("No se pudo eliminar.");
+    } catch (err) {
+      setError(parseApiError(err, "No se pudo eliminar."));
     } finally {
       setSaving(false);
     }
@@ -388,192 +451,257 @@ const AIConfigPage = () => {
             </Form>
           </div>
 
-          <div className="d-flex gap-2 mb-3 flex-wrap">
-            <Button type="button" variant="outline-primary" size="sm" onClick={() => void handleNew()} disabled={saving}>
-              Nueva configuración
-            </Button>
-            {selectedId && (
-              <Button type="button" variant="primary" size="sm" onClick={(e) => void handleSubmit(e)} disabled={saving}>
-                {saving ? "Guardando..." : "Guardar cambios"}
-              </Button>
-            )}
-          </div>
-          <Table responsive hover size="sm" className="mb-3">
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Modelo</th>
-                <th>Predeterminada</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((row) => (
-                <tr
-                  key={row.id}
-                  role="button"
-                  tabIndex={0}
-                  className={row.id === selectedId ? "table-primary" : ""}
-                  onClick={() => handleSelect(row)}
-                  onKeyDown={(ev) => {
-                    if (ev.key === "Enter" || ev.key === " ") {
-                      ev.preventDefault();
-                      handleSelect(row);
-                    }
-                  }}
-                >
-                  <td>{row.name}</td>
-                  <td>{row.llm_model}</td>
-                  <td>{row.is_default ? "Sí" : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-
-          {selectedId && (
-            <Form onSubmit={handleSubmit} className="mb-4">
-              <Form.Group className="mb-2">
-                <Form.Label>Nombre</Form.Label>
-                <Form.Control
-                  value={form.name}
-                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label>System prompt</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={6}
-                  value={form.system_prompt}
-                  onChange={(e) => setForm((p) => ({ ...p, system_prompt: e.target.value }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label>Objetivo</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={2}
-                  value={form.objective}
-                  onChange={(e) => setForm((p) => ({ ...p, objective: e.target.value }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label>Rol</Form.Label>
-                <Form.Control
-                  value={form.role}
-                  onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label>Tono</Form.Label>
-                <Form.Control
-                  value={form.tone}
-                  onChange={(e) => setForm((p) => ({ ...p, tone: e.target.value }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label>Estilo</Form.Label>
-                <Form.Control
-                  value={form.style}
-                  onChange={(e) => setForm((p) => ({ ...p, style: e.target.value }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label>Modelo LLM</Form.Label>
-                <Form.Control
-                  value={form.llm_model}
-                  onChange={(e) => setForm((p) => ({ ...p, llm_model: e.target.value }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label>Temperatura</Form.Label>
-                <Form.Control
-                  type="number"
-                  step="0.1"
-                  min={0}
-                  max={2}
-                  value={form.temperature}
-                  onChange={(e) => setForm((p) => ({ ...p, temperature: e.target.value }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label>Máx. tokens respuesta</Form.Label>
-                <Form.Control
-                  type="number"
-                  min={1}
-                  max={4096}
-                  value={form.max_tokens}
-                  onChange={(e) => setForm((p) => ({ ...p, max_tokens: e.target.value }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label>Mensajes de historial en el prompt</Form.Label>
-                <Form.Control
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={form.max_history_messages}
-                  onChange={(e) => setForm((p) => ({ ...p, max_history_messages: e.target.value }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Check
-                  type="switch"
-                  id="cfg-default"
-                  label="Configuración predeterminada del sistema"
-                  checked={form.is_default}
-                  onChange={(e) => setForm((p) => ({ ...p, is_default: e.target.checked }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Check
-                  type="switch"
-                  id="mod-enabled"
-                  label="Moderación OpenAI (respuestas)"
-                  checked={form.moderation_enabled}
-                  onChange={(e) => setForm((p) => ({ ...p, moderation_enabled: e.target.checked }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Check
-                  type="switch"
-                  id="rag-enabled"
-                  label="RAG: usar documentos CRM del contacto en el prompt"
-                  checked={form.rag_enabled}
-                  onChange={(e) => setForm((p) => ({ ...p, rag_enabled: e.target.checked }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label>Chunks RAG (top-K)</Form.Label>
-                <Form.Control
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={form.rag_top_k}
-                  onChange={(e) => setForm((p) => ({ ...p, rag_top_k: e.target.value }))}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label>Cuota diaria de tokens por conversación (UTC)</Form.Label>
-                <Form.Control
-                  type="number"
-                  min={0}
-                  step={1000}
-                  value={form.daily_token_budget_per_conversation}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, daily_token_budget_per_conversation: e.target.value }))
-                  }
-                />
-              </Form.Group>
-              <div className="d-flex gap-2 flex-wrap">
-                <Button type="submit" disabled={saving}>
-                  {saving ? "Guardando…" : "Guardar"}
-                </Button>
-                <Button type="button" variant="outline-danger" disabled={saving} onClick={() => void handleDelete()}>
-                  Desactivar
-                </Button>
-              </div>
-            </Form>
-          )}
+          <Row className="g-3 mb-4">
+            <Col lg={4}>
+              <Card className="h-100">
+                <Card.Body>
+                  <div className="d-flex align-items-center justify-content-between mb-2">
+                    <h2 className="h6 mb-0">Agentes IA</h2>
+                    <Badge bg="secondary">{items.length}</Badge>
+                  </div>
+                  <div className="d-grid mb-2">
+                    <Button
+                      type="button"
+                      variant="outline-primary"
+                      size="sm"
+                      onClick={() => void handleNew()}
+                      disabled={saving}
+                    >
+                      + Crear agente
+                    </Button>
+                  </div>
+                  <div className="d-flex flex-column gap-2">
+                    {items.map((row) => (
+                      <button
+                        key={row.id}
+                        type="button"
+                        className={`btn text-start border ${row.id === selectedId ? "btn-primary" : "btn-light"}`}
+                        onClick={() => handleSelect(row)}
+                      >
+                        <div className="fw-semibold text-truncate">{row.name}</div>
+                        <div className="small opacity-75">{row.llm_model}</div>
+                        {row.is_default ? <div className="small mt-1">Predeterminado</div> : null}
+                      </button>
+                    ))}
+                  </div>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col lg={8}>
+              {!selectedId ? (
+                <Card>
+                  <Card.Body>
+                    <p className="text-muted mb-0">Crea o selecciona un agente para editar su configuración.</p>
+                  </Card.Body>
+                </Card>
+              ) : (
+                <Card>
+                  <Card.Body>
+                    <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                      <h2 className="h6 mb-0">Editor del agente</h2>
+                      <div className="small text-muted">
+                        ID: <code>{selectedRow?.id}</code>
+                      </div>
+                    </div>
+                    {saveSuccess && <Alert variant="success" className="py-2">{saveSuccess}</Alert>}
+                    <Form onSubmit={handleSubmit}>
+                      <Form.Group className="mb-2">
+                        <Form.Label>Nombre del agente</Form.Label>
+                        <Form.Control
+                          value={form.name}
+                          onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                        />
+                      </Form.Group>
+                      <Form.Group className="mb-2">
+                        <Form.Label>Objetivo</Form.Label>
+                        <Form.Control
+                          as="textarea"
+                          rows={2}
+                          value={form.objective}
+                          onChange={(e) => setForm((p) => ({ ...p, objective: e.target.value }))}
+                        />
+                      </Form.Group>
+                      <Row className="g-2 mb-2">
+                        <Col md={6}>
+                          <Form.Group>
+                            <Form.Label>Rol</Form.Label>
+                            <Form.Control
+                              value={form.role}
+                              onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
+                            />
+                          </Form.Group>
+                        </Col>
+                        <Col md={6}>
+                          <Form.Group>
+                            <Form.Label>Tono</Form.Label>
+                            <Form.Control
+                              value={form.tone}
+                              onChange={(e) => setForm((p) => ({ ...p, tone: e.target.value }))}
+                            />
+                          </Form.Group>
+                        </Col>
+                      </Row>
+                      <Form.Group className="mb-2">
+                        <Form.Label>Estilo</Form.Label>
+                        <Form.Control
+                          value={form.style}
+                          onChange={(e) => setForm((p) => ({ ...p, style: e.target.value }))}
+                        />
+                      </Form.Group>
+                      <Form.Group className="mb-2">
+                        <Form.Label>System prompt adicional</Form.Label>
+                        <Form.Control
+                          as="textarea"
+                          rows={5}
+                          value={form.system_prompt}
+                          onChange={(e) => setForm((p) => ({ ...p, system_prompt: e.target.value }))}
+                        />
+                      </Form.Group>
+                      <Row className="g-2 mb-2">
+                        <Col md={8}>
+                          <Form.Group>
+                            <Form.Label>Modelo LLM</Form.Label>
+                            <Form.Select
+                              value={isKnownModel ? form.llm_model : "__custom"}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v !== "__custom") {
+                                  setForm((p) => ({ ...p, llm_model: v }));
+                                }
+                              }}
+                            >
+                              {MODEL_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                              <option value="__custom">Personalizado…</option>
+                            </Form.Select>
+                          </Form.Group>
+                        </Col>
+                        <Col md={4}>
+                          <Form.Group>
+                            <Form.Label>Temperatura</Form.Label>
+                            <Form.Control
+                              type="number"
+                              step="0.1"
+                              min={0}
+                              max={2}
+                              value={form.temperature}
+                              onChange={(e) => setForm((p) => ({ ...p, temperature: e.target.value }))}
+                            />
+                          </Form.Group>
+                        </Col>
+                      </Row>
+                      {!isKnownModel && (
+                        <Form.Group className="mb-2">
+                          <Form.Label>Modelo personalizado</Form.Label>
+                          <Form.Control
+                            placeholder="ej: gpt-4.1-mini"
+                            value={form.llm_model}
+                            onChange={(e) => setForm((p) => ({ ...p, llm_model: e.target.value }))}
+                          />
+                        </Form.Group>
+                      )}
+                      <Row className="g-2 mb-2">
+                        <Col md={6}>
+                          <Form.Group>
+                            <Form.Label>Máx. tokens respuesta</Form.Label>
+                            <Form.Control
+                              type="number"
+                              min={1}
+                              max={4096}
+                              value={form.max_tokens}
+                              onChange={(e) => setForm((p) => ({ ...p, max_tokens: e.target.value }))}
+                            />
+                          </Form.Group>
+                        </Col>
+                        <Col md={6}>
+                          <Form.Group>
+                            <Form.Label>Historial en prompt</Form.Label>
+                            <Form.Control
+                              type="number"
+                              min={1}
+                              max={50}
+                              value={form.max_history_messages}
+                              onChange={(e) => setForm((p) => ({ ...p, max_history_messages: e.target.value }))}
+                            />
+                          </Form.Group>
+                        </Col>
+                      </Row>
+                      <Form.Group className="mb-2">
+                        <Form.Label>Cuota diaria de tokens por conversación (UTC)</Form.Label>
+                        <Form.Control
+                          type="number"
+                          min={0}
+                          step={1000}
+                          value={form.daily_token_budget_per_conversation}
+                          onChange={(e) =>
+                            setForm((p) => ({ ...p, daily_token_budget_per_conversation: e.target.value }))
+                          }
+                        />
+                      </Form.Group>
+                      <div className="border rounded p-2 mb-2 bg-body-tertiary">
+                        <div className="small fw-semibold mb-1">Prompt efectivo (sí se usa al responder)</div>
+                        <pre className="mb-0 small" style={{ whiteSpace: "pre-wrap" }}>
+                          {effectivePromptPreview}
+                        </pre>
+                      </div>
+                      <Row className="g-2 mb-2">
+                        <Col md={6}>
+                          <Form.Check
+                            type="switch"
+                            id="cfg-default"
+                            label="Predeterminado del sistema"
+                            checked={form.is_default}
+                            onChange={(e) => setForm((p) => ({ ...p, is_default: e.target.checked }))}
+                          />
+                        </Col>
+                        <Col md={6}>
+                          <Form.Check
+                            type="switch"
+                            id="mod-enabled"
+                            label="Moderación OpenAI"
+                            checked={form.moderation_enabled}
+                            onChange={(e) => setForm((p) => ({ ...p, moderation_enabled: e.target.checked }))}
+                          />
+                        </Col>
+                      </Row>
+                      <Row className="g-2 mb-3">
+                        <Col md={6}>
+                          <Form.Check
+                            type="switch"
+                            id="rag-enabled"
+                            label="RAG activo"
+                            checked={form.rag_enabled}
+                            onChange={(e) => setForm((p) => ({ ...p, rag_enabled: e.target.checked }))}
+                          />
+                        </Col>
+                        <Col md={6}>
+                          <Form.Group>
+                            <Form.Label>RAG top-K</Form.Label>
+                            <Form.Control
+                              type="number"
+                              min={1}
+                              max={20}
+                              value={form.rag_top_k}
+                              onChange={(e) => setForm((p) => ({ ...p, rag_top_k: e.target.value }))}
+                            />
+                          </Form.Group>
+                        </Col>
+                      </Row>
+                      <div className="d-flex gap-2 flex-wrap">
+                        <Button type="submit" disabled={saving}>
+                          {saving ? "Guardando…" : "Guardar agente"}
+                        </Button>
+                        <Button type="button" variant="outline-danger" disabled={saving} onClick={() => void handleDelete()}>
+                          Desactivar
+                        </Button>
+                      </div>
+                    </Form>
+                  </Card.Body>
+                </Card>
+              )}
+            </Col>
+          </Row>
 
           <div className="border rounded p-3 bg-body-tertiary mb-3">
             <h2 className="h6 mb-2">Contexto IA (RAG optimizado)</h2>
