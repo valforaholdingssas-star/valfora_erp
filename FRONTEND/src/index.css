@@ -69,11 +69,15 @@ h6 {
 }
 
 .app-page {
-  max-width: 1380px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
 }
 
 .app-page-narrow {
-  max-width: 980px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
 }
 
 .app-page-header {
