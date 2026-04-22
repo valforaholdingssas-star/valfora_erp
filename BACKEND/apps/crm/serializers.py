@@ -222,7 +222,15 @@ class DocumentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "file_type", "file_size", "uploaded_by", "created_at", "updated_at")
+        read_only_fields = (
+            "id",
+            "file_type",
+            "file_size",
+            "uploaded_by",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
 
 
 class BulkContactAssignSerializer(serializers.Serializer):

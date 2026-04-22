@@ -105,6 +105,7 @@ def test_upload_document(admin_user):
     assert response.status_code == 201
     body = _body(response)
     assert body["data"]["file_size"] > 0
+    assert body["data"]["is_active"] is True
 
 
 @pytest.mark.django_db
