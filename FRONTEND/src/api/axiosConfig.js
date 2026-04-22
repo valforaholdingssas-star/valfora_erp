@@ -11,6 +11,41 @@ const api = axios.create({
   },
 });
 
+let refreshPromise = null;
+
+const refreshAccessToken = async () => {
+  const refresh = localStorage.getItem("seeds_refresh_token");
+  if (!refresh) {
+    throw new Error("Missing refresh token");
+  }
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(`${baseURL}/auth/refresh/`, { refresh })
+      .then(({ data: body }) => {
+        const inner = body.data ?? body;
+        const access = inner.access;
+        if (!access) {
+          throw new Error("Invalid refresh response");
+        }
+        localStorage.setItem("seeds_access_token", access);
+        // Backend rotates refresh tokens; persist the new one when present.
+        if (inner.refresh) {
+          localStorage.setItem("seeds_refresh_token", inner.refresh);
+        }
+        return access;
+      })
+      .catch((err) => {
+        localStorage.removeItem("seeds_access_token");
+        localStorage.removeItem("seeds_refresh_token");
+        throw err;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+};
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("seeds_access_token");
   if (token) {
@@ -30,23 +65,12 @@ api.interceptors.response.use(
     const original = error.config;
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
-      const refresh = localStorage.getItem("seeds_refresh_token");
-      if (refresh) {
-        try {
-          const { data: body } = await axios.post(`${baseURL}/auth/refresh/`, {
-            refresh,
-          });
-          const inner = body.data ?? body;
-          const access = inner.access;
-          if (access) {
-            localStorage.setItem("seeds_access_token", access);
-            original.headers.Authorization = `Bearer ${access}`;
-            return api(original);
-          }
-        } catch {
-          localStorage.removeItem("seeds_access_token");
-          localStorage.removeItem("seeds_refresh_token");
-        }
+      try {
+        const access = await refreshAccessToken();
+        original.headers.Authorization = `Bearer ${access}`;
+        return api(original);
+      } catch {
+        // no-op: fall through to reject 401
       }
     }
     return Promise.reject(error);
