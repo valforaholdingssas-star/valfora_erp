@@ -92,6 +92,7 @@ const AIConfigPage = () => {
   const [knowledgeDocDescription, setKnowledgeDocDescription] = useState("");
   const [knowledgeSaving, setKnowledgeSaving] = useState(false);
   const [knowledgeError, setKnowledgeError] = useState(null);
+  const [knowledgeSuccess, setKnowledgeSuccess] = useState(null);
 
   const canEdit = user && ["admin", "super_admin"].includes(user.role);
 
@@ -327,6 +328,7 @@ const AIConfigPage = () => {
 
   const handleUploadKnowledgeDocument = async (e) => {
     e.preventDefault();
+    setKnowledgeSuccess(null);
     if (!knowledgeUploadFile) {
       setKnowledgeError("Debes seleccionar un archivo.");
       return;
@@ -345,6 +347,7 @@ const AIConfigPage = () => {
       setKnowledgeDocDescription("");
       const docs = await fetchDocuments({ is_global_knowledge: true, page_size: 200 });
       setKnowledgeDocs(docs.results || []);
+      setKnowledgeSuccess("Documento cargado correctamente y agregado al conocimiento global.");
     } catch (err) {
       setKnowledgeError(parseApiError(err, "No se pudo cargar el documento."));
     } finally {
@@ -715,8 +718,17 @@ const AIConfigPage = () => {
                 <Form.Label>Archivo</Form.Label>
                 <Form.Control
                   type="file"
-                  onChange={(e) => setKnowledgeUploadFile(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    setKnowledgeUploadFile(e.target.files?.[0] || null);
+                    setKnowledgeError(null);
+                    setKnowledgeSuccess(null);
+                  }}
                 />
+                {knowledgeUploadFile && (
+                  <div className="small text-muted mt-1">
+                    Archivo seleccionado: <strong>{knowledgeUploadFile.name}</strong>
+                  </div>
+                )}
               </Form.Group>
               <Form.Group className="mb-2">
                 <Form.Label>Nombre visible</Form.Label>
@@ -735,10 +747,11 @@ const AIConfigPage = () => {
                   onChange={(e) => setKnowledgeDocDescription(e.target.value)}
                 />
               </Form.Group>
-              <Button type="submit" size="sm" disabled={knowledgeSaving}>
+              <Button type="submit" size="sm" disabled={knowledgeSaving || !knowledgeUploadFile}>
                 {knowledgeSaving ? "Cargando..." : "Subir documento global"}
               </Button>
             </Form>
+            {knowledgeSuccess && <Alert variant="success" className="mt-2 mb-0 small">{knowledgeSuccess}</Alert>}
             {knowledgeError && <Alert variant="warning" className="mt-2 mb-0 small">{knowledgeError}</Alert>}
             <div className="mt-3">
               <h3 className="h6 mb-2">Documentos globales cargados</h3>

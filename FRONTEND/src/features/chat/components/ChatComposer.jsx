@@ -1,6 +1,8 @@
 import { useRef } from "react";
 import PropTypes from "prop-types";
-import { Button, Form } from "react-bootstrap";
+import { Button, Dropdown, Form } from "react-bootstrap";
+
+const QUICK_EMOJIS = ["😀", "😂", "😍", "🙏", "👍", "👎", "👏", "🔥", "🎉", "💡", "✅", "❤️"];
 
 const ChatComposer = ({
   value,
@@ -12,6 +14,7 @@ const ChatComposer = ({
   selectedFileName,
   onPickFile,
   onClearFile,
+  onInsertEmoji,
 }) => {
   const fileInputRef = useRef(null);
   return (
@@ -35,6 +38,32 @@ const ChatComposer = ({
         >
           <i className="bi bi-paperclip" />
         </Button>
+        {canFreeMessage && (
+          <Dropdown>
+            <Dropdown.Toggle
+              variant="outline-secondary"
+              id="chat-emoji-picker"
+              disabled={disabled}
+              aria-label="Insertar emoji"
+            >
+              😀
+            </Dropdown.Toggle>
+            <Dropdown.Menu className="p-2">
+              <div className="d-flex flex-wrap gap-1" style={{ width: 220 }}>
+                {QUICK_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className="btn btn-light btn-sm"
+                    onClick={() => onInsertEmoji?.(emoji)}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </Dropdown.Menu>
+          </Dropdown>
+        )}
         {canFreeMessage ? (
           <>
             <Form.Control
@@ -83,6 +112,7 @@ ChatComposer.propTypes = {
   selectedFileName: PropTypes.string,
   onPickFile: PropTypes.func,
   onClearFile: PropTypes.func,
+  onInsertEmoji: PropTypes.func,
 };
 
 export default ChatComposer;

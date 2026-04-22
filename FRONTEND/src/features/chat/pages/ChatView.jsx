@@ -258,6 +258,10 @@ const ChatView = () => {
     }, 1500);
   };
 
+  const handleInsertEmoji = (emoji) => {
+    setInput((prev) => `${prev || ""}${emoji}`);
+  };
+
   const submitMessage = async (content, retryTempId = null) => {
     if (!activeId || !content.trim()) return;
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -789,23 +793,24 @@ const ChatView = () => {
                   onSubmit={handleSend}
                   disabled={!activeId}
                   canFreeMessage={canSendFreeMessage}
-                  onOpenTemplate={() => setShowTemplateSelector(true)}
-                  selectedFileName={selectedFile?.name || ""}
-                  onPickFile={(file) => {
-                    const validationError = validateSelectedFile(file);
-                    if (validationError) {
+              onOpenTemplate={() => setShowTemplateSelector(true)}
+              selectedFileName={selectedFile?.name || ""}
+              onPickFile={(file) => {
+                const validationError = validateSelectedFile(file);
+                if (validationError) {
                       setComposerError(validationError);
                       setSelectedFile(null);
                       return;
-                    }
-                    setComposerError("");
-                    setSelectedFile(file || null);
-                  }}
-                  onClearFile={() => {
-                    setSelectedFile(null);
-                    setComposerError("");
-                  }}
-                />
+                }
+                setComposerError("");
+                setSelectedFile(file || null);
+              }}
+              onClearFile={() => {
+                setSelectedFile(null);
+                setComposerError("");
+              }}
+              onInsertEmoji={handleInsertEmoji}
+            />
                 {composerError && (
                   <Alert variant="warning" className="py-2 px-3 small mt-2 mb-0">
                     {composerError}

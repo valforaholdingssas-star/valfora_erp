@@ -7,6 +7,16 @@ import MessageStatusTicks from "./MessageStatusTicks.jsx";
 import NewMessageBadge from "./NewMessageBadge.jsx";
 import ServiceWindowIndicator from "./ServiceWindowIndicator.jsx";
 
+const formatMessageHour = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("es-CO", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 const ChatThread = ({
   loading,
   messages,
@@ -161,6 +171,9 @@ const ChatThread = ({
                 </div>
                 <div className={`app-chat-msg-meta ${m.sender_type === "user" ? "justify-content-end" : "justify-content-start"}`}>
                   <span className="app-chat-msg-author">{senderLabel(m)}</span>
+                  {formatMessageHour(m.created_at) && (
+                    <span className="text-muted small me-1">{formatMessageHour(m.created_at)}</span>
+                  )}
                   {m.is_ai_generated && (
                     <Badge bg="info" className="me-1">
                       IA
