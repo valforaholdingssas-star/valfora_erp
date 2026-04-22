@@ -1,10 +1,16 @@
 """Production settings."""
 
 import os
+from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F403,F401
 
 DEBUG = False
+
+if SECRET_KEY == "unsafe-dev-secret-change-me":
+    raise ImproperlyConfigured("DJANGO_SECRET_KEY is required in production.")
+if ALLOWED_HOSTS == ["localhost", "127.0.0.1"]:
+    raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS must be configured in production.")
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # En pruebas HTTP puras (sin TLS), establecer DJANGO_SECURE_SSL_REDIRECT=False
