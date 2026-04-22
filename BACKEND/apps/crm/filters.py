@@ -67,10 +67,11 @@ class DocumentFilter(django_filters.FilterSet):
     deal = django_filters.UUIDFilter(field_name="deal")
     company = django_filters.UUIDFilter(method="filter_company")
     is_global_knowledge = django_filters.BooleanFilter(field_name="is_global_knowledge")
+    ai_configuration = django_filters.UUIDFilter(field_name="ai_configuration")
 
     class Meta:
         model = Document
-        fields = ("contact", "deal", "company", "is_global_knowledge")
+        fields = ("contact", "deal", "company", "is_global_knowledge", "ai_configuration")
 
     def filter_company(self, queryset, name, value):
         del name

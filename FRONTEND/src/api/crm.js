@@ -68,6 +68,7 @@ export const uploadDocument = (formData) =>
   }).then(unwrap);
 
 export const deleteDocument = (id) => api.delete(`/crm/documents/${id}/`).then(unwrap);
+export const updateDocument = (id, payload) => api.patch(`/crm/documents/${id}/`, payload).then(unwrap);
 
 export const bulkReactivateContacts = (payload) =>
   api.post("/crm/contacts/bulk-reactivate/", payload).then(unwrap);

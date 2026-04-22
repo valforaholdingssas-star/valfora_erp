@@ -257,6 +257,13 @@ class Document(BaseModel):
         db_index=True,
         help_text="Disponible como contexto global en RAG para cualquier conversación.",
     )
+    ai_configuration = models.ForeignKey(
+        "ai_config.AIConfiguration",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="knowledge_documents",
+    )
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

@@ -178,12 +178,18 @@ class DocumentSerializer(serializers.ModelSerializer):
         if self.instance:
             contact = contact if "contact" in attrs else self.instance.contact
             deal = deal if "deal" in attrs else self.instance.deal
+            ai_configuration = (
+                attrs.get("ai_configuration")
+                if "ai_configuration" in attrs
+                else self.instance.ai_configuration
+            )
             is_global_knowledge = (
                 is_global_knowledge
                 if "is_global_knowledge" in attrs
                 else self.instance.is_global_knowledge
             )
         else:
+            ai_configuration = attrs.get("ai_configuration")
             # Multipart/form-data can provide booleans as strings.
             if "is_global_knowledge" not in attrs:
                 raw = None
@@ -192,9 +198,9 @@ class DocumentSerializer(serializers.ModelSerializer):
                 if raw is not None:
                     is_global_knowledge = self._coerce_bool(raw)
                     attrs["is_global_knowledge"] = is_global_knowledge
-        if not contact and not deal and not is_global_knowledge:
+        if not contact and not deal and not is_global_knowledge and not ai_configuration:
             raise serializers.ValidationError(
-                "Debe asociar el documento a un contacto/deal o marcarlo como conocimiento global."
+                "Debe asociar el documento a un contacto/deal/agente o marcarlo como conocimiento global."
             )
         return attrs
 
@@ -210,6 +216,7 @@ class DocumentSerializer(serializers.ModelSerializer):
             "file_size",
             "description",
             "is_global_knowledge",
+            "ai_configuration",
             "uploaded_by",
             "is_active",
             "created_at",

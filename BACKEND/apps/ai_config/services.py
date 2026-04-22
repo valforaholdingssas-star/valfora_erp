@@ -79,6 +79,7 @@ def build_openai_messages(*, trigger_message: Message, config: AIConfiguration) 
                 top_k = max(1, min(20, int(getattr(config, "rag_top_k", 5) or 5)))
                 scored = retrieve_relevant_chunks(
                     contact_id=contact.id,
+                    ai_configuration_id=config.id,
                     query_embedding=qe,
                     top_k=top_k,
                 )

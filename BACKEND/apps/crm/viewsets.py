@@ -360,7 +360,7 @@ class ActivityViewSet(
 class DocumentViewSet(CRMBaseViewSet):
     """Document upload and listing."""
 
-    queryset = Document.objects.filter(is_active=True).select_related("contact", "deal", "uploaded_by")
+    queryset = Document.objects.filter(is_active=True).select_related("contact", "deal", "ai_configuration", "uploaded_by")
     serializer_class = DocumentSerializer
     filterset_class = DocumentFilter
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]

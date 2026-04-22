@@ -26,22 +26,18 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return float(np.dot(va, vb) / (na * nb))
 
 
-def documents_for_contact(contact_id: UUID) -> Any:
-    """CRM documents tied to this contact/deals + global knowledge docs."""
-    return (
-        Document.objects.filter(is_active=True)
-        .filter(
-            Q(contact_id=contact_id)
-            | Q(deal__contact_id=contact_id)
-            | Q(is_global_knowledge=True)
-        )
-        .distinct()
-    )
+def documents_for_contact(contact_id: UUID, ai_configuration_id: UUID | None = None) -> Any:
+    """CRM documents tied to contact/deals + optional docs attached to selected AI agent."""
+    q = Q(contact_id=contact_id) | Q(deal__contact_id=contact_id)
+    if ai_configuration_id:
+        q |= Q(ai_configuration_id=ai_configuration_id)
+    return Document.objects.filter(is_active=True).filter(q).distinct()
 
 
 def retrieve_relevant_chunks(
     *,
     contact_id: UUID,
+    ai_configuration_id: UUID | None = None,
     query_embedding: list[float],
     top_k: int = 5,
 ) -> list[tuple[str, float]]:
@@ -50,7 +46,9 @@ def retrieve_relevant_chunks(
     """
     if not query_embedding or top_k <= 0:
         return []
-    doc_ids = list(documents_for_contact(contact_id).values_list("id", flat=True))
+    doc_ids = list(
+        documents_for_contact(contact_id=contact_id, ai_configuration_id=ai_configuration_id).values_list("id", flat=True)
+    )
     if not doc_ids:
         return []
     chunks = list(

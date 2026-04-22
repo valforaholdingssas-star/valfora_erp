@@ -74,9 +74,9 @@ class DealAdmin(admin.ModelAdmin):
 class DocumentAdmin(admin.ModelAdmin):
     """Admin for documents."""
 
-    list_display = ("name", "contact", "deal", "file_size", "uploaded_by", "created_at")
+    list_display = ("name", "ai_configuration", "contact", "deal", "file_size", "uploaded_by", "created_at")
     search_fields = ("name", "description")
-    raw_id_fields = ("contact", "deal", "uploaded_by")
+    raw_id_fields = ("contact", "deal", "ai_configuration", "uploaded_by")
 
 
 @admin.register(LeadEngineConfig)

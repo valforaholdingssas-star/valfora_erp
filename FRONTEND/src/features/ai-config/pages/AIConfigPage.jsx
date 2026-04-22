@@ -11,7 +11,7 @@ import {
   patchAiRuntimeSettings,
   testAiConfiguration,
 } from "../../../api/aiConfig.js";
-import { deleteDocument, fetchDocuments, uploadDocument } from "../../../api/crm.js";
+import { deleteDocument, fetchDocuments, updateDocument, uploadDocument } from "../../../api/crm.js";
 import { useAuth } from "../../../contexts/AuthContext.jsx";
 
 const emptyForm = () => ({
@@ -91,8 +91,12 @@ const AIConfigPage = () => {
   const [knowledgeDocName, setKnowledgeDocName] = useState("");
   const [knowledgeDocDescription, setKnowledgeDocDescription] = useState("");
   const [knowledgeSaving, setKnowledgeSaving] = useState(false);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [knowledgeError, setKnowledgeError] = useState(null);
   const [knowledgeSuccess, setKnowledgeSuccess] = useState(null);
+  const [editingDocId, setEditingDocId] = useState(null);
+  const [editingDocForm, setEditingDocForm] = useState({ name: "", description: "" });
+  const [showPromptPreview, setShowPromptPreview] = useState(false);
 
   const canEdit = user && ["admin", "super_admin"].includes(user.role);
 
@@ -143,14 +147,12 @@ const AIConfigPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const [data, runtime, docs] = await Promise.all([
+      const [data, runtime] = await Promise.all([
         fetchAiConfigurations({ page_size: 100 }),
         fetchAiRuntimeSettings(),
-        fetchDocuments({ is_global_knowledge: true, page_size: 200 }),
       ]);
       const rows = data.results || [];
       setItems(rows);
-      setKnowledgeDocs(docs.results || []);
       setRuntimeForm((prev) => ({
         ...prev,
         openai_api_key: "",
@@ -179,8 +181,25 @@ const AIConfigPage = () => {
   useEffect(() => {
     if (!selectedId) return;
     const row = items.find((r) => r.id === selectedId);
-    if (row) setFormFromRow(row);
+    if (row) {
+      setFormFromRow(row);
+      setShowPromptPreview(false);
+    }
   }, [selectedId, items, setFormFromRow]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setKnowledgeDocs([]);
+      setEditingDocId(null);
+      return;
+    }
+    setKnowledgeLoading(true);
+    setKnowledgeError(null);
+    fetchDocuments({ ai_configuration: selectedId, page_size: 200 })
+      .then((docs) => setKnowledgeDocs(docs.results || []))
+      .catch((err) => setKnowledgeError(parseApiError(err, "No se pudieron cargar los documentos del agente.")))
+      .finally(() => setKnowledgeLoading(false));
+  }, [selectedId]);
 
   const handleSelect = (row) => {
     setSelectedId(row.id);
@@ -329,6 +348,10 @@ const AIConfigPage = () => {
   const handleUploadKnowledgeDocument = async (e) => {
     e.preventDefault();
     setKnowledgeSuccess(null);
+    if (!selectedId) {
+      setKnowledgeError("Selecciona un agente antes de subir documentos.");
+      return;
+    }
     if (!knowledgeUploadFile) {
       setKnowledgeError("Debes seleccionar un archivo.");
       return;
@@ -340,14 +363,15 @@ const AIConfigPage = () => {
       fd.append("file", knowledgeUploadFile);
       fd.append("name", (knowledgeDocName || "").trim() || knowledgeUploadFile.name);
       fd.append("description", (knowledgeDocDescription || "").trim());
-      fd.append("is_global_knowledge", "true");
+      fd.append("ai_configuration", selectedId);
+      fd.append("is_global_knowledge", "false");
       await uploadDocument(fd);
       setKnowledgeUploadFile(null);
       setKnowledgeDocName("");
       setKnowledgeDocDescription("");
-      const docs = await fetchDocuments({ is_global_knowledge: true, page_size: 200 });
+      const docs = await fetchDocuments({ ai_configuration: selectedId, page_size: 200 });
       setKnowledgeDocs(docs.results || []);
-      setKnowledgeSuccess("Documento cargado correctamente y agregado al conocimiento global.");
+      setKnowledgeSuccess("Documento cargado correctamente para este agente.");
     } catch (err) {
       setKnowledgeError(parseApiError(err, "No se pudo cargar el documento."));
     } finally {
@@ -355,8 +379,43 @@ const AIConfigPage = () => {
     }
   };
 
+  const startEditKnowledgeDocument = (doc) => {
+    setEditingDocId(doc.id);
+    setEditingDocForm({
+      name: doc.name || "",
+      description: doc.description || "",
+    });
+    setKnowledgeError(null);
+    setKnowledgeSuccess(null);
+  };
+
+  const cancelEditKnowledgeDocument = () => {
+    setEditingDocId(null);
+    setEditingDocForm({ name: "", description: "" });
+  };
+
+  const saveKnowledgeDocumentEdition = async () => {
+    if (!editingDocId) return;
+    setKnowledgeSaving(true);
+    setKnowledgeError(null);
+    setKnowledgeSuccess(null);
+    try {
+      const updated = await updateDocument(editingDocId, {
+        name: (editingDocForm.name || "").trim(),
+        description: (editingDocForm.description || "").trim(),
+      });
+      setKnowledgeDocs((prev) => prev.map((doc) => (doc.id === editingDocId ? { ...doc, ...updated } : doc)));
+      cancelEditKnowledgeDocument();
+      setKnowledgeSuccess("Documento actualizado.");
+    } catch (err) {
+      setKnowledgeError(parseApiError(err, "No se pudo actualizar el documento."));
+    } finally {
+      setKnowledgeSaving(false);
+    }
+  };
+
   const handleDeleteKnowledgeDocument = async (docId) => {
-    if (!window.confirm("¿Eliminar este documento de conocimiento global?")) return;
+    if (!window.confirm("¿Eliminar este documento del agente?")) return;
     setKnowledgeSaving(true);
     setKnowledgeError(null);
     try {
@@ -644,10 +703,22 @@ const AIConfigPage = () => {
                         />
                       </Form.Group>
                       <div className="border rounded p-2 mb-2 bg-body-tertiary">
-                        <div className="small fw-semibold mb-1">Prompt efectivo (sí se usa al responder)</div>
-                        <pre className="mb-0 small" style={{ whiteSpace: "pre-wrap" }}>
-                          {effectivePromptPreview}
-                        </pre>
+                        <div className="d-flex align-items-center justify-content-between">
+                          <div className="small fw-semibold mb-0">Prompt efectivo (sí se usa al responder)</div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline-secondary"
+                            onClick={() => setShowPromptPreview((prev) => !prev)}
+                          >
+                            {showPromptPreview ? "Ocultar" : "Ver"}
+                          </Button>
+                        </div>
+                        {showPromptPreview && (
+                          <pre className="mb-0 mt-2 small" style={{ whiteSpace: "pre-wrap", maxHeight: 220, overflow: "auto" }}>
+                            {effectivePromptPreview}
+                          </pre>
+                        )}
                       </div>
                       <Row className="g-2 mb-2">
                         <Col md={6}>
@@ -710,8 +781,8 @@ const AIConfigPage = () => {
           <div className="border rounded p-3 bg-body-tertiary mb-3">
             <h2 className="h6 mb-2">Contexto IA (RAG optimizado)</h2>
             <p className="small text-muted mb-2">
-              Carga documentos como conocimiento global. La IA no envía el documento completo al modelo: recupera solo
-              fragmentos relevantes (top-K), reduciendo tokens.
+              Carga documentos para el agente seleccionado. La IA no envía el documento completo al modelo: recupera
+              solo fragmentos relevantes (top-K), reduciendo tokens.
             </p>
             <Form onSubmit={handleUploadKnowledgeDocument}>
               <Form.Group className="mb-2">
@@ -747,37 +818,99 @@ const AIConfigPage = () => {
                   onChange={(e) => setKnowledgeDocDescription(e.target.value)}
                 />
               </Form.Group>
-              <Button type="submit" size="sm" disabled={knowledgeSaving || !knowledgeUploadFile}>
-                {knowledgeSaving ? "Cargando..." : "Subir documento global"}
+              <Button type="submit" size="sm" disabled={knowledgeSaving || !knowledgeUploadFile || !selectedId}>
+                {knowledgeSaving ? "Cargando..." : "Subir documento al agente"}
               </Button>
             </Form>
             {knowledgeSuccess && <Alert variant="success" className="mt-2 mb-0 small">{knowledgeSuccess}</Alert>}
             {knowledgeError && <Alert variant="warning" className="mt-2 mb-0 small">{knowledgeError}</Alert>}
             <div className="mt-3">
-              <h3 className="h6 mb-2">Documentos globales cargados</h3>
-              {knowledgeDocs.length === 0 ? (
-                <p className="small text-muted mb-0">No hay documentos globales todavía.</p>
+              <h3 className="h6 mb-2">Documentos del agente seleccionado</h3>
+              {knowledgeLoading ? (
+                <p className="small text-muted mb-0">Cargando documentos...</p>
+              ) : knowledgeDocs.length === 0 ? (
+                <p className="small text-muted mb-0">No hay documentos cargados para este agente.</p>
               ) : (
                 <div className="d-flex flex-column gap-1">
                   {knowledgeDocs.map((doc) => (
-                    <div key={doc.id} className="d-flex justify-content-between align-items-center border rounded px-2 py-1">
-                      <div className="small">
-                        <strong>{doc.name}</strong>
-                        {doc.file_size ? (
-                          <span className="text-muted ms-2">
-                            {(Number(doc.file_size) / 1024 / 1024).toFixed(2)} MB
-                          </span>
-                        ) : null}
+                    <div key={doc.id} className="border rounded px-2 py-2">
+                      <div className="d-flex justify-content-between align-items-start gap-2">
+                        <div className="small flex-grow-1">
+                          {editingDocId === doc.id ? (
+                            <>
+                              <Form.Control
+                                className="mb-1"
+                                value={editingDocForm.name}
+                                onChange={(e) => setEditingDocForm((prev) => ({ ...prev, name: e.target.value }))}
+                                placeholder="Nombre del documento"
+                              />
+                              <Form.Control
+                                as="textarea"
+                                rows={2}
+                                value={editingDocForm.description}
+                                onChange={(e) =>
+                                  setEditingDocForm((prev) => ({ ...prev, description: e.target.value }))
+                                }
+                                placeholder="Descripción"
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <strong>{doc.name}</strong>
+                              {doc.file_size ? (
+                                <span className="text-muted ms-2">
+                                  {(Number(doc.file_size) / 1024 / 1024).toFixed(2)} MB
+                                </span>
+                              ) : null}
+                              {doc.description ? (
+                                <div className="text-muted mt-1">{doc.description}</div>
+                              ) : null}
+                            </>
+                          )}
+                        </div>
+                        <div className="d-flex gap-1">
+                          {editingDocId === doc.id ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => void saveKnowledgeDocumentEdition()}
+                                disabled={knowledgeSaving}
+                              >
+                                Guardar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline-secondary"
+                                onClick={cancelEditKnowledgeDocument}
+                                disabled={knowledgeSaving}
+                              >
+                                Cancelar
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline-secondary"
+                              onClick={() => startEditKnowledgeDocument(doc)}
+                              disabled={knowledgeSaving}
+                            >
+                              Editar
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline-danger"
+                            onClick={() => void handleDeleteKnowledgeDocument(doc.id)}
+                            disabled={knowledgeSaving}
+                          >
+                            Eliminar
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline-danger"
-                        onClick={() => void handleDeleteKnowledgeDocument(doc.id)}
-                        disabled={knowledgeSaving}
-                      >
-                        Eliminar
-                      </Button>
                     </div>
                   ))}
                 </div>
