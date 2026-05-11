@@ -18,34 +18,36 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
       <Container fluid>
         <div className="d-flex align-items-center gap-2">
           <Button
-            variant="outline-secondary"
+            variant="light"
             size="sm"
             type="button"
             aria-label="Toggle menu lateral"
             onClick={onToggleSidebar}
+            className="app-header-icon-btn"
           >
             <i className={`bi ${sidebarCollapsed ? "bi-layout-sidebar-inset" : "bi-layout-sidebar"}`} />
           </Button>
-          <Navbar.Brand as={Link} to="/" className="fw-semibold mb-0">
-            <i className="bi bi-grid-1x2-fill me-2 text-primary" />
-            Valfora Holdings ERP
+          <Navbar.Brand as={Link} to="/" className="fw-semibold mb-0 app-brand">
+            <span className="app-brand-dot" />
+            <span>Valfora Holdings ERP</span>
           </Navbar.Brand>
         </div>
-        <div className="ms-auto d-flex align-items-center gap-3">
+        <div className="ms-auto d-flex align-items-center gap-2 gap-md-3">
           <Button
-            variant="outline-secondary"
+            variant="light"
             size="sm"
             type="button"
             onClick={() => toggleTheme()}
             aria-label={t("theme.toggle")}
             title={theme === "dark" ? t("theme.useLight") : t("theme.useDark")}
+            className="app-header-pill-btn"
           >
             <i className={`bi ${theme === "dark" ? "bi-sun-fill" : "bi-moon-stars-fill"} me-1`} />
             {theme === "dark" ? "Claro" : "Oscuro"}
           </Button>
           {user && (
             <Dropdown align="end">
-              <Dropdown.Toggle variant="outline-secondary" size="sm" id="notif-dropdown">
+              <Dropdown.Toggle variant="light" size="sm" id="notif-dropdown" className="app-header-pill-btn">
                 <i className="bi bi-bell-fill me-1" />
                 Notificaciones
                 {unreadCount > 0 && (
@@ -93,11 +95,11 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
             </Dropdown>
           )}
           {user && (
-            <span className="text-muted small">
+            <span className="text-muted small d-none d-lg-inline">
               {user.first_name || user.email} · {user.role}
             </span>
           )}
-          <Button variant="outline-secondary" size="sm" type="button" onClick={() => logout()}>
+          <Button variant="light" size="sm" type="button" onClick={() => logout()} className="app-header-pill-btn">
             <i className="bi bi-box-arrow-right me-1" />
             Salir
           </Button>

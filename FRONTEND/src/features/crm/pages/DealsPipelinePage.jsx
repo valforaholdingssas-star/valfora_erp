@@ -195,8 +195,17 @@ const DealsPipelinePage = () => {
   }
 
   return (
-    <div>
-      <h1 className="h4 mb-4">Pipeline de deals</h1>
+    <div className="app-page">
+      <div className="app-page-header mb-3 app-page-headline d-flex justify-content-between align-items-end flex-wrap gap-2">
+        <div>
+          <h1 className="h4 mb-1">Pipeline de deals</h1>
+          <p className="text-muted mb-0">Arrastra oportunidades entre etapas y registra actividades en contexto.</p>
+        </div>
+        <Button variant="outline-secondary" size="sm" onClick={load}>
+          <i className="bi bi-arrow-repeat me-1" />
+          Recargar
+        </Button>
+      </div>
       {error && (
         <Alert variant="danger" className="py-2 small">
           {error}

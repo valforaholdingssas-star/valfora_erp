@@ -473,17 +473,18 @@ const AIConfigPage = () => {
       <div className="mb-3">
         <Link to="/">← Inicio</Link>
       </div>
-      <h1 className="h4 mb-3">Configuración de IA (chat)</h1>
-      <p className="text-muted small">
-        Aquí puedes configurar runtime de OpenAI sin reiniciar el servidor y definir perfiles de prompt/modelo.
-        La prueba sandbox usa solo el system prompt y tu mensaje (sin CRM ni RAG).
-      </p>
+      <div className="app-page-headline mb-3">
+        <h1 className="h4 mb-1">Configuración de IA (chat)</h1>
+        <p className="text-muted mb-0">
+          Configura runtime sin reinicio, administra agentes y contexto por agente, y valida respuestas en sandbox.
+        </p>
+      </div>
       {error && <Alert variant="danger">{error}</Alert>}
       {loading ? (
         <Spinner animation="border" />
       ) : (
         <>
-          <div className="border rounded p-3 bg-body-tertiary mb-3">
+          <div className="border rounded p-3 bg-body-tertiary mb-3 app-section-card ai-runtime-panel">
             <h2 className="h6 mb-2">Runtime OpenAI (sin reinicio)</h2>
             <p className="small text-muted mb-2">
               Si guardas una API key aquí, el backend la usa en caliente inmediatamente.
@@ -639,7 +640,7 @@ const AIConfigPage = () => {
 
           <Row className="g-3 mb-4">
             <Col lg={4}>
-              <Card className="h-100">
+              <Card className="h-100 app-section-card ai-agents-panel">
                 <Card.Body>
                   <div className="d-flex align-items-center justify-content-between mb-2">
                     <h2 className="h6 mb-0">Agentes IA</h2>
@@ -656,12 +657,12 @@ const AIConfigPage = () => {
                       + Crear agente
                     </Button>
                   </div>
-                  <div className="d-flex flex-column gap-2">
+                  <div className="d-flex flex-column gap-2 ai-agents-list">
                     {items.map((row) => (
                       <button
                         key={row.id}
                         type="button"
-                        className={`btn text-start border ${row.id === selectedId ? "btn-primary" : "btn-light"}`}
+                        className={`btn text-start border ai-agent-item ${row.id === selectedId ? "btn-primary" : "btn-light"}`}
                         onClick={() => handleSelect(row)}
                       >
                         <div className="fw-semibold text-truncate">{row.name}</div>
@@ -675,13 +676,13 @@ const AIConfigPage = () => {
             </Col>
             <Col lg={8}>
               {!selectedId ? (
-                <Card>
+                <Card className="app-section-card">
                   <Card.Body>
                     <p className="text-muted mb-0">Crea o selecciona un agente para editar su configuración.</p>
                   </Card.Body>
                 </Card>
               ) : (
-                <Card>
+                <Card className="app-section-card ai-agent-editor">
                   <Card.Body>
                     <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                       <h2 className="h6 mb-0">Editor del agente</h2>
@@ -825,7 +826,7 @@ const AIConfigPage = () => {
                           }
                         />
                       </Form.Group>
-                      <div className="border rounded p-2 mb-2 bg-body-tertiary">
+                      <div className="border rounded p-2 mb-2 bg-body-tertiary ai-prompt-preview-block">
                         <div className="d-flex align-items-center justify-content-between">
                           <div className="small fw-semibold mb-0">Prompt efectivo (sí se usa al responder)</div>
                           <Button
@@ -901,7 +902,7 @@ const AIConfigPage = () => {
             </Col>
           </Row>
 
-          <div className="border rounded p-3 bg-body-tertiary mb-3">
+          <div className="border rounded p-3 bg-body-tertiary mb-3 app-section-card ai-knowledge-panel">
             <h2 className="h6 mb-2">Contexto IA (RAG optimizado)</h2>
             <p className="small text-muted mb-2">
               Carga documentos para el agente seleccionado. La IA no envía el documento completo al modelo: recupera
@@ -954,9 +955,9 @@ const AIConfigPage = () => {
               ) : knowledgeDocs.length === 0 ? (
                 <p className="small text-muted mb-0">No hay documentos cargados para este agente.</p>
               ) : (
-                <div className="d-flex flex-column gap-1">
+                <div className="d-flex flex-column gap-1 ai-documents-list">
                   {knowledgeDocs.map((doc) => (
-                    <div key={doc.id} className="border rounded px-2 py-2">
+                    <div key={doc.id} className="border rounded px-2 py-2 ai-document-item">
                       <div className="d-flex justify-content-between align-items-start gap-2">
                         <div className="small flex-grow-1">
                           {editingDocId === doc.id ? (
@@ -1042,7 +1043,7 @@ const AIConfigPage = () => {
           </div>
 
           {selectedId && (
-            <div className="border rounded p-3 bg-body-secondary">
+            <div className="border rounded p-3 bg-body-secondary app-section-card ai-sandbox-panel">
               <h2 className="h6 mb-2">Probar respuesta (sandbox)</h2>
               <Form onSubmit={handleTest}>
                 <Form.Group className="mb-2">

@@ -8,7 +8,7 @@ import { useAuth } from "../../contexts/AuthContext.jsx";
 import { useNotifications } from "../../contexts/NotificationContext.jsx";
 
 const linkClass = ({ isActive }) =>
-  `nav-link rounded d-flex align-items-center gap-2 px-2 ${isActive ? "active bg-primary text-white" : ""}`;
+  `nav-link app-nav-link d-flex align-items-center gap-2 px-2 ${isActive ? "active" : ""}`;
 
 const itemIsActive = (pathname, to) => {
   if (to === "/") return pathname === "/";
@@ -202,7 +202,13 @@ const Sidebar = ({ collapsed }) => {
         <Nav className="flex-column gap-1">
           {sections.flatMap((section) =>
             section.items.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.to === "/"} className={linkClass}>
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === "/"}
+                className={linkClass}
+                title={item.label}
+              >
                 <i className={`bi ${item.icon}`} />
                 {item.to === "/chat" && chatUnreadCount > 0 && (
                   <span className="badge rounded-pill bg-danger ms-auto">

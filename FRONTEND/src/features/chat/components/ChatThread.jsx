@@ -155,6 +155,11 @@ const ChatThread = ({
         >
           {loading ? (
             <Spinner animation="border" size="sm" />
+          ) : !(messages || []).length ? (
+            <div className="app-empty-state-mini">
+              <i className="bi bi-chat-square-text" />
+              <p className="mb-0">Aún no hay mensajes en esta conversación.</p>
+            </div>
           ) : (
             (messages || []).map((m) => (
               <div

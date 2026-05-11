@@ -211,16 +211,19 @@ const UsersManagementPage = () => {
     matrixData.roles.find((r) => r.role === roleCode)?.label || roleCode.replace("_", " ");
 
   return (
-    <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1 className="h4 mb-0">Usuarios y permisos</h1>
+    <div className="app-page">
+      <div className="d-flex justify-content-between align-items-center mb-4 app-page-headline flex-wrap gap-2">
+        <div>
+          <h1 className="h4 mb-1">Usuarios y permisos</h1>
+          <p className="text-muted mb-0">Administra acceso por rol y activación de cuentas del equipo.</p>
+        </div>
         <Button size="sm" onClick={openCreate} disabled={!canEditUsers}>
           Nuevo usuario
         </Button>
       </div>
 
       <Form
-        className="row g-2 align-items-end mb-3"
+        className="row g-2 align-items-end mb-3 app-section-card p-3 m-0"
         onSubmit={(e) => {
           e.preventDefault();
           void loadUsers();
@@ -263,47 +266,56 @@ const UsersManagementPage = () => {
       {error && <Alert variant="danger">{error}</Alert>}
 
       {loading ? (
-        <Spinner animation="border" />
+        <div className="text-center py-4"><Spinner animation="border" /></div>
       ) : (
         <>
-          <Table responsive hover size="sm" className="shadow-sm">
-            <thead>
-              <tr>
-                <th>Email</th>
-                <th>Nombre</th>
-                <th>Rol</th>
-                <th>Estado</th>
-                <th style={{ width: 220 }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(result.results || []).map((u) => (
-                <tr key={u.id}>
-                  <td>{u.email}</td>
-                  <td>{`${u.first_name || ""} ${u.last_name || ""}`.trim() || "-"}</td>
-                  <td className="text-capitalize">{u.role?.replace("_", " ") || "-"}</td>
-                  <td>
-                    <Badge bg={u.is_active ? "success" : "secondary"}>
-                      {u.is_active ? "Activo" : "Inactivo"}
-                    </Badge>
-                  </td>
-                  <td className="d-flex gap-2">
-                    <Button size="sm" variant="outline-primary" onClick={() => openEdit(u)} disabled={!canEditUsers}>
-                      Editar
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={u.is_active ? "outline-warning" : "outline-success"}
-                      onClick={() => void toggleActive(u)}
-                      disabled={!canEditUsers}
-                    >
-                      {u.is_active ? "Desactivar" : "Activar"}
-                    </Button>
-                  </td>
+          <div className="app-section-card p-2">
+            <Table responsive hover size="sm" className="shadow-sm mb-0">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Nombre</th>
+                  <th>Rol</th>
+                  <th>Estado</th>
+                  <th style={{ width: 220 }}>Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {(result.results || []).map((u) => (
+                  <tr key={u.id}>
+                    <td>{u.email}</td>
+                    <td>{`${u.first_name || ""} ${u.last_name || ""}`.trim() || "-"}</td>
+                    <td className="text-capitalize">{u.role?.replace("_", " ") || "-"}</td>
+                    <td>
+                      <Badge bg={u.is_active ? "success" : "secondary"}>
+                        {u.is_active ? "Activo" : "Inactivo"}
+                      </Badge>
+                    </td>
+                    <td className="d-flex gap-2">
+                      <Button size="sm" variant="outline-primary" onClick={() => openEdit(u)} disabled={!canEditUsers}>
+                        Editar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={u.is_active ? "outline-warning" : "outline-success"}
+                        onClick={() => void toggleActive(u)}
+                        disabled={!canEditUsers}
+                      >
+                        {u.is_active ? "Desactivar" : "Activar"}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+                {!result.results?.length && (
+                  <tr>
+                    <td colSpan={5} className="text-muted text-center py-4">
+                      No hay usuarios para esos filtros.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </div>
           <p className="text-muted small mb-4">
             Total: {result.count ?? result.results?.length ?? 0} usuarios
           </p>
@@ -469,4 +481,3 @@ const UsersManagementPage = () => {
 };
 
 export default UsersManagementPage;
-

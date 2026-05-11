@@ -709,6 +709,12 @@ const ChatView = () => {
 
   return (
     <div className="app-page app-chat-page">
+      <div className="app-page-header app-page-headline app-chat-headline mb-3">
+        <h1 className="h4 mb-1">Conversaciones</h1>
+        <p className="text-muted mb-0">
+          Gestiona conversaciones en tiempo real, contexto de IA y seguimiento comercial desde un solo flujo.
+        </p>
+      </div>
       <div className={`app-chat-layout ${dealPanelCollapsed ? "app-chat-layout-meta-collapsed" : ""}`}>
         <ChatSidebar
           loading={loadingList}

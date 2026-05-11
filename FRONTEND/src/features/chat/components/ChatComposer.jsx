@@ -94,8 +94,11 @@ const ChatComposer = ({
         </div>
       )}
       {canFreeMessage && (
-        <div className="small text-muted mt-1">
+        <div className="small text-muted mt-1 d-flex flex-wrap justify-content-between gap-2">
+          <span>Escribe el mensaje y usa “Enviar”.</span>
+          <span>
           WhatsApp: imágenes JPG/PNG hasta 5 MB. Documentos permitidos (PDF, DOCX, XLSX, PPTX, TXT, CSV, ZIP) hasta 100 MB.
+          </span>
         </div>
       )}
     </Form>

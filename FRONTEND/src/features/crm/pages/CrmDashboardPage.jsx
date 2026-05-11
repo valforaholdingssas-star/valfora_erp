@@ -32,25 +32,24 @@ const CrmDashboardPage = () => {
 
   return (
     <div className="app-page">
-      <div className="app-page-header mb-4">
+      <div className="app-page-header mb-4 app-page-headline">
         <h1 className="h4 mb-1">Dashboard CRM</h1>
-        <p className="text-muted small mb-0">Rendimiento del pipeline y actividad reciente</p>
+        <p className="text-muted mb-0">Rendimiento del pipeline y actividad reciente</p>
       </div>
       <Row className="g-3 mb-4">
         {Object.entries(stages).map(([stage, info]) => (
           <Col md={4} key={stage}>
-            <Card className="app-card h-100">
+            <Card className="app-card h-100 app-kpi-card">
               <Card.Body>
-                <Card.Title className="h6 text-capitalize mb-2">{stage.replace("_", " ")}</Card.Title>
-                <p className="mb-0 small text-muted">
-                  {info.count} deals · Valor {formatDealValue(info.value)}
-                </p>
+                <p className="text-uppercase app-kpi-label mb-1">{stage.replace("_", " ")}</p>
+                <div className="app-kpi mb-1">{info.count} deals</div>
+                <p className="mb-0 text-muted">Valor {formatDealValue(info.value)}</p>
               </Card.Body>
             </Card>
           </Col>
         ))}
       </Row>
-      <Card className="app-card">
+      <Card className="app-card app-section-card">
         <Card.Body>
           <Card.Title className="h6 mb-3">
             <i className="bi bi-clock-history me-2 text-primary" />

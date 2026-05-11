@@ -1,48 +1,49 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { Container } from "react-bootstrap";
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import AIConfigPage from "../../features/ai-config/pages/AIConfigPage.jsx";
-import CalendarView from "../../features/calendar/pages/CalendarView.jsx";
-import ChatView from "../../features/chat/pages/ChatView.jsx";
-import CrmDashboardPage from "../../features/crm/pages/CrmDashboardPage.jsx";
-import ContactDetailPage from "../../features/crm/pages/ContactDetailPage.jsx";
-import ContactFormPage from "../../features/crm/pages/ContactFormPage.jsx";
-import ContactsListPage from "../../features/crm/pages/ContactsListPage.jsx";
-import CompanyDetailPage from "../../features/crm/pages/CompanyDetailPage.jsx";
-import CompanyFormPage from "../../features/crm/pages/CompanyFormPage.jsx";
-import CompaniesListPage from "../../features/crm/pages/CompaniesListPage.jsx";
-import DealDetailPage from "../../features/crm/pages/DealDetailPage.jsx";
-import DealsPipelinePage from "../../features/crm/pages/DealsPipelinePage.jsx";
-import DashboardPage from "../../features/dashboard/pages/DashboardPage.jsx";
-import ContractDetail from "../../features/finance/pages/ContractDetail.jsx";
-import ContractForm from "../../features/finance/pages/ContractForm.jsx";
-import ContractsList from "../../features/finance/pages/ContractsList.jsx";
-import FinanceDashboard from "../../features/finance/pages/FinanceDashboard.jsx";
-import InvoiceDetail from "../../features/finance/pages/InvoiceDetail.jsx";
-import InvoiceForm from "../../features/finance/pages/InvoiceForm.jsx";
-import InvoicesList from "../../features/finance/pages/InvoicesList.jsx";
-import PaymentForm from "../../features/finance/pages/PaymentForm.jsx";
-import PaymentsList from "../../features/finance/pages/PaymentsList.jsx";
-import ReceivablesView from "../../features/finance/pages/ReceivablesView.jsx";
-import UsersManagementPage from "../../features/users/pages/UsersManagementPage.jsx";
-import WikiDocumentViewPage from "../../features/wiki/pages/WikiDocumentViewPage.jsx";
-import WikiDocumentsPage from "../../features/wiki/pages/WikiDocumentsPage.jsx";
-import WhatsAppAccountsPage from "../../features/settings/whatsapp/pages/WhatsAppAccountsPage.jsx";
-import WhatsAppPhoneNumbersPage from "../../features/settings/whatsapp/pages/WhatsAppPhoneNumbersPage.jsx";
-import WhatsAppTemplatesPage from "../../features/settings/whatsapp/pages/WhatsAppTemplatesPage.jsx";
-import WhatsAppTemplateForm from "../../features/settings/whatsapp/pages/WhatsAppTemplateForm.jsx";
-import WhatsAppProfilePage from "../../features/settings/whatsapp/pages/WhatsAppProfilePage.jsx";
-import WhatsAppAnalyticsPage from "../../features/settings/whatsapp/pages/WhatsAppAnalyticsPage.jsx";
-import LeadEngineConfigPage from "../../features/settings/lead-engine/pages/LeadEngineConfigPage.jsx";
-import PipelineAutomationPage from "../../features/settings/lead-engine/pages/PipelineAutomationPage.jsx";
-import LeadEngineDashboardPage from "../../features/settings/lead-engine/pages/LeadEngineDashboardPage.jsx";
-import ActivityLogPage from "../../features/settings/audit/pages/ActivityLogPage.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 import { useI18n } from "../../contexts/I18nContext.jsx";
 import Footer from "./Footer.jsx";
 import Header from "./Header.jsx";
 import Sidebar from "./Sidebar.jsx";
+
+const DashboardPage = lazy(() => import("../../features/dashboard/pages/DashboardPage.jsx"));
+const CrmDashboardPage = lazy(() => import("../../features/crm/pages/CrmDashboardPage.jsx"));
+const ContactsListPage = lazy(() => import("../../features/crm/pages/ContactsListPage.jsx"));
+const ContactFormPage = lazy(() => import("../../features/crm/pages/ContactFormPage.jsx"));
+const ContactDetailPage = lazy(() => import("../../features/crm/pages/ContactDetailPage.jsx"));
+const CompaniesListPage = lazy(() => import("../../features/crm/pages/CompaniesListPage.jsx"));
+const CompanyFormPage = lazy(() => import("../../features/crm/pages/CompanyFormPage.jsx"));
+const CompanyDetailPage = lazy(() => import("../../features/crm/pages/CompanyDetailPage.jsx"));
+const DealsPipelinePage = lazy(() => import("../../features/crm/pages/DealsPipelinePage.jsx"));
+const DealDetailPage = lazy(() => import("../../features/crm/pages/DealDetailPage.jsx"));
+const ChatView = lazy(() => import("../../features/chat/pages/ChatView.jsx"));
+const CalendarView = lazy(() => import("../../features/calendar/pages/CalendarView.jsx"));
+const ContractsList = lazy(() => import("../../features/finance/pages/ContractsList.jsx"));
+const ContractForm = lazy(() => import("../../features/finance/pages/ContractForm.jsx"));
+const ContractDetail = lazy(() => import("../../features/finance/pages/ContractDetail.jsx"));
+const InvoicesList = lazy(() => import("../../features/finance/pages/InvoicesList.jsx"));
+const InvoiceForm = lazy(() => import("../../features/finance/pages/InvoiceForm.jsx"));
+const InvoiceDetail = lazy(() => import("../../features/finance/pages/InvoiceDetail.jsx"));
+const PaymentsList = lazy(() => import("../../features/finance/pages/PaymentsList.jsx"));
+const PaymentForm = lazy(() => import("../../features/finance/pages/PaymentForm.jsx"));
+const ReceivablesView = lazy(() => import("../../features/finance/pages/ReceivablesView.jsx"));
+const FinanceDashboard = lazy(() => import("../../features/finance/pages/FinanceDashboard.jsx"));
+const WikiDocumentsPage = lazy(() => import("../../features/wiki/pages/WikiDocumentsPage.jsx"));
+const WikiDocumentViewPage = lazy(() => import("../../features/wiki/pages/WikiDocumentViewPage.jsx"));
+const AIConfigPage = lazy(() => import("../../features/ai-config/pages/AIConfigPage.jsx"));
+const UsersManagementPage = lazy(() => import("../../features/users/pages/UsersManagementPage.jsx"));
+const ActivityLogPage = lazy(() => import("../../features/settings/audit/pages/ActivityLogPage.jsx"));
+const WhatsAppAccountsPage = lazy(() => import("../../features/settings/whatsapp/pages/WhatsAppAccountsPage.jsx"));
+const WhatsAppPhoneNumbersPage = lazy(() => import("../../features/settings/whatsapp/pages/WhatsAppPhoneNumbersPage.jsx"));
+const WhatsAppTemplatesPage = lazy(() => import("../../features/settings/whatsapp/pages/WhatsAppTemplatesPage.jsx"));
+const WhatsAppTemplateForm = lazy(() => import("../../features/settings/whatsapp/pages/WhatsAppTemplateForm.jsx"));
+const WhatsAppProfilePage = lazy(() => import("../../features/settings/whatsapp/pages/WhatsAppProfilePage.jsx"));
+const WhatsAppAnalyticsPage = lazy(() => import("../../features/settings/whatsapp/pages/WhatsAppAnalyticsPage.jsx"));
+const LeadEngineConfigPage = lazy(() => import("../../features/settings/lead-engine/pages/LeadEngineConfigPage.jsx"));
+const PipelineAutomationPage = lazy(() => import("../../features/settings/lead-engine/pages/PipelineAutomationPage.jsx"));
+const LeadEngineDashboardPage = lazy(() => import("../../features/settings/lead-engine/pages/LeadEngineDashboardPage.jsx"));
 
 const MainLayout = () => {
   const { t } = useI18n();
@@ -82,56 +83,58 @@ const MainLayout = () => {
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
       />
-      <div className="d-flex flex-grow-1">
+      <div className="app-body">
         <Sidebar collapsed={sidebarCollapsed} />
-        <main id="main-content" className="app-main flex-grow-1" tabIndex={-1}>
-          <Container fluid>
-            <Routes>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/crm" element={canViewCRM ? <CrmDashboardPage /> : <Navigate to="/" replace />} />
-              <Route path="/crm/contacts" element={canViewCRM ? <ContactsListPage /> : <Navigate to="/" replace />} />
-              <Route path="/crm/contacts/new" element={canViewCRM ? <ContactFormPage /> : <Navigate to="/" replace />} />
-              <Route path="/crm/contacts/:id/edit" element={canViewCRM ? <ContactFormPage /> : <Navigate to="/" replace />} />
-              <Route path="/crm/contacts/:id" element={canViewCRM ? <ContactDetailPage /> : <Navigate to="/" replace />} />
-              <Route path="/crm/companies" element={canViewCRM ? <CompaniesListPage /> : <Navigate to="/" replace />} />
-              <Route path="/crm/companies/new" element={canViewCRM ? <CompanyFormPage /> : <Navigate to="/" replace />} />
-              <Route path="/crm/companies/:id/edit" element={canViewCRM ? <CompanyFormPage /> : <Navigate to="/" replace />} />
-              <Route path="/crm/companies/:id" element={canViewCRM ? <CompanyDetailPage /> : <Navigate to="/" replace />} />
-              <Route path="/crm/pipeline" element={canViewCRM ? <DealsPipelinePage /> : <Navigate to="/" replace />} />
-              <Route path="/crm/deals/:id" element={canViewCRM ? <DealDetailPage /> : <Navigate to="/" replace />} />
-              <Route path="/chat" element={canViewChat ? <ChatView /> : <Navigate to="/" replace />} />
-              <Route path="/chat/deal/:dealId" element={canViewChat ? <ChatView /> : <Navigate to="/" replace />} />
-              <Route path="/chat/contact/:contactId" element={<Navigate to="/chat" replace />} />
-              <Route path="/calendar" element={canViewCalendar ? <CalendarView /> : <Navigate to="/" replace />} />
-              <Route path="/finance/contracts" element={canViewFinance ? <ContractsList /> : <Navigate to="/" replace />} />
-              <Route path="/finance/contracts/new" element={canViewFinance ? <ContractForm /> : <Navigate to="/" replace />} />
-              <Route path="/finance/contracts/:id/edit" element={canViewFinance ? <ContractForm /> : <Navigate to="/" replace />} />
-              <Route path="/finance/contracts/:id" element={canViewFinance ? <ContractDetail /> : <Navigate to="/" replace />} />
-              <Route path="/finance/invoices" element={canViewFinance ? <InvoicesList /> : <Navigate to="/" replace />} />
-              <Route path="/finance/invoices/new" element={canViewFinance ? <InvoiceForm /> : <Navigate to="/" replace />} />
-              <Route path="/finance/invoices/:id/edit" element={canViewFinance ? <InvoiceForm /> : <Navigate to="/" replace />} />
-              <Route path="/finance/invoices/:id" element={canViewFinance ? <InvoiceDetail /> : <Navigate to="/" replace />} />
-              <Route path="/finance/payments" element={canViewFinance ? <PaymentsList /> : <Navigate to="/" replace />} />
-              <Route path="/finance/payments/new" element={canViewFinance ? <PaymentForm /> : <Navigate to="/" replace />} />
-              <Route path="/finance/receivables" element={canViewFinance ? <ReceivablesView /> : <Navigate to="/" replace />} />
-              <Route path="/finance/dashboard" element={canViewFinance ? <FinanceDashboard /> : <Navigate to="/" replace />} />
-              <Route path="/wiki" element={canViewWiki ? <WikiDocumentsPage /> : <Navigate to="/" replace />} />
-              <Route path="/wiki/:slug" element={canViewWiki ? <WikiDocumentViewPage /> : <Navigate to="/" replace />} />
-              <Route path="/settings/ai" element={canViewAIConfig ? <AIConfigPage /> : <Navigate to="/" replace />} />
-              <Route path="/settings/users" element={canViewUsers ? <UsersManagementPage /> : <Navigate to="/" replace />} />
-              <Route path="/settings/activity-log" element={canViewUsers ? <ActivityLogPage /> : <Navigate to="/" replace />} />
-              <Route path="/settings/whatsapp/accounts" element={canViewWhatsapp ? <WhatsAppAccountsPage /> : <Navigate to="/" replace />} />
-              <Route path="/settings/whatsapp/phone-numbers" element={canViewWhatsapp ? <WhatsAppPhoneNumbersPage /> : <Navigate to="/" replace />} />
-              <Route path="/settings/whatsapp/templates" element={canViewWhatsapp ? <WhatsAppTemplatesPage /> : <Navigate to="/" replace />} />
-              <Route path="/settings/whatsapp/templates/new" element={canViewWhatsapp ? <WhatsAppTemplateForm /> : <Navigate to="/" replace />} />
-              <Route path="/settings/whatsapp/templates/:id/edit" element={canViewWhatsapp ? <WhatsAppTemplateForm /> : <Navigate to="/" replace />} />
-              <Route path="/settings/whatsapp/profile" element={canViewWhatsapp ? <WhatsAppProfilePage /> : <Navigate to="/" replace />} />
-              <Route path="/settings/whatsapp/analytics" element={canViewWhatsapp ? <WhatsAppAnalyticsPage /> : <Navigate to="/" replace />} />
-              <Route path="/settings/lead-engine" element={canViewCRM ? <LeadEngineConfigPage /> : <Navigate to="/" replace />} />
-              <Route path="/settings/lead-engine/pipeline" element={canViewCRM ? <PipelineAutomationPage /> : <Navigate to="/" replace />} />
-              <Route path="/settings/lead-engine/dashboard" element={canViewCRM ? <LeadEngineDashboardPage /> : <Navigate to="/" replace />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+        <main id="main-content" className="app-main" tabIndex={-1}>
+          <Container fluid className="app-main-container">
+            <Suspense fallback={<div className="app-route-loader">Cargando módulo…</div>}>
+              <Routes>
+                <Route path="/" element={<DashboardPage />} />
+                <Route path="/crm" element={canViewCRM ? <CrmDashboardPage /> : <Navigate to="/" replace />} />
+                <Route path="/crm/contacts" element={canViewCRM ? <ContactsListPage /> : <Navigate to="/" replace />} />
+                <Route path="/crm/contacts/new" element={canViewCRM ? <ContactFormPage /> : <Navigate to="/" replace />} />
+                <Route path="/crm/contacts/:id/edit" element={canViewCRM ? <ContactFormPage /> : <Navigate to="/" replace />} />
+                <Route path="/crm/contacts/:id" element={canViewCRM ? <ContactDetailPage /> : <Navigate to="/" replace />} />
+                <Route path="/crm/companies" element={canViewCRM ? <CompaniesListPage /> : <Navigate to="/" replace />} />
+                <Route path="/crm/companies/new" element={canViewCRM ? <CompanyFormPage /> : <Navigate to="/" replace />} />
+                <Route path="/crm/companies/:id/edit" element={canViewCRM ? <CompanyFormPage /> : <Navigate to="/" replace />} />
+                <Route path="/crm/companies/:id" element={canViewCRM ? <CompanyDetailPage /> : <Navigate to="/" replace />} />
+                <Route path="/crm/pipeline" element={canViewCRM ? <DealsPipelinePage /> : <Navigate to="/" replace />} />
+                <Route path="/crm/deals/:id" element={canViewCRM ? <DealDetailPage /> : <Navigate to="/" replace />} />
+                <Route path="/chat" element={canViewChat ? <ChatView /> : <Navigate to="/" replace />} />
+                <Route path="/chat/deal/:dealId" element={canViewChat ? <ChatView /> : <Navigate to="/" replace />} />
+                <Route path="/chat/contact/:contactId" element={<Navigate to="/chat" replace />} />
+                <Route path="/calendar" element={canViewCalendar ? <CalendarView /> : <Navigate to="/" replace />} />
+                <Route path="/finance/contracts" element={canViewFinance ? <ContractsList /> : <Navigate to="/" replace />} />
+                <Route path="/finance/contracts/new" element={canViewFinance ? <ContractForm /> : <Navigate to="/" replace />} />
+                <Route path="/finance/contracts/:id/edit" element={canViewFinance ? <ContractForm /> : <Navigate to="/" replace />} />
+                <Route path="/finance/contracts/:id" element={canViewFinance ? <ContractDetail /> : <Navigate to="/" replace />} />
+                <Route path="/finance/invoices" element={canViewFinance ? <InvoicesList /> : <Navigate to="/" replace />} />
+                <Route path="/finance/invoices/new" element={canViewFinance ? <InvoiceForm /> : <Navigate to="/" replace />} />
+                <Route path="/finance/invoices/:id/edit" element={canViewFinance ? <InvoiceForm /> : <Navigate to="/" replace />} />
+                <Route path="/finance/invoices/:id" element={canViewFinance ? <InvoiceDetail /> : <Navigate to="/" replace />} />
+                <Route path="/finance/payments" element={canViewFinance ? <PaymentsList /> : <Navigate to="/" replace />} />
+                <Route path="/finance/payments/new" element={canViewFinance ? <PaymentForm /> : <Navigate to="/" replace />} />
+                <Route path="/finance/receivables" element={canViewFinance ? <ReceivablesView /> : <Navigate to="/" replace />} />
+                <Route path="/finance/dashboard" element={canViewFinance ? <FinanceDashboard /> : <Navigate to="/" replace />} />
+                <Route path="/wiki" element={canViewWiki ? <WikiDocumentsPage /> : <Navigate to="/" replace />} />
+                <Route path="/wiki/:slug" element={canViewWiki ? <WikiDocumentViewPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/ai" element={canViewAIConfig ? <AIConfigPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/users" element={canViewUsers ? <UsersManagementPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/activity-log" element={canViewUsers ? <ActivityLogPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/whatsapp/accounts" element={canViewWhatsapp ? <WhatsAppAccountsPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/whatsapp/phone-numbers" element={canViewWhatsapp ? <WhatsAppPhoneNumbersPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/whatsapp/templates" element={canViewWhatsapp ? <WhatsAppTemplatesPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/whatsapp/templates/new" element={canViewWhatsapp ? <WhatsAppTemplateForm /> : <Navigate to="/" replace />} />
+                <Route path="/settings/whatsapp/templates/:id/edit" element={canViewWhatsapp ? <WhatsAppTemplateForm /> : <Navigate to="/" replace />} />
+                <Route path="/settings/whatsapp/profile" element={canViewWhatsapp ? <WhatsAppProfilePage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/whatsapp/analytics" element={canViewWhatsapp ? <WhatsAppAnalyticsPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/lead-engine" element={canViewCRM ? <LeadEngineConfigPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/lead-engine/pipeline" element={canViewCRM ? <PipelineAutomationPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/lead-engine/dashboard" element={canViewCRM ? <LeadEngineDashboardPage /> : <Navigate to="/" replace />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
           </Container>
         </main>
       </div>

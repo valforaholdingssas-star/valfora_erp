@@ -85,15 +85,18 @@ const ActivityLogPage = () => {
   const totalPages = Math.max(1, Math.ceil((logs.count || 0) / 50));
 
   return (
-    <div>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h1 className="h4 mb-0">Log de actividad</h1>
+    <div className="app-page">
+      <div className="d-flex justify-content-between align-items-center mb-3 app-page-headline flex-wrap gap-2">
+        <div>
+          <h1 className="h4 mb-1">Log de actividad</h1>
+          <p className="text-muted mb-0">Audita acciones críticas de usuarios y cambios de información.</p>
+        </div>
         <Button size="sm" variant="outline-secondary" onClick={() => void loadLogs(1)}>
           Recargar
         </Button>
       </div>
 
-      <Card className="app-card mb-3">
+      <Card className="app-card mb-3 app-section-card">
         <Card.Body>
           <Form
             className="row g-2 align-items-end"
@@ -172,10 +175,10 @@ const ActivityLogPage = () => {
 
       {error ? <Alert variant="danger">{error}</Alert> : null}
 
-      <Card className="app-card">
+      <Card className="app-card app-section-card">
         <Card.Body>
           {loading ? (
-            <Spinner animation="border" size="sm" />
+            <div className="text-center py-4"><Spinner animation="border" size="sm" /></div>
           ) : (
             <>
               <Table responsive hover size="sm" className="mb-3">

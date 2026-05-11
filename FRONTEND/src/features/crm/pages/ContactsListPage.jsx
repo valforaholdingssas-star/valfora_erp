@@ -119,15 +119,18 @@ const ContactsListPage = () => {
   };
 
   return (
-    <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1 className="h4 mb-0">Contactos</h1>
+    <div className="app-page">
+      <div className="d-flex justify-content-between align-items-center mb-4 app-page-headline flex-wrap gap-2">
+        <div>
+          <h1 className="h4 mb-1">Contactos</h1>
+          <p className="text-muted mb-0">Gestiona pipeline comercial, responsables y seguimiento por urgencia.</p>
+        </div>
         <Button as={Link} to="/crm/contacts/new" variant="primary" size="sm">
           Nuevo contacto
         </Button>
       </div>
-      <Form className="row g-2 mb-3" onSubmit={handleFilter}>
-        <div className="col-md-4">
+      <Form className="row g-2 mb-3 app-section-card p-3 m-0" onSubmit={handleFilter}>
+        <div className="col-md-5">
           <Form.Control
             placeholder="Buscar email o nombre"
             value={search}
@@ -151,7 +154,7 @@ const ContactsListPage = () => {
       </Form>
 
       {!loading && result.results?.length > 0 && (
-        <div className="d-flex flex-wrap align-items-end gap-2 mb-3 p-3 bg-body-secondary rounded border">
+        <div className="d-flex flex-wrap align-items-end gap-2 mb-3 p-3 bg-body-secondary rounded border app-section-card">
           <span className="small text-muted me-2">
             {selected.size} seleccionado(s)
           </span>
@@ -214,52 +217,61 @@ const ContactsListPage = () => {
 
       {error && <p className="text-danger">{error}</p>}
       {loading ? (
-        <Spinner animation="border" />
+        <div className="text-center py-4"><Spinner animation="border" /></div>
       ) : (
-        <Table responsive hover size="sm" className="shadow-sm">
-          <thead>
-            <tr>
-              <th style={{ width: 40 }}>
-                <Form.Check
-                  aria-label="Seleccionar todos"
-                  checked={
-                    result.results?.length > 0 && selected.size === result.results.length
-                  }
-                  onChange={toggleAll}
-                />
-              </th>
-              <th>Nombre</th>
-              <th>Email</th>
-              <th>Fuente</th>
-              <th>Etapa</th>
-              <th>Urgencia</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.results?.map((c) => (
-              <tr key={c.id}>
-                <td>
+        <div className="app-section-card p-2">
+          <Table responsive hover size="sm" className="shadow-sm mb-0">
+            <thead>
+              <tr>
+                <th style={{ width: 40 }}>
                   <Form.Check
-                    aria-label={`Seleccionar ${c.email}`}
-                    checked={selected.has(c.id)}
-                    onChange={() => toggleRow(c.id)}
+                    aria-label="Seleccionar todos"
+                    checked={
+                      result.results?.length > 0 && selected.size === result.results.length
+                    }
+                    onChange={toggleAll}
                   />
-                </td>
-                <td>
-                  <Link to={`/crm/contacts/${c.id}`}>
-                    {c.first_name} {c.last_name}
-                  </Link>
-                </td>
-                <td>{c.email}</td>
-                <td className="text-capitalize">{(c.source || "other").replace("_", " ")}</td>
-                <td className="text-capitalize">{c.lifecycle_stage?.replace("_", " ")}</td>
-                <td>
-                  <ContactDaysBadge days={c.days_since_last_contact} />
-                </td>
+                </th>
+                <th>Nombre</th>
+                <th>Email</th>
+                <th>Fuente</th>
+                <th>Etapa</th>
+                <th>Urgencia</th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {result.results?.map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    <Form.Check
+                      aria-label={`Seleccionar ${c.email}`}
+                      checked={selected.has(c.id)}
+                      onChange={() => toggleRow(c.id)}
+                    />
+                  </td>
+                  <td>
+                    <Link to={`/crm/contacts/${c.id}`}>
+                      {c.first_name} {c.last_name}
+                    </Link>
+                  </td>
+                  <td>{c.email}</td>
+                  <td className="text-capitalize">{(c.source || "other").replace("_", " ")}</td>
+                  <td className="text-capitalize">{c.lifecycle_stage?.replace("_", " ")}</td>
+                  <td>
+                    <ContactDaysBadge days={c.days_since_last_contact} />
+                  </td>
+                </tr>
+              ))}
+              {!result.results?.length && (
+                <tr>
+                  <td colSpan={6} className="text-muted text-center py-4">
+                    No hay contactos con los filtros actuales.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
+        </div>
       )}
       {!loading && (
         <p className="text-muted small">

@@ -64,7 +64,13 @@ const ChatSidebar = ({
       <div className="app-chat-sidebar-head">
         <div className="d-flex justify-content-between align-items-center px-2 mb-2">
           <h2 className="h6 mb-0">Chat</h2>
-          <button type="button" className="btn btn-outline-secondary btn-sm" aria-label="Nueva conversación">
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm"
+            aria-label="Nueva conversación"
+            title="Próximamente"
+            disabled
+          >
             <i className="bi bi-plus-lg" />
           </button>
         </div>
@@ -223,6 +229,12 @@ const ChatSidebar = ({
         </div>
       ) : (
         <div className="d-flex flex-column gap-1 app-chat-sidebar-list">
+          {(!conversations || conversations.length === 0) && (
+            <div className="app-empty-state-mini">
+              <i className="bi bi-chat-left-text" />
+              <p className="mb-0">No hay conversaciones para esos filtros.</p>
+            </div>
+          )}
           {conversations?.map((c) => (
             <button
               key={c.id}

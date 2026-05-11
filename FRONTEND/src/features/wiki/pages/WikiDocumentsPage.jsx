@@ -131,8 +131,11 @@ const WikiDocumentsPage = () => {
 
   return (
     <div className="app-page">
-      <div className="d-flex justify-content-between align-items-center mb-3 app-page-header">
-        <h1 className="h4 mb-0">Wiki · Gestión</h1>
+      <div className="d-flex justify-content-between align-items-center mb-3 app-page-header app-page-headline">
+        <div>
+          <h1 className="h4 mb-1">Wiki · Gestión</h1>
+          <p className="text-muted mb-0">Administra el contenido HTML y la publicación de documentos.</p>
+        </div>
         <Button variant="outline-secondary" onClick={resetForm}>
           Nuevo documento
         </Button>
@@ -140,8 +143,12 @@ const WikiDocumentsPage = () => {
       {error && <Alert variant="danger" className="py-2">{error}</Alert>}
       <Row className="g-3">
         <Col lg={7}>
-          <Card className="app-card">
+          <Card className="app-card app-section-card">
             <Card.Body>
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <h2 className="h6 mb-0">Documentos</h2>
+                <Badge bg="secondary">{rows.length}</Badge>
+              </div>
               <Table size="sm" responsive hover>
                 <thead>
                   <tr>
@@ -178,7 +185,7 @@ const WikiDocumentsPage = () => {
           </Card>
         </Col>
         <Col lg={5}>
-          <Card className="app-card">
+          <Card className="app-card app-section-card wiki-editor-card">
             <Card.Body>
               <Form onSubmit={handleSubmit}>
                 <Form.Group className="mb-2">
