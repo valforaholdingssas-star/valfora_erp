@@ -27,6 +27,9 @@ const ChatSidebar = ({
   globalAiModeEnabled,
   globalAiModeLoading,
   onToggleGlobalAiMode,
+  showOnlyOverdue,
+  onToggleShowOnlyOverdue,
+  className = "",
 }) => {
   const [draftFilters, setDraftFilters] = useState(filters);
 
@@ -60,10 +63,13 @@ const ChatSidebar = ({
   };
 
   return (
-    <div className="p-2 h-100 app-chat-sidebar">
+    <div className={`p-2 h-100 app-chat-sidebar ${className}`}>
       <div className="app-chat-sidebar-head">
         <div className="d-flex justify-content-between align-items-center px-2 mb-2">
-          <h2 className="h6 mb-0">Chat</h2>
+          <div>
+            <h2 className="h6 mb-0">Bandeja</h2>
+            <div className="small text-muted">{conversations?.length || 0} conversaciones</div>
+          </div>
           <button
             type="button"
             className="btn btn-outline-secondary btn-sm"
@@ -103,6 +109,18 @@ const ChatSidebar = ({
           >
             Todos
           </Button>
+        </div>
+        <div className="d-flex align-items-center justify-content-between mb-2 border rounded px-2 py-1">
+          <span className="small fw-semibold mb-0 d-flex align-items-center gap-1">
+            <i className="bi bi-alarm" />
+            Solo vencidas SLA
+          </span>
+          <Form.Check
+            type="switch"
+            id="chat-overdue-switch"
+            checked={Boolean(showOnlyOverdue)}
+            onChange={(e) => onToggleShowOnlyOverdue?.(e.target.checked)}
+          />
         </div>
         {showGlobalAiSwitch && (
           <div className="d-flex align-items-center justify-content-between mb-2 border rounded px-2 py-1">
@@ -262,6 +280,21 @@ const ChatSidebar = ({
                       Handoff
                     </Badge>
                   )}
+                  {c.__sla && c.__sla.status !== "none" && (
+                    <Badge
+                      bg={
+                        c.__sla.status === "critical"
+                          ? "danger"
+                          : c.__sla.status === "warn"
+                            ? "warning"
+                            : "success"
+                      }
+                      text={c.__sla.status === "warn" ? "dark" : "light"}
+                      className="mt-1 ms-1"
+                    >
+                      SLA: {c.__sla.label}
+                    </Badge>
+                  )}
                 </div>
               </div>
             </button>
@@ -294,6 +327,9 @@ ChatSidebar.propTypes = {
   globalAiModeEnabled: PropTypes.bool,
   globalAiModeLoading: PropTypes.bool,
   onToggleGlobalAiMode: PropTypes.func,
+  showOnlyOverdue: PropTypes.bool,
+  onToggleShowOnlyOverdue: PropTypes.func,
+  className: PropTypes.string,
 };
 
 export default ChatSidebar;

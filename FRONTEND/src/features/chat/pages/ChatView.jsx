@@ -25,6 +25,118 @@ import TemplateSelector from "../components/TemplateSelector.jsx";
 import ChatThread from "../components/ChatThread.jsx";
 import useConversationWebSocket from "../hooks/useConversationWebSocket.js";
 
+const formatDateTime = (value) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("es-CO", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatRelativeTime = (value) => {
+  if (!value) return "Sin registros";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Sin registros";
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.max(0, Math.floor(diffMs / 60000));
+  if (diffMin < 1) return "Hace menos de 1 min";
+  if (diffMin < 60) return `Hace ${diffMin} min`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `Hace ${diffHours} h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `Hace ${diffDays} d`;
+};
+
+const computePendingReplySla = (messages) => {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return { status: "none", label: "Sin mensajes", detail: "No aplica SLA" };
+  }
+
+  let lastContactMessageAt = null;
+  let hasAgentReplyAfter = false;
+
+  for (const message of messages) {
+    const sender = message?.sender_type;
+    const createdAt = message?.created_at;
+    if (!createdAt) continue;
+    if (sender === "contact") {
+      lastContactMessageAt = createdAt;
+      hasAgentReplyAfter = false;
+    }
+    if (sender === "user" && lastContactMessageAt) {
+      hasAgentReplyAfter = true;
+    }
+  }
+
+  if (!lastContactMessageAt) {
+    return { status: "none", label: "Sin mensajes de contacto", detail: "No aplica SLA" };
+  }
+
+  if (hasAgentReplyAfter) {
+    return {
+      status: "ok",
+      label: "Al día",
+      detail: `Último mensaje de contacto: ${formatRelativeTime(lastContactMessageAt)}`,
+    };
+  }
+
+  const lastDate = new Date(lastContactMessageAt);
+  if (Number.isNaN(lastDate.getTime())) {
+    return { status: "none", label: "Sin dato", detail: "Fecha inválida" };
+  }
+  const diffMin = Math.max(0, Math.floor((Date.now() - lastDate.getTime()) / 60000));
+  if (diffMin <= 15) {
+    return {
+      status: "ok",
+      label: "En ventana",
+      detail: `${diffMin} min sin respuesta`,
+    };
+  }
+  if (diffMin <= 60) {
+    return {
+      status: "warn",
+      label: "Atención",
+      detail: `${diffMin} min sin respuesta`,
+    };
+  }
+  return {
+    status: "critical",
+    label: "Crítico",
+    detail: `${diffMin} min sin respuesta`,
+  };
+};
+
+const computeConversationSla = (conversation) => {
+  const inboundRaw = conversation?.last_inbound_message_at;
+  if (!inboundRaw) {
+    return { status: "none", minutes: 0, label: "Sin inbound", isOverdue: false };
+  }
+  const inboundAt = new Date(inboundRaw).getTime();
+  if (Number.isNaN(inboundAt)) {
+    return { status: "none", minutes: 0, label: "Sin dato", isOverdue: false };
+  }
+  const lastMessageAt = new Date(conversation?.last_message_at || 0).getTime();
+  const hasReplyAfterInbound = Number.isFinite(lastMessageAt) && lastMessageAt > inboundAt;
+  if (hasReplyAfterInbound) {
+    return { status: "ok", minutes: 0, label: "Al día", isOverdue: false };
+  }
+  const diffMin = Math.max(0, Math.floor((Date.now() - inboundAt) / 60000));
+  if (diffMin <= 15) {
+    return { status: "ok", minutes: diffMin, label: "En ventana", isOverdue: false };
+  }
+  if (diffMin <= 60) {
+    return { status: "warn", minutes: diffMin, label: "Atención", isOverdue: true };
+  }
+  return { status: "critical", minutes: diffMin, label: "Crítico", isOverdue: true };
+};
+
+const CHAT_OVERDUE_FILTER_STORAGE_KEY = "chat_sla_overdue_only";
+
 const ChatView = () => {
   const WHATSAPP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
   const WHATSAPP_DOCUMENT_MAX_BYTES = 100 * 1024 * 1024;
@@ -68,12 +180,22 @@ const ChatView = () => {
   const [savingAiConfig, setSavingAiConfig] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [composerError, setComposerError] = useState("");
+  const [showOnlyOverdue, setShowOnlyOverdue] = useState(() => {
+    try {
+      return localStorage.getItem(CHAT_OVERDUE_FILTER_STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [dealDetail, setDealDetail] = useState(null);
   const [dealDraft, setDealDraft] = useState(null);
   const [loadingDeal, setLoadingDeal] = useState(false);
   const [savingDeal, setSavingDeal] = useState(false);
   const [dealSaveError, setDealSaveError] = useState("");
   const [dealPanelCollapsed, setDealPanelCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [dealDrawerOpen, setDealDrawerOpen] = useState(false);
+  const [mobileSection, setMobileSection] = useState("chat");
   const [globalAiModeEnabled, setGlobalAiModeEnabled] = useState(false);
   const [globalAiModeLoading, setGlobalAiModeLoading] = useState(false);
   const typingTimerRef = useRef(null);
@@ -486,8 +608,34 @@ const ChatView = () => {
     }
   }, [conversations, activeId, dealId]);
 
-  const activeConv = conversations.results?.find((c) => c.id === activeId);
-  const filteredConversations = useMemo(() => conversations.results || [], [conversations.results]);
+  const conversationsWithSla = useMemo(
+    () =>
+      (conversations.results || []).map((conv) => ({
+        ...conv,
+        __sla: computeConversationSla(conv),
+      })),
+    [conversations.results],
+  );
+  const sortedConversations = useMemo(() => {
+    const priority = { critical: 0, warn: 1, ok: 2, none: 3 };
+    return [...conversationsWithSla].sort((a, b) => {
+      const p = (priority[a.__sla?.status] ?? 99) - (priority[b.__sla?.status] ?? 99);
+      if (p !== 0) return p;
+      const m = (b.__sla?.minutes || 0) - (a.__sla?.minutes || 0);
+      if (m !== 0) return m;
+      const aDate = new Date(a.last_message_at || 0).getTime();
+      const bDate = new Date(b.last_message_at || 0).getTime();
+      return bDate - aDate;
+    });
+  }, [conversationsWithSla]);
+  const filteredConversations = useMemo(
+    () => (showOnlyOverdue ? sortedConversations.filter((c) => c.__sla?.isOverdue) : sortedConversations),
+    [showOnlyOverdue, sortedConversations],
+  );
+  const activeConv = useMemo(
+    () => (conversations.results || []).find((c) => c.id === activeId),
+    [conversations.results, activeId],
+  );
 
   useEffect(() => {
     if (activeConv) {
@@ -495,6 +643,22 @@ const ChatView = () => {
       setAiConfigId(activeConv.ai_configuration || "");
     }
   }, [activeConv]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_OVERDUE_FILTER_STORAGE_KEY, showOnlyOverdue ? "1" : "0");
+    } catch {
+      // ignore storage failures
+    }
+  }, [showOnlyOverdue]);
+
+  useEffect(() => {
+    if (!activeId) {
+      setMobileSection("conversations");
+    } else if (mobileSection === "conversations") {
+      setMobileSection("chat");
+    }
+  }, [activeId, mobileSection]);
 
   const handleAiConfigChange = async (e) => {
     const v = e.target.value;
@@ -564,6 +728,23 @@ const ChatView = () => {
     if (Number.isNaN(expiry)) return false;
     return expiry > Date.now();
   }, [activeConv]);
+  const messageCount = messages?.results?.length || 0;
+  const lastMessageAt = useMemo(() => {
+    const rows = messages?.results || [];
+    if (!rows.length) return null;
+    return rows[rows.length - 1]?.created_at || null;
+  }, [messages?.results]);
+  const serviceWindowOpen = useMemo(() => {
+    if (!activeConv || activeConv.channel !== "whatsapp") return null;
+    if (!activeConv.customer_service_window_expires) return false;
+    const expiry = new Date(activeConv.customer_service_window_expires).getTime();
+    if (Number.isNaN(expiry)) return false;
+    return expiry > Date.now();
+  }, [activeConv]);
+  const pendingReplySla = useMemo(
+    () => computePendingReplySla(messages?.results || []),
+    [messages?.results],
+  );
 
   const dealStages = useMemo(
     () => [
@@ -710,44 +891,169 @@ const ChatView = () => {
   return (
     <div className="app-page app-chat-page">
       <div className="app-page-header app-page-headline app-chat-headline mb-3">
-        <h1 className="h4 mb-1">Conversaciones</h1>
-        <p className="text-muted mb-0">
-          Gestiona conversaciones en tiempo real, contexto de IA y seguimiento comercial desde un solo flujo.
-        </p>
+        <div>
+          <h1 className="h4 mb-1">Conversaciones</h1>
+          <p className="text-muted mb-0">
+            Gestiona conversaciones en tiempo real, contexto de IA y seguimiento comercial desde un solo flujo.
+          </p>
+        </div>
+        <div className="app-chat-headline-actions">
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm"
+            onClick={() => setSidebarCollapsed((prev) => !prev)}
+            aria-label={sidebarCollapsed ? "Mostrar bandeja de chats" : "Ocultar bandeja de chats"}
+          >
+            <i className={`bi ${sidebarCollapsed ? "bi-layout-sidebar-inset" : "bi-layout-sidebar"}`} />
+            <span className="ms-1">{sidebarCollapsed ? "Bandeja" : "Ocultar bandeja"}</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm"
+            onClick={() => setDealPanelCollapsed((prev) => !prev)}
+            aria-label={dealPanelCollapsed ? "Mostrar panel de deal" : "Ocultar panel de deal"}
+          >
+            <i className={`bi ${dealPanelCollapsed ? "bi-layout-three-columns" : "bi-layout-sidebar-reverse"}`} />
+            <span className="ms-1">{dealPanelCollapsed ? "Panel deal" : "Ocultar deal"}</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm d-none d-lg-inline-flex"
+            onClick={() => setDealDrawerOpen(true)}
+            disabled={!activeConv}
+            aria-label="Abrir drawer del deal"
+          >
+            <i className="bi bi-sliders2-vertical" />
+            <span className="ms-1">Deal rápido</span>
+          </button>
+        </div>
       </div>
-      <div className={`app-chat-layout ${dealPanelCollapsed ? "app-chat-layout-meta-collapsed" : ""}`}>
-        <ChatSidebar
-          loading={loadingList}
-          conversations={filteredConversations}
-          activeId={activeId}
-          onSelect={selectConv}
-          query={searchQuery}
-          onQueryChange={setSearchQuery}
-          channelFilter={channelFilter}
-          onChannelFilterChange={setChannelFilter}
-          filters={filters}
-          onApplyFilters={setFilters}
-          onClearFilters={() =>
-            setFilters({
-              dealStage: "",
-              dealOpenedFrom: "",
-              dealOpenedTo: "",
-              responsible: "",
-            })
-          }
-          responsibleOptions={responsibleOptions}
-          showGlobalAiSwitch={Boolean(canManageAiConfigs)}
-          globalAiModeEnabled={globalAiModeEnabled}
-          globalAiModeLoading={globalAiModeLoading}
-          onToggleGlobalAiMode={handleToggleGlobalAiMode}
-        />
-        <div className="app-chat-panel app-chat-center">
+      <div className="app-chat-mobile-tabs d-lg-none mb-2">
+        <button
+          type="button"
+          className={`btn btn-sm ${mobileSection === "conversations" ? "btn-primary" : "btn-outline-secondary"}`}
+          onClick={() => setMobileSection("conversations")}
+        >
+          Conversaciones
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${mobileSection === "chat" ? "btn-primary" : "btn-outline-secondary"}`}
+          onClick={() => setMobileSection("chat")}
+        >
+          Chat
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${mobileSection === "deal" ? "btn-primary" : "btn-outline-secondary"}`}
+          onClick={() => setMobileSection("deal")}
+          disabled={!activeConv}
+        >
+          Deal
+        </button>
+      </div>
+      <div
+        className={`app-chat-layout ${dealPanelCollapsed ? "app-chat-layout-meta-collapsed" : ""} ${
+          sidebarCollapsed ? "app-chat-layout-sidebar-collapsed" : ""
+        }`}
+      >
+        {!sidebarCollapsed && (
+          <ChatSidebar
+            loading={loadingList}
+            conversations={filteredConversations}
+            activeId={activeId}
+            onSelect={selectConv}
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            channelFilter={channelFilter}
+            onChannelFilterChange={setChannelFilter}
+            filters={filters}
+            onApplyFilters={setFilters}
+            onClearFilters={() =>
+              setFilters({
+                dealStage: "",
+                dealOpenedFrom: "",
+                dealOpenedTo: "",
+                responsible: "",
+              })
+            }
+            responsibleOptions={responsibleOptions}
+            showGlobalAiSwitch={Boolean(canManageAiConfigs)}
+            globalAiModeEnabled={globalAiModeEnabled}
+            globalAiModeLoading={globalAiModeLoading}
+            onToggleGlobalAiMode={handleToggleGlobalAiMode}
+            showOnlyOverdue={showOnlyOverdue}
+            onToggleShowOnlyOverdue={setShowOnlyOverdue}
+            className={mobileSection !== "conversations" ? "d-none d-lg-block" : ""}
+          />
+        )}
+        <div className={`app-chat-panel app-chat-center ${mobileSection !== "chat" ? "d-none d-lg-flex" : ""}`}>
           {!activeId && (
             <p className="text-muted mb-0">Selecciona una conversación o abre desde un contacto.</p>
           )}
           {activeId && (
             <>
               <div className="app-chat-center-head">
+                <div className="app-chat-context-row">
+                  <div className="app-chat-context-chips">
+                    <span className="badge text-bg-light">
+                      <i className="bi bi-person me-1" />
+                      {activeConv?.contact_name || "Sin contacto"}
+                    </span>
+                    <span className="badge text-bg-light text-capitalize">
+                      <i className="bi bi-chat-dots me-1" />
+                      {activeConv?.channel || "chat"}
+                    </span>
+                    {activeConv?.deal_title && (
+                      <span className="badge text-bg-light">
+                        <i className="bi bi-briefcase me-1" />
+                        {activeConv.deal_title}
+                      </span>
+                    )}
+                  </div>
+                  {activeConv?.contact && (
+                    <Link className="small" to={`/crm/contacts/${activeConv.contact}`}>
+                      Ver contacto
+                    </Link>
+                  )}
+                </div>
+                <div className="app-chat-kpi-row">
+                  <div className="app-chat-kpi-card">
+                    <span className="app-chat-kpi-label">Ventana WhatsApp</span>
+                    <strong className={serviceWindowOpen ? "text-success" : "text-muted"}>
+                      {serviceWindowOpen === null ? "No aplica" : serviceWindowOpen ? "Abierta" : "Cerrada"}
+                    </strong>
+                    {activeConv?.channel === "whatsapp" && (
+                      <span className="small text-muted">
+                        Expira: {formatDateTime(activeConv.customer_service_window_expires)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="app-chat-kpi-card">
+                    <span className="app-chat-kpi-label">Último mensaje</span>
+                    <strong>{formatRelativeTime(lastMessageAt)}</strong>
+                    <span className="small text-muted">{formatDateTime(lastMessageAt)}</span>
+                  </div>
+                  <div className="app-chat-kpi-card">
+                    <span className="app-chat-kpi-label">Mensajes cargados</span>
+                    <strong>{messageCount}</strong>
+                    <span className="small text-muted">
+                      {activeConv?.unread_count ? `${activeConv.unread_count} sin leer` : "Sin pendientes"}
+                    </span>
+                  </div>
+                  <div className="app-chat-kpi-card">
+                    <span className="app-chat-kpi-label">Automatización</span>
+                    <strong>{aiEnabled ? "IA activa" : "IA desactivada"}</strong>
+                    <span className="small text-muted">
+                      {activeConv?.human_handoff_requested ? "Requiere atención humana" : "Sin handoff activo"}
+                    </span>
+                  </div>
+                  <div className={`app-chat-kpi-card app-chat-kpi-card-sla app-chat-kpi-card-sla--${pendingReplySla.status}`}>
+                    <span className="app-chat-kpi-label">SLA de respuesta</span>
+                    <strong>{pendingReplySla.label}</strong>
+                    <span className="small">{pendingReplySla.detail}</span>
+                  </div>
+                </div>
                 {canManageAiConfigs && (
                   <Form.Group className="mb-0" controlId="conv-ai-config">
                     <Form.Label className="small text-muted mb-1">
@@ -834,7 +1140,7 @@ const ChatView = () => {
             <Link to="/crm/contacts">← Volver al CRM</Link>
           </div>
         </div>
-        <aside className="app-chat-panel app-chat-meta d-none d-lg-block">
+        <aside className={`app-chat-panel app-chat-meta d-none d-lg-block ${dealPanelCollapsed ? "d-none" : ""}`}>
           {activeConv ? (
             <>
               <div className="d-flex align-items-center justify-content-between mb-3">
@@ -976,6 +1282,74 @@ const ChatView = () => {
             </>
           ) : (
             <p className="text-muted mb-0 small">Sin conversación seleccionada.</p>
+          )}
+        </aside>
+        <aside className={`app-chat-panel app-chat-meta d-lg-none ${mobileSection !== "deal" ? "d-none" : ""}`}>
+          {activeConv ? (
+            <>
+              <h3 className="h6 mb-3">Edición rápida del deal</h3>
+              {loadingDeal && <p className="small text-muted mb-0">Cargando deal...</p>}
+              {!loadingDeal && !dealDetail && (
+                <div>
+                  <p className="small text-muted mb-2">Este chat no tiene deal asociado.</p>
+                  {activeConv.contact && (
+                    <Link className="small" to={`/crm/contacts/${activeConv.contact}`}>
+                      Ver contacto
+                    </Link>
+                  )}
+                </div>
+              )}
+              {!loadingDeal && dealDetail && dealDraft && (
+                <div className="d-flex flex-column gap-2">
+                  <div className="small text-muted">Deal</div>
+                  <div className="fw-semibold">{dealDetail.title}</div>
+                  <Form.Group controlId="chat-deal-stage-mobile">
+                    <Form.Label className="small text-muted mb-1">Etapa</Form.Label>
+                    <Form.Select
+                      size="sm"
+                      value={dealDraft.stage}
+                      onChange={(e) => handleDealDraftChange("stage", e.target.value)}
+                      disabled={savingDeal}
+                    >
+                      {dealStages.map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </Form.Select>
+                  </Form.Group>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      void handleSaveDealQuickEdit();
+                    }}
+                    disabled={savingDeal}
+                  >
+                    {savingDeal ? "Guardando..." : "Guardar cambios"}
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-muted mb-0 small">Sin conversación seleccionada.</p>
+          )}
+        </aside>
+      </div>
+      <div className={`app-chat-deal-drawer ${dealDrawerOpen ? "is-open" : ""}`}>
+        <div className="app-chat-deal-drawer-backdrop" onClick={() => setDealDrawerOpen(false)} />
+        <aside className="app-chat-deal-drawer-panel">
+          <div className="d-flex align-items-center justify-content-between mb-3">
+            <h3 className="h6 mb-0">Deal rápido</h3>
+            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setDealDrawerOpen(false)}>
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+          {!activeConv && <p className="small text-muted mb-0">Sin conversación seleccionada.</p>}
+          {activeConv && (
+            <div className="small text-muted">
+              Usa el panel derecho para edición completa del deal. Este drawer está pensado para acceso rápido.
+            </div>
           )}
         </aside>
       </div>
