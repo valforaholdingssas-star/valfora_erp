@@ -14,6 +14,7 @@ from apps.ai_config.services import (
     moderate_openai_text,
 )
 from apps.ai_config.runtime import resolve_global_ai_mode_enabled
+from apps.calendar_app.booking_ai import maybe_handle_calendar_booking
 from django.core.files.base import ContentFile
 
 from apps.chat import services
@@ -70,6 +71,11 @@ def generate_ai_reply_for_message(inbound_message_id: str) -> None:
     config = resolve_ai_configuration_for_conversation(conv)
     if not config:
         logger.warning("ai_mode_enabled but no default AIConfiguration row")
+        return
+
+    calendar_reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    if calendar_reply:
+        _enqueue_whatsapp_if_needed(conv, calendar_reply)
         return
 
     budget = int(config.daily_token_budget_per_conversation or 0)

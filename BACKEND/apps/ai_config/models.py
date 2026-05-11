@@ -109,6 +109,12 @@ class AIRuntimeSettings(BaseModel):
     openai_embedding_model = models.CharField(max_length=120, default="text-embedding-3-small")
     openai_moderation_disabled = models.BooleanField(default=False)
     global_ai_mode_enabled = models.BooleanField(default=False)
+    google_calendar_enabled = models.BooleanField(default=False)
+    google_calendar_id = models.CharField(max_length=255, blank=True)
+    google_calendar_timezone = models.CharField(max_length=64, default="America/Bogota")
+    google_slot_minutes = models.PositiveSmallIntegerField(default=30)
+    google_booking_window_days = models.PositiveSmallIntegerField(default=7)
+    google_service_account_json = EncryptedTextField(blank=True)
 
     class Meta:
         verbose_name = "AI runtime settings"

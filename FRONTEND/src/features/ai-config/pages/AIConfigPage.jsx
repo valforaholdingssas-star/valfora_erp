@@ -85,6 +85,14 @@ const AIConfigPage = () => {
     global_ai_mode_enabled: false,
     has_openai_api_key: false,
     openai_api_key_masked: "",
+    google_calendar_enabled: false,
+    google_calendar_id: "",
+    google_calendar_timezone: "America/Bogota",
+    google_slot_minutes: 30,
+    google_booking_window_days: 7,
+    has_google_service_account_json: false,
+    google_service_account_json: "",
+    clear_google_service_account_json: false,
   });
   const [knowledgeDocs, setKnowledgeDocs] = useState([]);
   const [knowledgeUploadFile, setKnowledgeUploadFile] = useState(null);
@@ -162,6 +170,14 @@ const AIConfigPage = () => {
         global_ai_mode_enabled: Boolean(runtime.global_ai_mode_enabled),
         has_openai_api_key: Boolean(runtime.has_openai_api_key),
         openai_api_key_masked: runtime.openai_api_key_masked || "",
+        google_calendar_enabled: Boolean(runtime.google_calendar_enabled),
+        google_calendar_id: runtime.google_calendar_id || "",
+        google_calendar_timezone: runtime.google_calendar_timezone || "America/Bogota",
+        google_slot_minutes: runtime.google_slot_minutes ?? 30,
+        google_booking_window_days: runtime.google_booking_window_days ?? 7,
+        has_google_service_account_json: Boolean(runtime.has_google_service_account_json),
+        google_service_account_json: "",
+        clear_google_service_account_json: false,
       }));
       setSelectedId((prev) => {
         if (prev && rows.some((r) => r.id === prev)) return prev;
@@ -320,9 +336,21 @@ const AIConfigPage = () => {
         openai_moderation_disabled: Boolean(runtimeForm.openai_moderation_disabled),
         global_ai_mode_enabled: Boolean(runtimeForm.global_ai_mode_enabled),
         clear_openai_api_key: Boolean(runtimeForm.clear_openai_api_key),
+        google_calendar_enabled: Boolean(runtimeForm.google_calendar_enabled),
+        google_calendar_id: (runtimeForm.google_calendar_id || "").trim(),
+        google_calendar_timezone: (runtimeForm.google_calendar_timezone || "America/Bogota").trim() || "America/Bogota",
+        google_slot_minutes: Math.max(15, Math.min(180, Math.floor(toNumberOr(runtimeForm.google_slot_minutes, 30)))),
+        google_booking_window_days: Math.max(
+          1,
+          Math.min(30, Math.floor(toNumberOr(runtimeForm.google_booking_window_days, 7))),
+        ),
+        clear_google_service_account_json: Boolean(runtimeForm.clear_google_service_account_json),
       };
       if ((runtimeForm.openai_api_key || "").trim()) {
         payload.openai_api_key = runtimeForm.openai_api_key.trim();
+      }
+      if ((runtimeForm.google_service_account_json || "").trim()) {
+        payload.google_service_account_json = runtimeForm.google_service_account_json.trim();
       }
       const updated = await patchAiRuntimeSettings(payload);
       setRuntimeForm((prev) => ({
@@ -334,6 +362,14 @@ const AIConfigPage = () => {
         global_ai_mode_enabled: Boolean(updated.global_ai_mode_enabled),
         has_openai_api_key: Boolean(updated.has_openai_api_key),
         openai_api_key_masked: updated.openai_api_key_masked || "",
+        google_calendar_enabled: Boolean(updated.google_calendar_enabled),
+        google_calendar_id: updated.google_calendar_id || "",
+        google_calendar_timezone: updated.google_calendar_timezone || "America/Bogota",
+        google_slot_minutes: updated.google_slot_minutes ?? 30,
+        google_booking_window_days: updated.google_booking_window_days ?? 7,
+        has_google_service_account_json: Boolean(updated.has_google_service_account_json),
+        google_service_account_json: "",
+        clear_google_service_account_json: false,
       }));
       setRuntimeSuccess("Credenciales/configuración runtime guardadas correctamente.");
     } catch (err) {
@@ -501,6 +537,93 @@ const AIConfigPage = () => {
                   checked={runtimeForm.global_ai_mode_enabled}
                   onChange={(e) =>
                     setRuntimeForm((prev) => ({ ...prev, global_ai_mode_enabled: e.target.checked }))
+                  }
+                />
+              </Form.Group>
+              <hr />
+              <h3 className="h6 mb-2">Google Calendar (agenda automática)</h3>
+              <Form.Group className="mb-2">
+                <Form.Check
+                  type="switch"
+                  id="runtime-google-calendar-enabled"
+                  label="Habilitar integración de agenda para IA"
+                  checked={runtimeForm.google_calendar_enabled}
+                  onChange={(e) =>
+                    setRuntimeForm((prev) => ({ ...prev, google_calendar_enabled: e.target.checked }))
+                  }
+                />
+              </Form.Group>
+              <Row className="g-2 mb-2">
+                <Col md={6}>
+                  <Form.Group>
+                    <Form.Label>Calendar ID</Form.Label>
+                    <Form.Control
+                      placeholder="primary o calendario@group.calendar.google.com"
+                      value={runtimeForm.google_calendar_id}
+                      onChange={(e) => setRuntimeForm((prev) => ({ ...prev, google_calendar_id: e.target.value }))}
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={3}>
+                  <Form.Group>
+                    <Form.Label>Slot (min)</Form.Label>
+                    <Form.Control
+                      type="number"
+                      min={15}
+                      max={180}
+                      step={5}
+                      value={runtimeForm.google_slot_minutes}
+                      onChange={(e) => setRuntimeForm((prev) => ({ ...prev, google_slot_minutes: e.target.value }))}
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={3}>
+                  <Form.Group>
+                    <Form.Label>Ventana (días)</Form.Label>
+                    <Form.Control
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={runtimeForm.google_booking_window_days}
+                      onChange={(e) =>
+                        setRuntimeForm((prev) => ({ ...prev, google_booking_window_days: e.target.value }))
+                      }
+                    />
+                  </Form.Group>
+                </Col>
+              </Row>
+              <Form.Group className="mb-2">
+                <Form.Label>Timezone</Form.Label>
+                <Form.Control
+                  value={runtimeForm.google_calendar_timezone}
+                  onChange={(e) =>
+                    setRuntimeForm((prev) => ({ ...prev, google_calendar_timezone: e.target.value }))
+                  }
+                />
+              </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Label>Service Account JSON</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={4}
+                  placeholder={
+                    runtimeForm.has_google_service_account_json
+                      ? "Ya hay credencial guardada. Pega JSON solo para reemplazar."
+                      : "Pega el JSON completo de la Service Account"
+                  }
+                  value={runtimeForm.google_service_account_json}
+                  onChange={(e) =>
+                    setRuntimeForm((prev) => ({ ...prev, google_service_account_json: e.target.value }))
+                  }
+                />
+                <Form.Check
+                  className="mt-2"
+                  type="checkbox"
+                  id="clear-google-service-account-json"
+                  label="Eliminar credencial JSON guardada"
+                  checked={runtimeForm.clear_google_service_account_json}
+                  onChange={(e) =>
+                    setRuntimeForm((prev) => ({ ...prev, clear_google_service_account_json: e.target.checked }))
                   }
                 />
               </Form.Group>
