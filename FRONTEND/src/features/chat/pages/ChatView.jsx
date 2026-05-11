@@ -196,6 +196,7 @@ const ChatView = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [dealDrawerOpen, setDealDrawerOpen] = useState(false);
   const [mobileSection, setMobileSection] = useState("chat");
+  const [conversationInfoExpanded, setConversationInfoExpanded] = useState(true);
   const [globalAiModeEnabled, setGlobalAiModeEnabled] = useState(false);
   const [globalAiModeLoading, setGlobalAiModeLoading] = useState(false);
   const typingTimerRef = useRef(null);
@@ -1011,77 +1012,92 @@ const ChatView = () => {
                       </span>
                     )}
                   </div>
-                  {activeConv?.contact && (
-                    <Link className="small" to={`/crm/contacts/${activeConv.contact}`}>
-                      Ver contacto
-                    </Link>
-                  )}
-                </div>
-                <div className="app-chat-kpi-row">
-                  <div className="app-chat-kpi-card">
-                    <span className="app-chat-kpi-label">Ventana WhatsApp</span>
-                    <strong className={serviceWindowOpen ? "text-success" : "text-muted"}>
-                      {serviceWindowOpen === null ? "No aplica" : serviceWindowOpen ? "Abierta" : "Cerrada"}
-                    </strong>
-                    {activeConv?.channel === "whatsapp" && (
-                      <span className="small text-muted">
-                        Expira: {formatDateTime(activeConv.customer_service_window_expires)}
-                      </span>
+                  <div className="d-flex align-items-center gap-2">
+                    {activeConv?.contact && (
+                      <Link className="small" to={`/crm/contacts/${activeConv.contact}`}>
+                        Ver contacto
+                      </Link>
                     )}
-                  </div>
-                  <div className="app-chat-kpi-card">
-                    <span className="app-chat-kpi-label">Último mensaje</span>
-                    <strong>{formatRelativeTime(lastMessageAt)}</strong>
-                    <span className="small text-muted">{formatDateTime(lastMessageAt)}</span>
-                  </div>
-                  <div className="app-chat-kpi-card">
-                    <span className="app-chat-kpi-label">Mensajes cargados</span>
-                    <strong>{messageCount}</strong>
-                    <span className="small text-muted">
-                      {activeConv?.unread_count ? `${activeConv.unread_count} sin leer` : "Sin pendientes"}
-                    </span>
-                  </div>
-                  <div className="app-chat-kpi-card">
-                    <span className="app-chat-kpi-label">Automatización</span>
-                    <strong>{aiEnabled ? "IA activa" : "IA desactivada"}</strong>
-                    <span className="small text-muted">
-                      {activeConv?.human_handoff_requested ? "Requiere atención humana" : "Sin handoff activo"}
-                    </span>
-                  </div>
-                  <div className={`app-chat-kpi-card app-chat-kpi-card-sla app-chat-kpi-card-sla--${pendingReplySla.status}`}>
-                    <span className="app-chat-kpi-label">SLA de respuesta</span>
-                    <strong>{pendingReplySla.label}</strong>
-                    <span className="small">{pendingReplySla.detail}</span>
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary btn-sm"
+                      onClick={() => setConversationInfoExpanded((prev) => !prev)}
+                      aria-label={conversationInfoExpanded ? "Ocultar panel de contexto" : "Mostrar panel de contexto"}
+                    >
+                      <i className={`bi ${conversationInfoExpanded ? "bi-chevron-up" : "bi-chevron-down"}`} />
+                      <span className="ms-1">{conversationInfoExpanded ? "Ocultar" : "Mostrar"}</span>
+                    </button>
                   </div>
                 </div>
-                {canManageAiConfigs && (
-                  <Form.Group className="mb-0" controlId="conv-ai-config">
-                    <Form.Label className="small text-muted mb-1">
-                      Configuración IA (esta conversación)
-                    </Form.Label>
-                    <Form.Select
-                      size="sm"
-                      value={aiConfigId || ""}
-                      onChange={(e) => {
-                        void handleAiConfigChange(e);
-                      }}
-                      disabled={savingAiConfig}
-                      aria-busy={savingAiConfig}
-                    >
-                      <option value="">Predeterminada del sistema</option>
-                      {aiConfigs.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                          {c.is_default ? " (predeterminada)" : ""}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  </Form.Group>
-                )}
-                {!canManageAiConfigs && activeConv?.ai_configuration_name && (
-                  <p className="small text-muted mb-0">
-                    Configuración IA: <strong>{activeConv.ai_configuration_name}</strong>
-                  </p>
+                {conversationInfoExpanded && (
+                  <>
+                    <div className="app-chat-kpi-row">
+                      <div className="app-chat-kpi-card">
+                        <span className="app-chat-kpi-label">Ventana WhatsApp</span>
+                        <strong className={serviceWindowOpen ? "text-success" : "text-muted"}>
+                          {serviceWindowOpen === null ? "No aplica" : serviceWindowOpen ? "Abierta" : "Cerrada"}
+                        </strong>
+                        {activeConv?.channel === "whatsapp" && (
+                          <span className="small text-muted">
+                            Expira: {formatDateTime(activeConv.customer_service_window_expires)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="app-chat-kpi-card">
+                        <span className="app-chat-kpi-label">Último mensaje</span>
+                        <strong>{formatRelativeTime(lastMessageAt)}</strong>
+                        <span className="small text-muted">{formatDateTime(lastMessageAt)}</span>
+                      </div>
+                      <div className="app-chat-kpi-card">
+                        <span className="app-chat-kpi-label">Mensajes cargados</span>
+                        <strong>{messageCount}</strong>
+                        <span className="small text-muted">
+                          {activeConv?.unread_count ? `${activeConv.unread_count} sin leer` : "Sin pendientes"}
+                        </span>
+                      </div>
+                      <div className="app-chat-kpi-card">
+                        <span className="app-chat-kpi-label">Automatización</span>
+                        <strong>{aiEnabled ? "IA activa" : "IA desactivada"}</strong>
+                        <span className="small text-muted">
+                          {activeConv?.human_handoff_requested ? "Requiere atención humana" : "Sin handoff activo"}
+                        </span>
+                      </div>
+                      <div className={`app-chat-kpi-card app-chat-kpi-card-sla app-chat-kpi-card-sla--${pendingReplySla.status}`}>
+                        <span className="app-chat-kpi-label">SLA de respuesta</span>
+                        <strong>{pendingReplySla.label}</strong>
+                        <span className="small">{pendingReplySla.detail}</span>
+                      </div>
+                    </div>
+                    {canManageAiConfigs && (
+                      <Form.Group className="mb-0" controlId="conv-ai-config">
+                        <Form.Label className="small text-muted mb-1">
+                          Configuración IA (esta conversación)
+                        </Form.Label>
+                        <Form.Select
+                          size="sm"
+                          value={aiConfigId || ""}
+                          onChange={(e) => {
+                            void handleAiConfigChange(e);
+                          }}
+                          disabled={savingAiConfig}
+                          aria-busy={savingAiConfig}
+                        >
+                          <option value="">Predeterminada del sistema</option>
+                          {aiConfigs.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                              {c.is_default ? " (predeterminada)" : ""}
+                            </option>
+                          ))}
+                        </Form.Select>
+                      </Form.Group>
+                    )}
+                    {!canManageAiConfigs && activeConv?.ai_configuration_name && (
+                      <p className="small text-muted mb-0">
+                        Configuración IA: <strong>{activeConv.ai_configuration_name}</strong>
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
               <div className="app-chat-center-body">
