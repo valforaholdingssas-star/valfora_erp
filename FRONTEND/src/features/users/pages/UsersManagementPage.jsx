@@ -27,6 +27,13 @@ const defaultForm = {
   is_active: true,
 };
 
+const roleChipClass = (role) => {
+  const r = String(role || "").toLowerCase();
+  if (r === "super_admin") return "role-chip role-chip-super";
+  if (r === "admin") return "role-chip role-chip-admin";
+  return "role-chip role-chip-collab";
+};
+
 const UsersManagementPage = () => {
   const { user, hasModuleAccess, loadProfile } = useAuth();
   const canManage = hasModuleAccess("users", "view");
@@ -285,7 +292,11 @@ const UsersManagementPage = () => {
                   <tr key={u.id}>
                     <td>{u.email}</td>
                     <td>{`${u.first_name || ""} ${u.last_name || ""}`.trim() || "-"}</td>
-                    <td className="text-capitalize">{u.role?.replace("_", " ") || "-"}</td>
+                    <td>
+                      <span className={`${roleChipClass(u.role)} text-capitalize`}>
+                        {u.role?.replace("_", " ") || "-"}
+                      </span>
+                    </td>
                     <td>
                       <Badge bg={u.is_active ? "success" : "secondary"}>
                         {u.is_active ? "Activo" : "Inactivo"}

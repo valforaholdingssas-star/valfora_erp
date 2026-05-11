@@ -16,6 +16,10 @@
   --vf-primary: #2667df;
   --vf-primary-soft: rgba(38, 103, 223, 0.12);
   --vf-success: #1f9d6b;
+  --vf-violet: #7c4dff;
+  --vf-amber: #d38b00;
+  --vf-rose: #d94873;
+  --vf-slate: #55637d;
   --vf-shadow-sm: 0 6px 16px rgba(13, 43, 104, 0.08);
   --vf-shadow-md: 0 14px 30px rgba(13, 43, 104, 0.12);
   --vf-radius-lg: 1rem;
@@ -86,6 +90,10 @@ a {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+[data-density="compact"] {
+  --vf-shell-gap: 0.72rem;
 }
 
 .app-body {
@@ -193,6 +201,41 @@ a {
   margin-bottom: 0.52rem;
 }
 
+.app-sidebar-group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.app-sidebar-group-title::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vf-slate);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--vf-slate) 18%, transparent);
+}
+
+.app-sidebar-group.tone-violet .app-sidebar-group-title::before {
+  background: var(--vf-violet);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--vf-violet) 18%, transparent);
+}
+
+.app-sidebar-group.tone-emerald .app-sidebar-group-title::before {
+  background: var(--vf-success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--vf-success) 18%, transparent);
+}
+
+.app-sidebar-group.tone-amber .app-sidebar-group-title::before {
+  background: var(--vf-amber);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--vf-amber) 18%, transparent);
+}
+
+.app-sidebar-group.tone-rose .app-sidebar-group-title::before {
+  background: var(--vf-rose);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--vf-rose) 18%, transparent);
+}
+
 .app-sidebar-group-toggle {
   width: 100%;
   border: 0;
@@ -236,7 +279,7 @@ a {
 }
 
 .app-nav-link.active {
-  background: linear-gradient(100deg, #2d74ea 0%, #1d53bf 100%);
+  background: linear-gradient(100deg, #346fdd 0%, #1d53bf 100%);
   color: #fff !important;
   border-color: transparent;
   box-shadow: 0 12px 22px rgba(31, 77, 176, 0.28);
@@ -296,7 +339,9 @@ a {
 .app-page-headline {
   border: 1px solid var(--vf-border);
   border-radius: var(--vf-radius-md);
-  background: var(--vf-surface);
+  background:
+    radial-gradient(140% 120% at 100% 0%, color-mix(in srgb, var(--vf-primary) 8%, transparent) 0%, transparent 65%),
+    var(--vf-surface);
   box-shadow: var(--vf-shadow-sm);
   padding: 0.85rem 1rem;
 }
@@ -323,6 +368,25 @@ a {
   background: var(--vf-surface) !important;
   box-shadow: var(--vf-shadow-sm);
   backdrop-filter: blur(8px);
+}
+
+.app-page-headline,
+.app-section-card,
+.app-chat-panel,
+.pipeline-stage,
+.app-sidebar-group {
+  animation: vfReveal 260ms ease-out both;
+}
+
+@keyframes vfReveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .app-card {
@@ -371,13 +435,57 @@ a {
   overflow: hidden;
 }
 
+.app-section-card .table {
+  border-radius: 0.85rem;
+  overflow: hidden;
+  margin-bottom: 0;
+}
+
 .table > :not(caption) > * > * {
   border-color: rgba(95, 121, 166, 0.22);
+  vertical-align: middle;
 }
 
 .table thead th {
   font-weight: 700;
   color: var(--vf-text);
+  background: linear-gradient(180deg, #f5f8ff 0%, #edf3ff 100%);
+}
+
+[data-bs-theme="dark"] .table thead th {
+  background: linear-gradient(180deg, #1a2a45 0%, #15233a 100%);
+}
+
+.table tbody tr {
+  transition: transform 140ms ease, background-color 140ms ease;
+}
+
+.table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--vf-surface-soft) 62%, transparent);
+}
+
+.table tbody tr:hover td {
+  background: color-mix(in srgb, var(--vf-primary-soft) 62%, var(--vf-surface-strong));
+}
+
+.table tbody tr:hover {
+  transform: translateY(-1px);
+}
+
+[data-density="compact"] .table > :not(caption) > * > * {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+
+[data-density="compact"] .form-control,
+[data-density="compact"] .form-select,
+[data-density="compact"] .btn {
+  min-height: 34px;
+  font-size: 0.84rem;
+}
+
+[data-density="compact"] .app-nav-link {
+  min-height: 1.9rem;
 }
 
 .btn {
@@ -386,7 +494,7 @@ a {
 }
 
 .btn-primary {
-  background: linear-gradient(100deg, #2f79ea 0%, #1d57ca 100%);
+  background: linear-gradient(100deg, #2f79ea 0%, #1d57ca 65%, #2e6be3 100%);
   border-color: transparent;
   box-shadow: 0 10px 20px rgba(29, 87, 202, 0.28);
 }
@@ -431,6 +539,96 @@ a {
 
 .badge {
   border-radius: 999px;
+}
+
+.log-chip,
+.stage-chip,
+.role-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid transparent;
+  line-height: 1;
+}
+
+.log-chip-neutral {
+  color: #41506d;
+  background: rgba(65, 80, 109, 0.12);
+  border-color: rgba(65, 80, 109, 0.24);
+}
+
+.log-chip-create,
+.stage-chip-new {
+  color: #0f6f55;
+  background: rgba(15, 111, 85, 0.16);
+  border-color: rgba(15, 111, 85, 0.34);
+}
+
+.log-chip-update,
+.stage-chip-contacted {
+  color: #225ea8;
+  background: rgba(34, 94, 168, 0.16);
+  border-color: rgba(34, 94, 168, 0.34);
+}
+
+.log-chip-delete,
+.stage-chip-lost {
+  color: #b1272d;
+  background: rgba(177, 39, 45, 0.16);
+  border-color: rgba(177, 39, 45, 0.34);
+}
+
+.log-chip-login,
+.stage-chip-qualified {
+  color: #6b3bc1;
+  background: rgba(107, 59, 193, 0.15);
+  border-color: rgba(107, 59, 193, 0.34);
+}
+
+.log-chip-logout,
+.stage-chip-negotiation {
+  color: #b66a00;
+  background: rgba(182, 106, 0, 0.16);
+  border-color: rgba(182, 106, 0, 0.35);
+}
+
+.stage-chip-proposal {
+  color: #8a5300;
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.42);
+}
+
+.stage-chip-won {
+  color: #0e7d4a;
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.stage-chip-neutral {
+  color: #4f5d78;
+  background: rgba(79, 93, 120, 0.14);
+  border-color: rgba(79, 93, 120, 0.28);
+}
+
+.role-chip-super {
+  color: #7b3fe0;
+  background: rgba(123, 63, 224, 0.14);
+  border-color: rgba(123, 63, 224, 0.32);
+}
+
+.role-chip-admin {
+  color: #0f6f55;
+  background: rgba(15, 111, 85, 0.14);
+  border-color: rgba(15, 111, 85, 0.32);
+}
+
+.role-chip-collab {
+  color: #285a9f;
+  background: rgba(40, 90, 159, 0.14);
+  border-color: rgba(40, 90, 159, 0.32);
 }
 
 .dropdown-menu {

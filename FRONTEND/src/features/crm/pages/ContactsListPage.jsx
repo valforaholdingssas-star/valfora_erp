@@ -22,6 +22,18 @@ const STAGES = [
   ["lost", "Perdido"],
 ];
 
+const stageBadgeClass = (stageValue) => {
+  const s = String(stageValue || "").toLowerCase();
+  if (s === "new_lead") return "stage-chip stage-chip-new";
+  if (s === "contacted") return "stage-chip stage-chip-contacted";
+  if (s === "qualified") return "stage-chip stage-chip-qualified";
+  if (s === "proposal") return "stage-chip stage-chip-proposal";
+  if (s === "negotiation") return "stage-chip stage-chip-negotiation";
+  if (s === "won") return "stage-chip stage-chip-won";
+  if (s === "lost") return "stage-chip stage-chip-lost";
+  return "stage-chip stage-chip-neutral";
+};
+
 const ContactsListPage = () => {
   const { user } = useAuth();
   const [result, setResult] = useState({ results: [], count: 0 });
@@ -256,7 +268,11 @@ const ContactsListPage = () => {
                   </td>
                   <td>{c.email}</td>
                   <td className="text-capitalize">{(c.source || "other").replace("_", " ")}</td>
-                  <td className="text-capitalize">{c.lifecycle_stage?.replace("_", " ")}</td>
+                  <td>
+                    <span className={`${stageBadgeClass(c.lifecycle_stage)} text-capitalize`}>
+                      {c.lifecycle_stage?.replace("_", " ") || "sin etapa"}
+                    </span>
+                  </td>
                   <td>
                     <ContactDaysBadge days={c.days_since_last_contact} />
                   </td>

@@ -10,7 +10,7 @@ import { useTheme } from "../../contexts/ThemeContext.jsx";
 const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
   const { user, logout } = useAuth();
   const { items, unreadCount, loading, markRead, markAllRead } = useNotifications();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, density, toggleDensity } = useTheme();
   const { t } = useI18n();
 
   return (
@@ -33,6 +33,18 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
           </Navbar.Brand>
         </div>
         <div className="ms-auto d-flex align-items-center gap-2 gap-md-3">
+          <Button
+            variant="light"
+            size="sm"
+            type="button"
+            onClick={() => toggleDensity()}
+            aria-label="Cambiar densidad"
+            title={density === "compact" ? "Usar vista cómoda" : "Usar vista compacta"}
+            className="app-header-pill-btn"
+          >
+            <i className={`bi ${density === "compact" ? "bi-arrows-angle-expand" : "bi-arrows-angle-contract"} me-1`} />
+            {density === "compact" ? "Cómodo" : "Compacto"}
+          </Button>
           <Button
             variant="light"
             size="sm"

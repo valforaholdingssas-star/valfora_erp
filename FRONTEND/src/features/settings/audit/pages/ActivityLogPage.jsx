@@ -16,6 +16,16 @@ const ACTION_OPTIONS = [
   ["export", "Export"],
 ];
 
+const actionBadgeClass = (action) => {
+  const a = String(action || "").toLowerCase();
+  if (a === "create") return "log-chip log-chip-create";
+  if (a === "update") return "log-chip log-chip-update";
+  if (a === "delete") return "log-chip log-chip-delete";
+  if (a === "login") return "log-chip log-chip-login";
+  if (a === "logout") return "log-chip log-chip-logout";
+  return "log-chip log-chip-neutral";
+};
+
 const ActivityLogPage = () => {
   const { hasModuleAccess } = useAuth();
   const canView = hasModuleAccess("users", "view");
@@ -199,7 +209,7 @@ const ActivityLogPage = () => {
                       <td>{new Date(row.created_at).toLocaleString()}</td>
                       <td>{row.user_email || "-"}</td>
                       <td>
-                        <Badge bg="secondary" className="text-uppercase">
+                        <Badge className={`text-uppercase ${actionBadgeClass(row.action)}`}>
                           {row.action}
                         </Badge>
                       </td>

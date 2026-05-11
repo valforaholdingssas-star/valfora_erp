@@ -68,6 +68,7 @@ const Sidebar = ({ collapsed }) => {
       {
         key: "general",
         label: "General",
+        tone: "slate",
         items: [
           { to: "/", label: "Inicio", icon: "bi-house-door" },
           showCalendar ? { to: "/calendar", label: "Calendario", icon: "bi-calendar3" } : null,
@@ -77,6 +78,7 @@ const Sidebar = ({ collapsed }) => {
       {
         key: "crm",
         label: "CRM",
+        tone: "violet",
         items: showCRM
           ? [
               { to: "/crm", label: "Dashboard CRM", icon: "bi-bar-chart-line" },
@@ -89,6 +91,7 @@ const Sidebar = ({ collapsed }) => {
       {
         key: "finance",
         label: "Finanzas",
+        tone: "emerald",
         items: showFinance
           ? [
               { to: "/finance/contracts", label: "Contratos", icon: "bi-file-earmark-text" },
@@ -102,6 +105,7 @@ const Sidebar = ({ collapsed }) => {
       {
         key: "wiki",
         label: "Wiki",
+        tone: "amber",
         items: showWiki
           ? [
               canEditWiki ? { to: "/wiki", label: "Gestión Wiki", icon: "bi-journal-code" } : null,
@@ -112,6 +116,7 @@ const Sidebar = ({ collapsed }) => {
       {
         key: "settings",
         label: "Configuración",
+        tone: "rose",
         items: showSettingsSection
           ? [
               showUserSettings ? { to: "/settings/users", label: "Usuarios", icon: "bi-person-gear" } : null,
@@ -234,14 +239,14 @@ const Sidebar = ({ collapsed }) => {
             {filteredSections.map((section) => {
               const expanded = openGroups[section.key] ?? true;
               return (
-                <div key={section.key} className="app-sidebar-group">
+                <div key={section.key} className={`app-sidebar-group tone-${section.tone || "slate"}`}>
                   <button
                     type="button"
                     className="app-sidebar-group-toggle"
                     onClick={() => toggleGroup(section.key)}
                     aria-expanded={expanded}
                   >
-                    <span>{section.label}</span>
+                    <span className="app-sidebar-group-title">{section.label}</span>
                     <i className={`bi bi-chevron-down ${expanded ? "is-open" : ""}`} />
                   </button>
                   {expanded && (
