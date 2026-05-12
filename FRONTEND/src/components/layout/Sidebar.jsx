@@ -18,7 +18,7 @@ const itemIsActive = (pathname, to) => {
 const Sidebar = ({ collapsed }) => {
   const { pathname } = useLocation();
   const { hasModuleAccess } = useAuth();
-  const { chatUnreadCount } = useNotifications();
+  const { chatUnreadCount, linkedinUnreadCount } = useNotifications();
   const [query, setQuery] = useState("");
   const [openGroups, setOpenGroups] = useState({});
 
@@ -26,12 +26,13 @@ const Sidebar = ({ collapsed }) => {
   const showCalendar = hasModuleAccess("calendar", "view");
   const showChat = hasModuleAccess("chat", "view");
   const showAiSettings = hasModuleAccess("ai_config", "view");
+  const showLinkedIn = hasModuleAccess("linkedin", "view");
   const showUserSettings = hasModuleAccess("users", "view");
   const showFinance = hasModuleAccess("finance", "view");
   const showWiki = hasModuleAccess("wiki", "view");
   const canEditWiki = hasModuleAccess("wiki", "edit");
   const showWhatsAppSettings = hasModuleAccess("whatsapp", "view");
-  const showSettingsSection = showAiSettings || showUserSettings || showWhatsAppSettings;
+  const showSettingsSection = showAiSettings || showLinkedIn || showUserSettings || showWhatsAppSettings;
   const [wikiItems, setWikiItems] = useState([]);
 
   useEffect(() => {
@@ -103,6 +104,21 @@ const Sidebar = ({ collapsed }) => {
           : [],
       },
       {
+        key: "linkedin",
+        label: "LinkedIn",
+        tone: "violet",
+        items: showLinkedIn
+          ? [
+              { to: "/linkedin", label: "Dashboard", icon: "bi-speedometer2" },
+              { to: "/linkedin/prospects", label: "Prospectos", icon: "bi-people" },
+              { to: "/linkedin/inbox", label: "Inbox", icon: "bi-chat-left-text" },
+              { to: "/linkedin/searches", label: "Búsquedas", icon: "bi-search" },
+              { to: "/linkedin/invitations", label: "Invitaciones", icon: "bi-person-plus" },
+              { to: "/linkedin/templates", label: "Plantillas", icon: "bi-card-text" },
+            ]
+          : [],
+      },
+      {
         key: "wiki",
         label: "Wiki",
         tone: "amber",
@@ -122,6 +138,7 @@ const Sidebar = ({ collapsed }) => {
               showUserSettings ? { to: "/settings/users", label: "Usuarios", icon: "bi-person-gear" } : null,
               showUserSettings ? { to: "/settings/activity-log", label: "Log de actividad", icon: "bi-journal-text" } : null,
               showAiSettings ? { to: "/settings/ai", label: "Configuración IA", icon: "bi-cpu" } : null,
+              showLinkedIn ? { to: "/settings/linkedin", label: "LinkedIn (vista unificada)", icon: "bi-linkedin" } : null,
               showWhatsAppSettings ? { to: "/settings/whatsapp/accounts", label: "WhatsApp Cuentas", icon: "bi-whatsapp" } : null,
               showWhatsAppSettings ? { to: "/settings/whatsapp/phone-numbers", label: "WhatsApp Números", icon: "bi-telephone" } : null,
               showWhatsAppSettings ? { to: "/settings/whatsapp/templates", label: "WhatsApp Templates", icon: "bi-chat-square-text" } : null,
@@ -137,6 +154,7 @@ const Sidebar = ({ collapsed }) => {
     return base.filter((section) => section.items.length > 0);
   }, [
     showAiSettings,
+    showLinkedIn,
     showCRM,
     showCalendar,
     showChat,
@@ -220,6 +238,11 @@ const Sidebar = ({ collapsed }) => {
                     {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
                   </span>
                 )}
+                {item.to === "/settings/linkedin" && linkedinUnreadCount > 0 && (
+                  <span className="badge rounded-pill bg-danger ms-auto">
+                    {linkedinUnreadCount > 99 ? "99+" : linkedinUnreadCount}
+                  </span>
+                )}
               </NavLink>
             )),
           )}
@@ -258,6 +281,11 @@ const Sidebar = ({ collapsed }) => {
                           {item.to === "/chat" && chatUnreadCount > 0 && (
                             <span className="badge rounded-pill bg-danger ms-auto">
                               {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                            </span>
+                          )}
+                          {item.to === "/settings/linkedin" && linkedinUnreadCount > 0 && (
+                            <span className="badge rounded-pill bg-danger ms-auto">
+                              {linkedinUnreadCount > 99 ? "99+" : linkedinUnreadCount}
                             </span>
                           )}
                         </NavLink>

@@ -93,6 +93,19 @@ const AIConfigPage = () => {
     has_google_service_account_json: false,
     google_service_account_json: "",
     clear_google_service_account_json: false,
+    unipile_api_base_url: "https://api1.unipile.com:13111/api/v1",
+    unipile_link_callback_url: "",
+    linkedin_max_invitations_per_day: 40,
+    linkedin_max_search_results_per_day: 1000,
+    linkedin_max_messages_per_day: 50,
+    has_unipile_api_key: false,
+    unipile_api_key_masked: "",
+    unipile_api_key: "",
+    clear_unipile_api_key: false,
+    has_unipile_webhook_secret: false,
+    unipile_webhook_secret_masked: "",
+    unipile_webhook_secret: "",
+    clear_unipile_webhook_secret: false,
   });
   const [knowledgeDocs, setKnowledgeDocs] = useState([]);
   const [knowledgeUploadFile, setKnowledgeUploadFile] = useState(null);
@@ -178,6 +191,19 @@ const AIConfigPage = () => {
         has_google_service_account_json: Boolean(runtime.has_google_service_account_json),
         google_service_account_json: "",
         clear_google_service_account_json: false,
+        unipile_api_base_url: runtime.unipile_api_base_url || "https://api1.unipile.com:13111/api/v1",
+        unipile_link_callback_url: runtime.unipile_link_callback_url || "",
+        linkedin_max_invitations_per_day: runtime.linkedin_max_invitations_per_day ?? 40,
+        linkedin_max_search_results_per_day: runtime.linkedin_max_search_results_per_day ?? 1000,
+        linkedin_max_messages_per_day: runtime.linkedin_max_messages_per_day ?? 50,
+        has_unipile_api_key: Boolean(runtime.has_unipile_api_key),
+        unipile_api_key_masked: runtime.unipile_api_key_masked || "",
+        unipile_api_key: "",
+        clear_unipile_api_key: false,
+        has_unipile_webhook_secret: Boolean(runtime.has_unipile_webhook_secret),
+        unipile_webhook_secret_masked: runtime.unipile_webhook_secret_masked || "",
+        unipile_webhook_secret: "",
+        clear_unipile_webhook_secret: false,
       }));
       setSelectedId((prev) => {
         if (prev && rows.some((r) => r.id === prev)) return prev;
@@ -345,12 +371,35 @@ const AIConfigPage = () => {
           Math.min(30, Math.floor(toNumberOr(runtimeForm.google_booking_window_days, 7))),
         ),
         clear_google_service_account_json: Boolean(runtimeForm.clear_google_service_account_json),
+        unipile_api_base_url:
+          (runtimeForm.unipile_api_base_url || "").trim() || "https://api1.unipile.com:13111/api/v1",
+        unipile_link_callback_url: (runtimeForm.unipile_link_callback_url || "").trim(),
+        linkedin_max_invitations_per_day: Math.max(
+          1,
+          Math.min(1000, Math.floor(toNumberOr(runtimeForm.linkedin_max_invitations_per_day, 40))),
+        ),
+        linkedin_max_search_results_per_day: Math.max(
+          1,
+          Math.min(100000, Math.floor(toNumberOr(runtimeForm.linkedin_max_search_results_per_day, 1000))),
+        ),
+        linkedin_max_messages_per_day: Math.max(
+          1,
+          Math.min(5000, Math.floor(toNumberOr(runtimeForm.linkedin_max_messages_per_day, 50))),
+        ),
+        clear_unipile_api_key: Boolean(runtimeForm.clear_unipile_api_key),
+        clear_unipile_webhook_secret: Boolean(runtimeForm.clear_unipile_webhook_secret),
       };
       if ((runtimeForm.openai_api_key || "").trim()) {
         payload.openai_api_key = runtimeForm.openai_api_key.trim();
       }
       if ((runtimeForm.google_service_account_json || "").trim()) {
         payload.google_service_account_json = runtimeForm.google_service_account_json.trim();
+      }
+      if ((runtimeForm.unipile_api_key || "").trim()) {
+        payload.unipile_api_key = runtimeForm.unipile_api_key.trim();
+      }
+      if ((runtimeForm.unipile_webhook_secret || "").trim()) {
+        payload.unipile_webhook_secret = runtimeForm.unipile_webhook_secret.trim();
       }
       const updated = await patchAiRuntimeSettings(payload);
       setRuntimeForm((prev) => ({
@@ -370,6 +419,19 @@ const AIConfigPage = () => {
         has_google_service_account_json: Boolean(updated.has_google_service_account_json),
         google_service_account_json: "",
         clear_google_service_account_json: false,
+        unipile_api_base_url: updated.unipile_api_base_url || "https://api1.unipile.com:13111/api/v1",
+        unipile_link_callback_url: updated.unipile_link_callback_url || "",
+        linkedin_max_invitations_per_day: updated.linkedin_max_invitations_per_day ?? 40,
+        linkedin_max_search_results_per_day: updated.linkedin_max_search_results_per_day ?? 1000,
+        linkedin_max_messages_per_day: updated.linkedin_max_messages_per_day ?? 50,
+        has_unipile_api_key: Boolean(updated.has_unipile_api_key),
+        unipile_api_key_masked: updated.unipile_api_key_masked || "",
+        unipile_api_key: "",
+        clear_unipile_api_key: false,
+        has_unipile_webhook_secret: Boolean(updated.has_unipile_webhook_secret),
+        unipile_webhook_secret_masked: updated.unipile_webhook_secret_masked || "",
+        unipile_webhook_secret: "",
+        clear_unipile_webhook_secret: false,
       }));
       setRuntimeSuccess("Credenciales/configuración runtime guardadas correctamente.");
     } catch (err) {
@@ -628,6 +690,121 @@ const AIConfigPage = () => {
                   }
                 />
               </Form.Group>
+              <hr />
+              <h3 className="h6 mb-2">Unipile / LinkedIn (operación comercial)</h3>
+              <Row className="g-2 mb-2">
+                <Col md={6}>
+                  <Form.Group>
+                    <Form.Label>Unipile API base URL</Form.Label>
+                    <Form.Control
+                      value={runtimeForm.unipile_api_base_url}
+                      onChange={(e) => setRuntimeForm((prev) => ({ ...prev, unipile_api_base_url: e.target.value }))}
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={6}>
+                  <Form.Group>
+                    <Form.Label>URL callback conexión LinkedIn</Form.Label>
+                    <Form.Control
+                      placeholder="https://erp.tudominio.com/settings/linkedin/connect"
+                      value={runtimeForm.unipile_link_callback_url}
+                      onChange={(e) =>
+                        setRuntimeForm((prev) => ({ ...prev, unipile_link_callback_url: e.target.value }))
+                      }
+                    />
+                  </Form.Group>
+                </Col>
+              </Row>
+              <Form.Group className="mb-2">
+                <Form.Label>Unipile API Key</Form.Label>
+                <Form.Control
+                  type="password"
+                  placeholder={runtimeForm.has_unipile_api_key ? "Dejar vacío para conservar la actual" : "API key"}
+                  value={runtimeForm.unipile_api_key}
+                  onChange={(e) => setRuntimeForm((prev) => ({ ...prev, unipile_api_key: e.target.value }))}
+                />
+                {runtimeForm.unipile_api_key_masked && (
+                  <div className="small text-muted mt-1">Clave actual: {runtimeForm.unipile_api_key_masked}</div>
+                )}
+                <Form.Check
+                  className="mt-2"
+                  type="checkbox"
+                  id="clear-unipile-api-key"
+                  label="Eliminar API key de Unipile guardada"
+                  checked={runtimeForm.clear_unipile_api_key}
+                  onChange={(e) => setRuntimeForm((prev) => ({ ...prev, clear_unipile_api_key: e.target.checked }))}
+                />
+              </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Label>Unipile Webhook Secret</Form.Label>
+                <Form.Control
+                  type="password"
+                  placeholder={
+                    runtimeForm.has_unipile_webhook_secret ? "Dejar vacío para conservar el actual" : "Webhook secret"
+                  }
+                  value={runtimeForm.unipile_webhook_secret}
+                  onChange={(e) => setRuntimeForm((prev) => ({ ...prev, unipile_webhook_secret: e.target.value }))}
+                />
+                {runtimeForm.unipile_webhook_secret_masked && (
+                  <div className="small text-muted mt-1">
+                    Secret actual: {runtimeForm.unipile_webhook_secret_masked}
+                  </div>
+                )}
+                <Form.Check
+                  className="mt-2"
+                  type="checkbox"
+                  id="clear-unipile-webhook-secret"
+                  label="Eliminar webhook secret guardado"
+                  checked={runtimeForm.clear_unipile_webhook_secret}
+                  onChange={(e) =>
+                    setRuntimeForm((prev) => ({ ...prev, clear_unipile_webhook_secret: e.target.checked }))
+                  }
+                />
+              </Form.Group>
+              <Row className="g-2 mb-2">
+                <Col md={4}>
+                  <Form.Group>
+                    <Form.Label>Límite invitaciones/día</Form.Label>
+                    <Form.Control
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={runtimeForm.linkedin_max_invitations_per_day}
+                      onChange={(e) =>
+                        setRuntimeForm((prev) => ({ ...prev, linkedin_max_invitations_per_day: e.target.value }))
+                      }
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={4}>
+                  <Form.Group>
+                    <Form.Label>Límite resultados búsqueda/día</Form.Label>
+                    <Form.Control
+                      type="number"
+                      min={1}
+                      max={100000}
+                      value={runtimeForm.linkedin_max_search_results_per_day}
+                      onChange={(e) =>
+                        setRuntimeForm((prev) => ({ ...prev, linkedin_max_search_results_per_day: e.target.value }))
+                      }
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={4}>
+                  <Form.Group>
+                    <Form.Label>Límite mensajes/día</Form.Label>
+                    <Form.Control
+                      type="number"
+                      min={1}
+                      max={5000}
+                      value={runtimeForm.linkedin_max_messages_per_day}
+                      onChange={(e) =>
+                        setRuntimeForm((prev) => ({ ...prev, linkedin_max_messages_per_day: e.target.value }))
+                      }
+                    />
+                  </Form.Group>
+                </Col>
+              </Row>
               <div className="d-flex gap-2 align-items-center">
                 <Button type="submit" size="sm" disabled={runtimeSaving}>
                   {runtimeSaving ? "Guardando…" : "Guardar runtime"}

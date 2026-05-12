@@ -16,6 +16,7 @@ import {
   markNotificationRead,
 } from "../api/notifications.js";
 import { fetchConversations } from "../api/chat.js";
+import { fetchLinkedInUnreadCount } from "../api/linkedin.js";
 import { useAuth } from "./AuthContext.jsx";
 
 const NotificationContext = createContext(null);
@@ -25,6 +26,7 @@ export const NotificationProvider = ({ children }) => {
   const [items, setItems] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [linkedinUnreadCount, setLinkedinUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const wsRef = useRef(null);
   const audioEnabledRef = useRef(false);
@@ -82,6 +84,15 @@ export const NotificationProvider = ({ children }) => {
     }
   }, []);
 
+  const refreshLinkedInUnreadFromApi = useCallback(async () => {
+    try {
+      const data = await fetchLinkedInUnreadCount();
+      setLinkedinUnreadCount(Number(data?.count || 0));
+    } catch {
+      setLinkedinUnreadCount(0);
+    }
+  }, []);
+
   const load = useCallback(async () => {
     if (!isAuthenticated) return;
     setLoading(true);
@@ -90,6 +101,7 @@ export const NotificationProvider = ({ children }) => {
         fetchNotifications({ page_size: 25 }),
         refreshUnreadFromApi(),
         refreshChatUnreadFromApi(),
+        refreshLinkedInUnreadFromApi(),
       ]);
       const list = listData.results || listData || [];
       setItems(Array.isArray(list) ? list : []);
@@ -98,13 +110,14 @@ export const NotificationProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, refreshUnreadFromApi, refreshChatUnreadFromApi]);
+  }, [isAuthenticated, refreshUnreadFromApi, refreshChatUnreadFromApi, refreshLinkedInUnreadFromApi]);
 
   useEffect(() => {
     if (!isAuthenticated) {
       setItems([]);
       setUnreadCount(0);
       setChatUnreadCount(0);
+      setLinkedinUnreadCount(0);
       didInitChatUnreadRef.current = false;
       previousChatUnreadRef.current = 0;
       return;
@@ -162,8 +175,19 @@ export const NotificationProvider = ({ children }) => {
           if (!n.is_read) setUnreadCount((c) => c + 1);
           if ((n.notification_type || "").toLowerCase() === "chat_message") {
             playIncomingChatSound();
-            refreshChatUnreadFromApi().catch(() => {});
+            if (String(n.action_url || "").startsWith("/settings/linkedin")) {
+              setLinkedinUnreadCount((c) => c + 1);
+            } else {
+              refreshChatUnreadFromApi().catch(() => {});
+            }
           }
+        } else if (payload.event === "linkedin.message.created" || payload.type === "linkedin_message") {
+          if (typeof payload.unread_count === "number") {
+            setLinkedinUnreadCount(payload.unread_count);
+          } else {
+            setLinkedinUnreadCount((c) => c + 1);
+          }
+          playIncomingChatSound();
         } else if (payload.event === "conversation.updated") {
           refreshChatUnreadFromApi().catch(() => {});
         }
@@ -180,28 +204,30 @@ export const NotificationProvider = ({ children }) => {
     async (id) => {
       await markNotificationRead(id);
       setItems((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-      await refreshUnreadFromApi();
+      await Promise.all([refreshUnreadFromApi(), refreshLinkedInUnreadFromApi()]);
     },
-    [refreshUnreadFromApi],
+    [refreshLinkedInUnreadFromApi, refreshUnreadFromApi],
   );
 
   const markAllRead = useCallback(async () => {
     await markAllNotificationsRead();
     setItems((prev) => prev.map((n) => ({ ...n, is_read: true })));
     setUnreadCount(0);
-  }, []);
+    await refreshLinkedInUnreadFromApi();
+  }, [refreshLinkedInUnreadFromApi]);
 
   const value = useMemo(
     () => ({
       items,
       unreadCount,
       chatUnreadCount,
+      linkedinUnreadCount,
       loading,
       reload: load,
       markRead,
       markAllRead,
     }),
-    [items, unreadCount, chatUnreadCount, loading, load, markRead, markAllRead],
+    [items, unreadCount, chatUnreadCount, linkedinUnreadCount, loading, load, markRead, markAllRead],
   );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;

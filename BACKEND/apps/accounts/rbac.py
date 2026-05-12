@@ -15,6 +15,7 @@ MODULES = (
     "whatsapp",
     "ai_config",
     "wiki",
+    "linkedin",
 )
 
 DEFAULT_ROLE_MATRIX = {
@@ -28,6 +29,7 @@ DEFAULT_ROLE_MATRIX = {
         "whatsapp": {"view": True, "edit": True},
         "ai_config": {"view": True, "edit": True},
         "wiki": {"view": True, "edit": True},
+        "linkedin": {"view": True, "edit": True},
     },
     "collaborator": {
         "crm": {"view": True, "edit": True},
@@ -38,6 +40,7 @@ DEFAULT_ROLE_MATRIX = {
         "whatsapp": {"view": False, "edit": False},
         "ai_config": {"view": False, "edit": False},
         "wiki": {"view": True, "edit": False},
+        "linkedin": {"view": False, "edit": False},
     },
 }
 

@@ -115,6 +115,13 @@ class AIRuntimeSettings(BaseModel):
     google_slot_minutes = models.PositiveSmallIntegerField(default=30)
     google_booking_window_days = models.PositiveSmallIntegerField(default=7)
     google_service_account_json = EncryptedTextField(blank=True)
+    unipile_api_base_url = models.CharField(max_length=255, blank=True)
+    unipile_api_key = EncryptedTextField(blank=True)
+    unipile_webhook_secret = EncryptedTextField(blank=True)
+    unipile_link_callback_url = models.CharField(max_length=255, blank=True)
+    linkedin_max_invitations_per_day = models.PositiveIntegerField(default=40)
+    linkedin_max_search_results_per_day = models.PositiveIntegerField(default=1000)
+    linkedin_max_messages_per_day = models.PositiveIntegerField(default=50)
 
     class Meta:
         verbose_name = "AI runtime settings"

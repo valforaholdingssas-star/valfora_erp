@@ -33,6 +33,14 @@ const FinanceDashboard = lazy(() => import("../../features/finance/pages/Finance
 const WikiDocumentsPage = lazy(() => import("../../features/wiki/pages/WikiDocumentsPage.jsx"));
 const WikiDocumentViewPage = lazy(() => import("../../features/wiki/pages/WikiDocumentViewPage.jsx"));
 const AIConfigPage = lazy(() => import("../../features/ai-config/pages/AIConfigPage.jsx"));
+const LinkedInHubPage = lazy(() => import("../../features/linkedin/pages/LinkedInHubPage.jsx"));
+const LinkedInDashboard = lazy(() => import("../../features/linkedin/pages/LinkedInDashboard.jsx"));
+const ProspectsList = lazy(() => import("../../features/linkedin/pages/ProspectsList.jsx"));
+const ProspectDetail = lazy(() => import("../../features/linkedin/pages/ProspectDetail.jsx"));
+const SavedSearches = lazy(() => import("../../features/linkedin/pages/SavedSearches.jsx"));
+const LinkedInInbox = lazy(() => import("../../features/linkedin/pages/LinkedInInbox.jsx"));
+const InvitationsList = lazy(() => import("../../features/linkedin/pages/InvitationsList.jsx"));
+const TemplatesManager = lazy(() => import("../../features/linkedin/pages/TemplatesManager.jsx"));
 const UsersManagementPage = lazy(() => import("../../features/users/pages/UsersManagementPage.jsx"));
 const ActivityLogPage = lazy(() => import("../../features/settings/audit/pages/ActivityLogPage.jsx"));
 const WhatsAppAccountsPage = lazy(() => import("../../features/settings/whatsapp/pages/WhatsAppAccountsPage.jsx"));
@@ -56,6 +64,7 @@ const MainLayout = () => {
   const canViewWiki = hasModuleAccess("wiki", "view");
   const canViewWhatsapp = hasModuleAccess("whatsapp", "view");
   const canViewAIConfig = hasModuleAccess("ai_config", "view");
+  const canViewLinkedIn = hasModuleAccess("linkedin", "view");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.innerWidth < 992;
@@ -120,6 +129,14 @@ const MainLayout = () => {
                 <Route path="/wiki" element={canViewWiki ? <WikiDocumentsPage /> : <Navigate to="/" replace />} />
                 <Route path="/wiki/:slug" element={canViewWiki ? <WikiDocumentViewPage /> : <Navigate to="/" replace />} />
                 <Route path="/settings/ai" element={canViewAIConfig ? <AIConfigPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/linkedin" element={canViewLinkedIn ? <LinkedInHubPage /> : <Navigate to="/" replace />} />
+                <Route path="/linkedin" element={canViewLinkedIn ? <LinkedInDashboard /> : <Navigate to="/" replace />} />
+                <Route path="/linkedin/prospects" element={canViewLinkedIn ? <ProspectsList /> : <Navigate to="/" replace />} />
+                <Route path="/linkedin/prospects/:id" element={canViewLinkedIn ? <ProspectDetail /> : <Navigate to="/" replace />} />
+                <Route path="/linkedin/inbox" element={canViewLinkedIn ? <LinkedInInbox /> : <Navigate to="/" replace />} />
+                <Route path="/linkedin/searches" element={canViewLinkedIn ? <SavedSearches /> : <Navigate to="/" replace />} />
+                <Route path="/linkedin/invitations" element={canViewLinkedIn ? <InvitationsList /> : <Navigate to="/" replace />} />
+                <Route path="/linkedin/templates" element={canViewLinkedIn ? <TemplatesManager /> : <Navigate to="/" replace />} />
                 <Route path="/settings/users" element={canViewUsers ? <UsersManagementPage /> : <Navigate to="/" replace />} />
                 <Route path="/settings/activity-log" element={canViewUsers ? <ActivityLogPage /> : <Navigate to="/" replace />} />
                 <Route path="/settings/whatsapp/accounts" element={canViewWhatsapp ? <WhatsAppAccountsPage /> : <Navigate to="/" replace />} />

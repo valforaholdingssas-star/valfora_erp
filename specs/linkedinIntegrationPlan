@@ -1,0 +1,1005 @@
+# Valfora ERP — Plan de Integración: Módulo LinkedIn
+
+> **Proyecto**: Valfora ERP — Módulo LinkedIn  
+> **Empresa**: Valfora Holdings  
+> **Versión del documento**: 1.0  
+> **Fecha**: Mayo 2026  
+> **Tipo**: Instrucciones de implementación para agente de IA (Codex)  
+> **Proveedor externo**: Unipile API (https://developer.unipile.com)  
+> **Dependencia**: Este módulo extiende el contrato principal `Valfora_ERP_CONTRACT.md` v1.1
+
+---
+
+## 0. CONTEXTO Y OBJETIVO
+
+### 0.1 Qué se construye
+
+Un módulo completo de integración con LinkedIn dentro de Valfora ERP que permita:
+
+1. Conectar una cuenta de LinkedIn al portal vía Unipile
+2. Buscar prospectos en LinkedIn desde el portal con parámetros configurables
+3. Enviar invitaciones de conexión con mensaje personalizado
+4. Ver el estado de invitaciones (pendiente, aceptada, ignorada)
+5. Enviar y recibir mensajes directos de LinkedIn dentro del portal (inbox centralizado)
+6. Recibir notificaciones en tiempo real cuando llegan mensajes nuevos
+7. Gestionar contactos de LinkedIn dentro de un embudo de push con etapas definidas
+8. Etiquetar contactos por segmento (wellness: spa, gimnasio, nutricionista, etc.)
+9. Visualizar métricas del embudo y contactos sin respuesta
+
+### 0.2 Qué NO se construye
+
+- Automatización de envío masivo de mensajes (todo envío es manual, iniciado por el usuario)
+- Scraping directo de LinkedIn (se usa Unipile como intermediario)
+- Integración con Sales Navigator (se usa cuenta LinkedIn estándar; extensible a futuro)
+
+### 0.3 Relación con módulos existentes
+
+- **CRM (`apps.crm`)**: los `LinkedInProspect` se vinculan opcionalmente a `crm.Contact` para que un prospecto de LinkedIn pueda convertirse en contacto del CRM
+- **Chat (`apps.chat`)**: se reutiliza el patrón de `Conversation`/`Message` pero con canal `linkedin`. El modelo `Conversation` existente se extiende con el choice `linkedin` en el campo `channel`
+- **Notifications (roadmap)**: los webhooks de Unipile generarán notificaciones vía el canal `ws/user/` existente hasta que el módulo de notificaciones se implemente
+
+---
+
+## 1. NUEVA APP DJANGO: `linkedin`
+
+### 1.1 Ubicación en el proyecto
+
+```
+backend/apps/linkedin/
+├── __init__.py
+├── admin.py
+├── apps.py
+├── models.py              # LinkedInAccount, LinkedInProspect, SavedSearch,
+│                          # ProspectStageLog, InvitationTemplate, MessageTemplate
+├── serializers.py
+├── viewsets.py
+├── urls.py
+├── services.py            # UnipileService (wrapper de la API)
+├── tasks.py               # Celery tasks: búsquedas programadas, sync invitaciones
+├── signals.py
+├── filters.py
+├── permissions.py
+├── webhooks.py             # Vista para recibir webhooks de Unipile
+├── constants.py            # Etapas del embudo, límites, choices
+├── tests/
+│   ├── __init__.py
+│   ├── test_models.py
+│   ├── test_services.py
+│   ├── test_viewsets.py
+│   ├── test_webhooks.py
+│   └── test_tasks.py
+└── migrations/
+```
+
+### 1.2 Registro de la app
+
+Agregar `'apps.linkedin'` a `INSTALLED_APPS` en `config/settings/base.py`.
+
+Agregar en `config/urls.py`:
+
+```python
+path('api/v1/linkedin/', include('apps.linkedin.urls')),
+```
+
+---
+
+## 2. VARIABLES DE ENTORNO
+
+Agregar al `.env.example` y al `.env`:
+
+```bash
+# === Unipile API ===
+UNIPILE_API_BASE_URL=https://api1.unipile.com:13111/api/v1
+UNIPILE_API_KEY=your-unipile-api-key
+UNIPILE_WEBHOOK_SECRET=your-webhook-secret
+
+# === LinkedIn Rate Limits (configurables) ===
+LINKEDIN_MAX_INVITATIONS_PER_DAY=40
+LINKEDIN_MAX_SEARCH_RESULTS_PER_DAY=1000
+LINKEDIN_MAX_MESSAGES_PER_DAY=50
+```
+
+---
+
+## 3. DEPENDENCIAS
+
+Agregar a `requirements/base.txt`:
+
+```
+unipile>=0.1.0
+```
+
+El SDK oficial de Python está en: https://github.com/unipile/unipile-python
+
+Si el SDK no está disponible o es inestable al momento de implementar, usar `requests` directamente con el wrapper `UnipileService` (§5).
+
+---
+
+## 4. MODELOS DE DATOS
+
+### 4.1 `LinkedInAccount`
+
+Representa la cuenta de LinkedIn conectada por un usuario de Valfora ERP vía Unipile.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| id | UUIDField (PK) | Identificador interno |
+| user | OneToOneField(User) | Usuario de Valfora ERP que conectó la cuenta |
+| unipile_account_id | CharField(unique) | ID de la cuenta en Unipile (ej: `acc_01jgpb44tjf`) |
+| linkedin_user_id | CharField(null) | URN del usuario en LinkedIn (ej: `ACoAAAcDMMQB...`) |
+| linkedin_name | CharField(null) | Nombre completo del perfil conectado |
+| linkedin_profile_url | URLField(null) | URL pública del perfil |
+| status | CharField(choices) | Estado: `active`, `reconnecting`, `disconnected`, `error` |
+| connected_at | DateTimeField | Fecha de conexión |
+| last_sync_at | DateTimeField(null) | Última sincronización exitosa |
+| metadata | JSONField(default=dict) | Datos adicionales de Unipile (feature, tipo de cuenta) |
+| created_at | DateTimeField(auto_now_add) | Auditoría |
+| updated_at | DateTimeField(auto_now) | Auditoría |
+
+**Constraints:**
+- Un usuario solo puede tener una cuenta LinkedIn conectada (`OneToOneField`)
+- `unipile_account_id` es único
+
+### 4.2 `SavedSearch`
+
+Búsquedas guardadas que se ejecutan periódicamente para encontrar prospectos.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| id | UUIDField (PK) | Identificador interno |
+| account | ForeignKey(LinkedInAccount) | Cuenta desde la que se ejecuta la búsqueda |
+| name | CharField | Nombre descriptivo (ej: "Dueños de spa Bogotá") |
+| keywords | CharField | Palabras clave de búsqueda |
+| job_title | CharField(blank) | Filtro por cargo |
+| industry | CharField(blank) | Filtro por industria |
+| location | CharField(blank) | Filtro por ubicación |
+| network_distance | CharField(choices, blank) | Grado de conexión: `first`, `second`, `third` |
+| frequency | CharField(choices) | Frecuencia de ejecución: `daily`, `every_2_days`, `weekly` |
+| is_active | BooleanField(default=True) | Búsqueda activa o pausada |
+| last_executed_at | DateTimeField(null) | Última ejecución |
+| total_results_found | PositiveIntegerField(default=0) | Total acumulado de resultados |
+| created_at | DateTimeField(auto_now_add) | Auditoría |
+| updated_at | DateTimeField(auto_now) | Auditoría |
+
+### 4.3 `LinkedInProspect`
+
+Prospecto de LinkedIn encontrado por búsqueda o agregado manualmente.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| id | UUIDField (PK) | Identificador interno |
+| account | ForeignKey(LinkedInAccount) | Cuenta que encontró/gestiona este prospecto |
+| saved_search | ForeignKey(SavedSearch, null, blank) | Búsqueda que lo encontró (null si fue manual) |
+| crm_contact | ForeignKey(crm.Contact, null, blank, SET_NULL) | Contacto CRM vinculado (opcional) |
+| linkedin_profile_id | CharField | ID del perfil en LinkedIn (URN o public identifier) |
+| linkedin_profile_url | URLField(null) | URL del perfil |
+| full_name | CharField | Nombre completo |
+| headline | CharField(blank) | Titular del perfil |
+| company_name | CharField(blank) | Empresa actual |
+| job_title | CharField(blank) | Cargo actual |
+| location | CharField(blank) | Ubicación |
+| profile_picture_url | URLField(null) | URL de la foto |
+| network_distance | CharField(choices) | Grado de conexión: `first`, `second`, `third`, `out_of_network` |
+| funnel_stage | CharField(choices) | Etapa del embudo (ver §4.7) |
+| tags | ArrayField(CharField, default=list) | Etiquetas (ej: `["spa", "bogota", "wellness"]`) |
+| notes | TextField(blank) | Notas internas del usuario |
+| unipile_chat_id | CharField(null, blank) | ID del chat en Unipile (se llena cuando hay conversación) |
+| invitation_sent_at | DateTimeField(null) | Fecha de envío de invitación |
+| invitation_accepted_at | DateTimeField(null) | Fecha de aceptación |
+| invitation_status | CharField(choices) | Estado: `not_sent`, `pending`, `accepted`, `declined`, `withdrawn` |
+| last_message_at | DateTimeField(null) | Último mensaje enviado o recibido |
+| last_message_direction | CharField(choices, null) | `inbound` o `outbound` |
+| is_discarded | BooleanField(default=False) | Descartado por el usuario (no vuelve a aparecer) |
+| created_at | DateTimeField(auto_now_add) | Auditoría |
+| updated_at | DateTimeField(auto_now) | Auditoría |
+
+**Constraints:**
+- `unique_together = ('account', 'linkedin_profile_id')` — evitar duplicados por cuenta
+- Índice en `funnel_stage` y `invitation_status` para filtrado rápido
+- Índice GIN en `tags` para búsqueda por etiqueta
+
+### 4.4 `ProspectStageLog`
+
+Historial de cambios de etapa de un prospecto en el embudo.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| id | UUIDField (PK) | Identificador interno |
+| prospect | ForeignKey(LinkedInProspect) | Prospecto |
+| from_stage | CharField(choices, null) | Etapa anterior (null si es la primera) |
+| to_stage | CharField(choices) | Etapa nueva |
+| changed_by | ForeignKey(User, null) | Usuario que cambió (null si fue automático) |
+| changed_at | DateTimeField(auto_now_add) | Timestamp del cambio |
+| reason | CharField(blank) | Motivo del cambio (opcional) |
+
+### 4.5 `InvitationTemplate`
+
+Plantillas reutilizables para mensajes de invitación de conexión.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| id | UUIDField (PK) | Identificador interno |
+| account | ForeignKey(LinkedInAccount) | Cuenta que creó la plantilla |
+| name | CharField | Nombre (ej: "Intro wellness general") |
+| body | CharField(max_length=300) | Texto de la invitación (máximo 300 chars = límite LinkedIn) |
+| times_used | PositiveIntegerField(default=0) | Contador de uso |
+| created_at | DateTimeField(auto_now_add) | Auditoría |
+
+### 4.6 `MessageTemplate`
+
+Plantillas reutilizables para primeros mensajes después de aceptar la conexión.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| id | UUIDField (PK) | Identificador interno |
+| account | ForeignKey(LinkedInAccount) | Cuenta que creó la plantilla |
+| name | CharField | Nombre (ej: "Primer mensaje spa") |
+| body | TextField | Texto del mensaje |
+| times_used | PositiveIntegerField(default=0) | Contador de uso |
+| created_at | DateTimeField(auto_now_add) | Auditoría |
+
+### 4.7 Etapas del embudo (choices para `funnel_stage`)
+
+Definir en `constants.py`:
+
+```python
+FUNNEL_STAGES = [
+    ('prospect_identified', 'Prospecto identificado'),
+    ('invitation_sent', 'Invitación enviada'),
+    ('connection_accepted', 'Conexión aceptada'),
+    ('first_message_sent', 'Primer contacto enviado'),
+    ('in_conversation', 'En conversación'),
+    ('meeting_scheduled', 'Reunión agendada'),
+    ('proposal_sent', 'Propuesta enviada'),
+    ('client', 'Cliente'),
+    ('discarded', 'Descartado'),
+]
+
+INVITATION_STATUSES = [
+    ('not_sent', 'No enviada'),
+    ('pending', 'Pendiente'),
+    ('accepted', 'Aceptada'),
+    ('declined', 'Rechazada'),
+    ('withdrawn', 'Retirada'),
+]
+
+NETWORK_DISTANCES = [
+    ('first', '1er grado'),
+    ('second', '2do grado'),
+    ('third', '3er grado'),
+    ('out_of_network', 'Fuera de red'),
+]
+
+SEARCH_FREQUENCIES = [
+    ('daily', 'Diaria'),
+    ('every_2_days', 'Cada 2 días'),
+    ('weekly', 'Semanal'),
+]
+```
+
+---
+
+## 5. SERVICIO: `UnipileService` (`services.py`)
+
+Wrapper centralizado para todas las llamadas a la API de Unipile. Ningún otro archivo del módulo debe hacer llamadas directas a Unipile; todo pasa por este servicio.
+
+### 5.1 Estructura del servicio
+
+```python
+import requests
+import logging
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+class UnipileService:
+    """Wrapper para la API de Unipile v1."""
+
+    def __init__(self):
+        self.base_url = settings.UNIPILE_API_BASE_URL
+        self.api_key = settings.UNIPILE_API_KEY
+        self.headers = {
+            'X-API-KEY': self.api_key,
+            'accept': 'application/json',
+            'content-type': 'application/json',
+        }
+
+    def _request(self, method, endpoint, **kwargs):
+        """Método base para todas las peticiones. Maneja errores y logging."""
+        url = f"{self.base_url}/{endpoint}"
+        try:
+            response = requests.request(method, url, headers=self.headers, **kwargs)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Unipile API error: {method} {endpoint} — {e}")
+            raise
+
+    # --- Cuentas ---
+    def get_auth_link(self, user_id, callback_url):
+        """Genera link de autenticación hosted de Unipile."""
+        ...
+
+    def get_account(self, account_id):
+        """Obtiene detalles de una cuenta conectada."""
+        ...
+
+    def disconnect_account(self, account_id):
+        """Desconecta una cuenta."""
+        ...
+
+    # --- Búsqueda ---
+    def search_people(self, account_id, keywords, filters=None, limit=25):
+        """Busca perfiles de LinkedIn.
+        
+        Args:
+            account_id: ID de cuenta Unipile
+            keywords: palabras clave de búsqueda
+            filters: dict con job_title, industry, location, network_distance
+            limit: máximo de resultados
+        
+        Returns:
+            dict con 'items' (lista de perfiles) y paginación
+        """
+        ...
+
+    def get_profile(self, account_id, profile_id):
+        """Obtiene detalle de un perfil específico."""
+        ...
+
+    # --- Invitaciones ---
+    def send_invitation(self, account_id, profile_id, message=None):
+        """Envía invitación de conexión.
+        
+        Args:
+            account_id: ID de cuenta Unipile
+            profile_id: ID del perfil destino
+            message: texto de la invitación (máx 300 chars, opcional)
+        
+        Returns:
+            dict con resultado de la invitación
+        """
+        ...
+
+    def get_sent_invitations(self, account_id):
+        """Lista invitaciones enviadas y su estado."""
+        ...
+
+    def withdraw_invitation(self, account_id, invitation_id):
+        """Retira una invitación pendiente."""
+        ...
+
+    # --- Mensajería ---
+    def list_chats(self, account_id, limit=50):
+        """Lista conversaciones de la cuenta."""
+        ...
+
+    def get_chat_messages(self, chat_id, limit=100):
+        """Obtiene mensajes de un chat específico."""
+        ...
+
+    def send_message(self, account_id, chat_id, text):
+        """Envía mensaje a un chat existente."""
+        ...
+
+    def start_chat(self, account_id, recipient_id, text):
+        """Inicia una conversación nueva con una conexión de 1er grado."""
+        ...
+
+    # --- Webhooks ---
+    def register_webhook(self, request_url, source='messaging'):
+        """Registra un webhook en Unipile."""
+        ...
+```
+
+### 5.2 Manejo de errores
+
+- Todas las llamadas deben capturar `requests.exceptions.RequestException`
+- Registrar en `logger.error` con método, endpoint y error
+- Devolver errores al viewset como `ServiceUnavailable` (HTTP 503) cuando Unipile no responde
+- Para rate limits de LinkedIn (detectados en respuesta de Unipile), devolver HTTP 429 al frontend con mensaje descriptivo
+
+### 5.3 Rate limiting interno
+
+Implementar un contador en Redis para rastrear el uso diario por cuenta:
+
+```python
+# Claves Redis:
+# linkedin:invitations:{account_id}:{date} → int (contador diario)
+# linkedin:searches:{account_id}:{date} → int (contador diario)
+# linkedin:messages:{account_id}:{date} → int (contador diario)
+```
+
+Antes de cada operación, verificar que no se haya excedido el límite configurado en `.env`. Si se excede, devolver error sin llamar a Unipile.
+
+---
+
+## 6. ENDPOINTS DE API
+
+Prefijo base: **`/api/v1/linkedin/`**
+
+### 6.1 Conexión de cuenta
+
+| Método | Endpoint | Descripción | Permisos |
+|--------|----------|-------------|----------|
+| POST | `/accounts/connect/` | Genera link de autenticación de Unipile y lo devuelve | Admin+ |
+| GET | `/accounts/status/` | Estado de la cuenta LinkedIn conectada del usuario actual | Autenticado |
+| POST | `/accounts/disconnect/` | Desconecta la cuenta LinkedIn | Admin+ |
+| POST | `/accounts/callback/` | Callback de Unipile tras autenticación exitosa (interno) | Público (verificado por secret) |
+
+### 6.2 Búsquedas guardadas
+
+| Método | Endpoint | Descripción | Permisos |
+|--------|----------|-------------|----------|
+| GET | `/searches/` | Listar búsquedas guardadas del usuario | Autenticado |
+| POST | `/searches/` | Crear nueva búsqueda guardada | Autenticado |
+| GET | `/searches/{id}/` | Detalle de una búsqueda | Autenticado |
+| PATCH | `/searches/{id}/` | Editar búsqueda (nombre, filtros, frecuencia, is_active) | Autenticado |
+| DELETE | `/searches/{id}/` | Eliminar búsqueda | Autenticado |
+| POST | `/searches/{id}/execute/` | Ejecutar búsqueda manualmente ahora | Autenticado |
+| GET | `/searches/{id}/results/` | Listar prospectos encontrados por esta búsqueda | Autenticado |
+
+### 6.3 Prospectos
+
+| Método | Endpoint | Descripción | Permisos |
+|--------|----------|-------------|----------|
+| GET | `/prospects/` | Listar prospectos (filtrable por stage, tags, search) | Autenticado |
+| POST | `/prospects/` | Agregar prospecto manualmente (por URL o profile_id) | Autenticado |
+| GET | `/prospects/{id}/` | Detalle del prospecto (perfil + embudo + historial) | Autenticado |
+| PATCH | `/prospects/{id}/` | Editar (notas, tags, funnel_stage) | Autenticado |
+| POST | `/prospects/{id}/approve/` | Aprobar prospecto de búsqueda para agregarlo al embudo | Autenticado |
+| POST | `/prospects/{id}/discard/` | Descartar prospecto (no vuelve a aparecer) | Autenticado |
+| POST | `/prospects/{id}/move-stage/` | Mover a otra etapa del embudo (registra log) | Autenticado |
+| POST | `/prospects/{id}/link-crm/` | Vincular con un contacto CRM existente o crear uno nuevo | Autenticado |
+| POST | `/prospects/bulk-approve/` | Aprobar múltiples prospectos en lote | Autenticado |
+| POST | `/prospects/bulk-discard/` | Descartar múltiples prospectos en lote | Autenticado |
+| GET | `/prospects/pending-review/` | Prospectos de búsqueda automática pendientes de revisión | Autenticado |
+| GET | `/prospects/stale/` | Prospectos sin respuesta ordenados por días transcurridos | Autenticado |
+
+### 6.4 Invitaciones
+
+| Método | Endpoint | Descripción | Permisos |
+|--------|----------|-------------|----------|
+| POST | `/prospects/{id}/invite/` | Enviar invitación de conexión al prospecto | Autenticado |
+| POST | `/prospects/{id}/withdraw-invite/` | Retirar invitación pendiente | Autenticado |
+| GET | `/invitations/` | Listar invitaciones enviadas con estado y fecha | Autenticado |
+| GET | `/invitations/stats/` | Estadísticas: enviadas esta semana vs. límite | Autenticado |
+
+### 6.5 Mensajería (inbox)
+
+| Método | Endpoint | Descripción | Permisos |
+|--------|----------|-------------|----------|
+| GET | `/messages/conversations/` | Listar conversaciones LinkedIn con último mensaje | Autenticado |
+| GET | `/messages/conversations/{prospect_id}/` | Hilo de mensajes con un prospecto | Autenticado |
+| POST | `/messages/conversations/{prospect_id}/send/` | Enviar mensaje a un prospecto (1er grado) | Autenticado |
+| POST | `/messages/conversations/{prospect_id}/start/` | Iniciar conversación nueva con conexión aceptada | Autenticado |
+| POST | `/messages/mark-read/{prospect_id}/` | Marcar conversación como leída | Autenticado |
+| GET | `/messages/unread-count/` | Total de mensajes no leídos en LinkedIn | Autenticado |
+
+### 6.6 Plantillas
+
+| Método | Endpoint | Descripción | Permisos |
+|--------|----------|-------------|----------|
+| GET/POST | `/templates/invitations/` | CRUD plantillas de invitación | Autenticado |
+| GET/PATCH/DELETE | `/templates/invitations/{id}/` | Detalle/editar/eliminar | Autenticado |
+| GET/POST | `/templates/messages/` | CRUD plantillas de mensaje | Autenticado |
+| GET/PATCH/DELETE | `/templates/messages/{id}/` | Detalle/editar/eliminar | Autenticado |
+
+### 6.7 Embudo y métricas
+
+| Método | Endpoint | Descripción | Permisos |
+|--------|----------|-------------|----------|
+| GET | `/funnel/summary/` | Conteo de prospectos por etapa del embudo | Autenticado |
+| GET | `/funnel/stages/{stage}/` | Listar prospectos en una etapa específica | Autenticado |
+| GET | `/dashboard/` | Dashboard: embudo + invitaciones semana + mensajes sin respuesta + búsquedas activas | Autenticado |
+
+### 6.8 Webhook de Unipile (interno)
+
+| Método | Endpoint | Descripción | Permisos |
+|--------|----------|-------------|----------|
+| POST | `/webhooks/unipile/` | Recibe eventos de Unipile (nuevos mensajes, conexiones aceptadas, cambios de cuenta) | Público (verificado por `UNIPILE_WEBHOOK_SECRET`) |
+
+---
+
+## 7. WEBHOOK HANDLER (`webhooks.py`)
+
+### 7.1 Endpoint
+
+URL pública que se registra en Unipile: `https://{DOMAIN}/api/v1/linkedin/webhooks/unipile/`
+
+### 7.2 Eventos a manejar
+
+```python
+@csrf_exempt
+@require_POST
+def unipile_webhook(request):
+    """Procesa eventos de Unipile.
+    
+    Eventos manejados:
+    - message_received: nuevo mensaje en LinkedIn
+    - new_relation: invitación aceptada
+    - account_status: cambio de estado de la cuenta
+    """
+    # 1. Verificar header de autenticación
+    auth_header = request.headers.get('Unipile-Auth')
+    if auth_header != settings.UNIPILE_WEBHOOK_SECRET:
+        return HttpResponseForbidden()
+
+    payload = json.loads(request.body)
+    event = payload.get('event')
+    account_id = payload.get('account_id')
+
+    if event == 'message_received':
+        handle_new_message.delay(payload)
+    elif event == 'new_relation':
+        handle_new_relation.delay(payload)
+    elif event in ('account_connected', 'account_disconnected', 'account_credentials'):
+        handle_account_status.delay(payload)
+
+    return JsonResponse({'status': 'ok'}, status=200)
+```
+
+### 7.3 Lógica por evento
+
+**`message_received`:**
+1. Buscar `LinkedInAccount` por `account_id`
+2. Buscar `LinkedInProspect` por `sender.attendee_provider_id`
+3. Si el prospecto existe, actualizar `last_message_at`, `last_message_direction='inbound'`
+4. Almacenar `unipile_chat_id` en el prospecto si no lo tenía
+5. Si el prospecto está en etapa `first_message_sent`, moverlo a `in_conversation`
+6. Notificar al usuario vía WebSocket `ws/user/` con payload `{type: 'linkedin_message', prospect_id, sender_name, preview}`
+
+**`new_relation` (invitación aceptada):**
+1. Buscar `LinkedInProspect` con `invitation_status='pending'` que coincida por profile ID
+2. Actualizar `invitation_status='accepted'`, `invitation_accepted_at=now()`, `network_distance='first'`
+3. Mover `funnel_stage` a `connection_accepted` (registrar en `ProspectStageLog`)
+4. Notificar al usuario vía WebSocket
+
+**`account_status`:**
+1. Actualizar `LinkedInAccount.status` según el evento
+2. Si status es `CREDENTIALS`, marcar como `reconnecting` y notificar al usuario
+
+---
+
+## 8. TAREAS CELERY (`tasks.py`)
+
+### 8.1 `linkedin_execute_saved_searches`
+
+- **Tipo**: Celery Beat (periódica)
+- **Schedule**: cada 4 horas (con jitter aleatorio de ±30 min para evitar patrones)
+- **Lógica**:
+  1. Obtener todas las `SavedSearch` con `is_active=True`
+  2. Para cada búsqueda, verificar si toca ejecutar según `frequency` y `last_executed_at`
+  3. Llamar a `UnipileService.search_people()` con los filtros configurados
+  4. Para cada resultado, verificar si ya existe en `LinkedInProspect` (por `linkedin_profile_id` + `account`)
+  5. Si no existe y no está marcado como `is_discarded`, crear nuevo `LinkedInProspect` con `funnel_stage='prospect_identified'`
+  6. Actualizar `SavedSearch.last_executed_at` y `total_results_found`
+  7. Rate limit: esperar entre 2-5 segundos aleatorios entre búsquedas
+  8. No ejecutar más de 1,000 búsquedas de perfiles por día por cuenta
+
+### 8.2 `linkedin_sync_invitation_statuses`
+
+- **Tipo**: Celery Beat (periódica)
+- **Schedule**: cada 6 horas
+- **Lógica**:
+  1. Para cada `LinkedInAccount` activa, llamar a `UnipileService.get_sent_invitations()`
+  2. Comparar con `LinkedInProspect` donde `invitation_status='pending'`
+  3. Actualizar estados según respuesta de Unipile
+  4. Si una invitación fue aceptada y el webhook no lo capturó, actualizar prospecto
+
+### 8.3 `handle_new_message`
+
+- **Tipo**: Task individual (invocada por webhook)
+- **Lógica**: descrita en §7.3
+
+### 8.4 `handle_new_relation`
+
+- **Tipo**: Task individual (invocada por webhook)
+- **Lógica**: descrita en §7.3
+
+### 8.5 `handle_account_status`
+
+- **Tipo**: Task individual (invocada por webhook)
+- **Lógica**: descrita en §7.3
+
+### 8.6 Registro en Celery Beat
+
+Agregar en `config/celery.py` o vía `django-celery-beat`:
+
+```python
+CELERY_BEAT_SCHEDULE = {
+    # ... schedules existentes ...
+    'linkedin-execute-saved-searches': {
+        'task': 'apps.linkedin.tasks.linkedin_execute_saved_searches',
+        'schedule': crontab(minute=0, hour='*/4'),  # cada 4 horas
+    },
+    'linkedin-sync-invitation-statuses': {
+        'task': 'apps.linkedin.tasks.linkedin_sync_invitation_statuses',
+        'schedule': crontab(minute=30, hour='*/6'),  # cada 6 horas
+    },
+}
+```
+
+---
+
+## 9. MODIFICACIONES A MÓDULOS EXISTENTES
+
+### 9.1 `apps.chat` — Extender canal de conversación
+
+En `apps/chat/models.py`, agregar `'linkedin'` al choices del campo `channel` en `Conversation`:
+
+```python
+CHANNEL_CHOICES = [
+    ('whatsapp', 'WhatsApp'),
+    ('internal', 'Internal'),
+    ('linkedin', 'LinkedIn'),  # NUEVO
+]
+```
+
+Crear migración correspondiente.
+
+### 9.2 `apps/chat/consumers.py` — WebSocket notifications
+
+Reutilizar el canal `ws/user/` existente para enviar notificaciones de mensajes LinkedIn entrantes. El payload del evento debe incluir:
+
+```json
+{
+    "type": "linkedin_message",
+    "prospect_id": "uuid",
+    "prospect_name": "Nombre del prospecto",
+    "message_preview": "Primeros 100 caracteres...",
+    "timestamp": "2026-05-11T14:30:00Z"
+}
+```
+
+### 9.3 `.env.example`
+
+Agregar las variables de Unipile (§2).
+
+---
+
+## 10. FRONTEND
+
+### 10.1 Nuevos archivos
+
+```
+frontend/src/
+├── api/
+│   └── linkedin.js                    # Endpoints de la API de LinkedIn
+├── features/
+│   └── linkedin/
+│       ├── pages/
+│       │   ├── LinkedInDashboard.jsx   # Dashboard principal del módulo
+│       │   ├── ProspectsList.jsx       # Lista de prospectos con filtros
+│       │   ├── ProspectDetail.jsx      # Ficha del prospecto + conversación
+│       │   ├── SavedSearches.jsx       # CRUD de búsquedas guardadas
+│       │   ├── LinkedInInbox.jsx       # Inbox centralizado de mensajes
+│       │   ├── InvitationsList.jsx     # Estado de invitaciones
+│       │   └── TemplatesManager.jsx    # Gestión de plantillas
+│       ├── components/
+│       │   ├── FunnelKanban.jsx        # Vista kanban del embudo de push
+│       │   ├── FunnelSummary.jsx       # Resumen con conteos por etapa
+│       │   ├── ProspectCard.jsx        # Tarjeta de prospecto en lista/kanban
+│       │   ├── ProspectFilters.jsx     # Filtros por etapa, tags, búsqueda
+│       │   ├── LinkedInConversation.jsx # Hilo de conversación
+│       │   ├── MessageComposer.jsx     # Input de mensaje con plantillas
+│       │   ├── InvitationComposer.jsx  # Modal de invitación con plantilla
+│       │   ├── SearchForm.jsx          # Formulario de búsqueda guardada
+│       │   ├── AccountStatus.jsx       # Badge de estado de cuenta LinkedIn
+│       │   ├── TagManager.jsx          # Componente de gestión de etiquetas
+│       │   ├── StaleProspects.jsx      # Lista de prospectos sin respuesta
+│       │   └── WeeklyInviteCounter.jsx # Contador de invitaciones semana
+│       └── hooks/
+│           ├── useLinkedInAccount.js    # Hook para estado de cuenta
+│           ├── useProspects.js          # Hook para CRUD de prospectos
+│           ├── useFunnel.js            # Hook para métricas del embudo
+│           ├── useLinkedInMessages.js   # Hook para inbox
+│           └── useSavedSearches.js      # Hook para búsquedas
+```
+
+### 10.2 Rutas
+
+Agregar en `AppRoutes.jsx`:
+
+```jsx
+<PrivateRoute path="/linkedin" element={<LinkedInDashboard />} />
+<PrivateRoute path="/linkedin/prospects" element={<ProspectsList />} />
+<PrivateRoute path="/linkedin/prospects/:id" element={<ProspectDetail />} />
+<PrivateRoute path="/linkedin/inbox" element={<LinkedInInbox />} />
+<PrivateRoute path="/linkedin/searches" element={<SavedSearches />} />
+<PrivateRoute path="/linkedin/invitations" element={<InvitationsList />} />
+<PrivateRoute path="/linkedin/templates" element={<TemplatesManager />} />
+```
+
+### 10.3 Sidebar
+
+Agregar sección "LinkedIn" en el sidebar con icono y subitems:
+- Dashboard
+- Prospectos
+- Inbox
+- Búsquedas
+- Invitaciones
+- Plantillas
+
+### 10.4 Notificaciones en tiempo real
+
+Escuchar en el WebSocket `ws/user/` los eventos de tipo `linkedin_message` y mostrar:
+- Badge en el icono de LinkedIn del sidebar con conteo de no leídos
+- Toast notification con nombre y preview del mensaje
+
+### 10.5 API client (`api/linkedin.js`)
+
+```javascript
+import api from './axiosConfig';
+
+const PREFIX = '/linkedin';
+
+export const linkedinApi = {
+    // Cuenta
+    getAccountStatus: () => api.get(`${PREFIX}/accounts/status/`),
+    connectAccount: () => api.post(`${PREFIX}/accounts/connect/`),
+    disconnectAccount: () => api.post(`${PREFIX}/accounts/disconnect/`),
+
+    // Búsquedas
+    getSearches: () => api.get(`${PREFIX}/searches/`),
+    createSearch: (data) => api.post(`${PREFIX}/searches/`, data),
+    updateSearch: (id, data) => api.patch(`${PREFIX}/searches/${id}/`, data),
+    deleteSearch: (id) => api.delete(`${PREFIX}/searches/${id}/`),
+    executeSearch: (id) => api.post(`${PREFIX}/searches/${id}/execute/`),
+    getSearchResults: (id, params) => api.get(`${PREFIX}/searches/${id}/results/`, { params }),
+
+    // Prospectos
+    getProspects: (params) => api.get(`${PREFIX}/prospects/`, { params }),
+    getProspect: (id) => api.get(`${PREFIX}/prospects/${id}/`),
+    updateProspect: (id, data) => api.patch(`${PREFIX}/prospects/${id}/`, data),
+    addProspect: (data) => api.post(`${PREFIX}/prospects/`, data),
+    approveProspect: (id) => api.post(`${PREFIX}/prospects/${id}/approve/`),
+    discardProspect: (id) => api.post(`${PREFIX}/prospects/${id}/discard/`),
+    moveStage: (id, data) => api.post(`${PREFIX}/prospects/${id}/move-stage/`, data),
+    linkCrm: (id, data) => api.post(`${PREFIX}/prospects/${id}/link-crm/`, data),
+    bulkApprove: (ids) => api.post(`${PREFIX}/prospects/bulk-approve/`, { ids }),
+    bulkDiscard: (ids) => api.post(`${PREFIX}/prospects/bulk-discard/`, { ids }),
+    getPendingReview: (params) => api.get(`${PREFIX}/prospects/pending-review/`, { params }),
+    getStaleProspects: (params) => api.get(`${PREFIX}/prospects/stale/`, { params }),
+
+    // Invitaciones
+    sendInvite: (id, data) => api.post(`${PREFIX}/prospects/${id}/invite/`, data),
+    withdrawInvite: (id) => api.post(`${PREFIX}/prospects/${id}/withdraw-invite/`),
+    getInvitations: (params) => api.get(`${PREFIX}/invitations/`, { params }),
+    getInvitationStats: () => api.get(`${PREFIX}/invitations/stats/`),
+
+    // Mensajería
+    getConversations: (params) => api.get(`${PREFIX}/messages/conversations/`, { params }),
+    getMessages: (prospectId, params) => api.get(`${PREFIX}/messages/conversations/${prospectId}/`, { params }),
+    sendMessage: (prospectId, data) => api.post(`${PREFIX}/messages/conversations/${prospectId}/send/`, data),
+    startConversation: (prospectId, data) => api.post(`${PREFIX}/messages/conversations/${prospectId}/start/`, data),
+    markRead: (prospectId) => api.post(`${PREFIX}/messages/mark-read/${prospectId}/`),
+    getUnreadCount: () => api.get(`${PREFIX}/messages/unread-count/`),
+
+    // Plantillas
+    getInvitationTemplates: () => api.get(`${PREFIX}/templates/invitations/`),
+    createInvitationTemplate: (data) => api.post(`${PREFIX}/templates/invitations/`, data),
+    updateInvitationTemplate: (id, data) => api.patch(`${PREFIX}/templates/invitations/${id}/`, data),
+    deleteInvitationTemplate: (id) => api.delete(`${PREFIX}/templates/invitations/${id}/`),
+    getMessageTemplates: () => api.get(`${PREFIX}/templates/messages/`),
+    createMessageTemplate: (data) => api.post(`${PREFIX}/templates/messages/`, data),
+    updateMessageTemplate: (id, data) => api.patch(`${PREFIX}/templates/messages/${id}/`, data),
+    deleteMessageTemplate: (id) => api.delete(`${PREFIX}/templates/messages/${id}/`),
+
+    // Embudo y dashboard
+    getFunnelSummary: () => api.get(`${PREFIX}/funnel/summary/`),
+    getFunnelStage: (stage, params) => api.get(`${PREFIX}/funnel/stages/${stage}/`, { params }),
+    getDashboard: () => api.get(`${PREFIX}/dashboard/`),
+};
+```
+
+---
+
+## 11. PLAN DE EJECUCIÓN (SUBTAREAS ORDENADAS)
+
+### 11.0 Riesgos críticos y controles obligatorios (aplican a todas las fases)
+
+Antes de implementar endpoints o UI, se deben aplicar estos controles:
+
+1. **Mapping canónico Unipile ↔ modelos internos**
+   - Definir tabla de mapeo oficial en `apps/linkedin/constants.py` o `services.py` para:
+     - `unipile_account_id`
+     - `linkedin_profile_id` (source of truth)
+     - `unipile_chat_id`
+     - IDs de invitación y de mensaje externos
+   - Prohibido usar campos ambiguos sin normalización.
+   - Toda transformación de payload webhook/API pasa por funciones de parsing dedicadas.
+
+2. **Deduplicación e idempotencia**
+   - En búsqueda periódica y webhooks, usar `get_or_create`/`update_or_create` con claves únicas:
+     - Prospecto: `(account, linkedin_profile_id)`
+     - Eventos webhook: registrar `external_event_id`/hash para no reprocesar.
+   - Las tasks deben ser re-ejecutables sin generar efectos duplicados.
+
+3. **Rate limiting defensivo previo a llamada externa**
+   - Verificar límites en Redis **antes** de invocar Unipile.
+   - Si se excede límite, responder error de negocio (`429`) sin consumir API externa.
+   - Registrar métricas de consumo por cuenta/día.
+
+4. **Seguridad de webhook**
+   - Validación estricta de `UNIPILE_WEBHOOK_SECRET`.
+   - Rechazo temprano (`403`) en autenticación fallida.
+   - Validación de esquema mínimo del payload antes de encolar tasks.
+   - Logging sin exponer secretos ni PII sensible.
+
+5. **Observabilidad mínima obligatoria**
+   - Correlation ID por request/task.
+   - Logs estructurados para errores externos (`endpoint`, `account_id`, `event`, `status_code`).
+   - Contadores: errores 5xx Unipile, 429 internos, eventos webhook descartados.
+
+---
+
+### FASE 1: Fundación del módulo (backend)
+
+**Objetivo**: App Django creada, modelos migrados, servicio Unipile funcional.
+
+1. Crear app `apps/linkedin/` con toda la estructura de archivos vacía
+2. Registrar app en `INSTALLED_APPS`
+3. Agregar variables de entorno de Unipile al `.env.example` y al `.env`
+4. Agregar dependencia `unipile` (o `requests` si el SDK no está listo) a `requirements/base.txt`
+5. Implementar `constants.py` con todos los choices
+6. Implementar todos los modelos (§4) con validaciones, constraints e índices
+7. Crear migraciones y migrar
+8. Implementar admin de Django para todos los modelos
+9. Modificar `apps.chat.models.Conversation.channel` para agregar `'linkedin'`; crear migración
+10. Implementar `UnipileService` completo (§5) con:
+    - timeout/retries controlados
+    - parser de payloads normalizado
+    - manejo de errores tipificados (503/429)
+    - rate limiting en Redis
+11. Escribir tests para modelos y servicio (mock de Unipile)
+
+**Gate de salida de fase (obligatorio):**
+- `python manage.py test apps.linkedin` pasa.
+- Se validan constraints de unicidad para prospectos.
+- Existe documentación de mapping canónico de IDs.
+
+### FASE 2: API REST (backend)
+
+**Objetivo**: Todos los endpoints funcionales con serializers, viewsets y permisos.
+
+1. Implementar serializers para todos los modelos (con validaciones)
+2. Implementar viewsets con filtros (django-filter), búsqueda y paginación
+3. Implementar endpoint de conexión/desconexión de cuenta (§6.1)
+4. Implementar endpoints de búsquedas guardadas (§6.2)
+5. Implementar endpoints de prospectos con acciones (approve, discard, move-stage, link-crm, bulk) (§6.3)
+6. Implementar endpoints de invitaciones (§6.4)
+7. Implementar endpoints de mensajería (§6.5)
+8. Implementar endpoints de plantillas (§6.6)
+9. Implementar endpoints de embudo y dashboard (§6.7)
+10. Implementar permisos por rol (reutilizar patrón de `apps.crm.permissions`)
+11. Registrar URLs en `urls.py` y en `config/urls.py`
+12. Escribir tests para todos los viewsets
+
+**Gate de salida de fase (obligatorio):**
+- Endpoints visibles en `/api/v1/docs/`.
+- Errores de negocio usan códigos del módulo (`LINKEDIN_*`, `UNIPILE_UNAVAILABLE`).
+- Pruebas de deduplicación en creación manual y por búsqueda.
+
+### FASE 3: Webhooks y tareas Celery (backend)
+
+**Objetivo**: Eventos en tiempo real y búsquedas automáticas funcionando.
+
+1. Implementar `webhooks.py` con verificación de secret (§7)
+2. Implementar tasks Celery: `handle_new_message`, `handle_new_relation`, `handle_account_status` (§8)
+3. Implementar task `linkedin_execute_saved_searches` con rate limiting y jitter (§8.1)
+4. Implementar task `linkedin_sync_invitation_statuses` (§8.2)
+5. Registrar tasks periódicas en Celery Beat (§8.6)
+6. Implementar notificación vía WebSocket `ws/user/` para mensajes entrantes (§9.2)
+7. Registrar webhook de Unipile (ejecutar manualmente o vía management command)
+8. Escribir tests para webhooks y tasks
+
+**Gate de salida de fase (obligatorio):**
+- Webhook rechaza requests sin secret válido (403).
+- Reintentos de task no duplican prospectos ni logs de etapa.
+- Búsquedas automáticas respetan límites Redis y jitter.
+
+### FASE 4: Frontend
+
+**Objetivo**: Interfaz completa del módulo LinkedIn en React.
+
+1. Crear `api/linkedin.js` (§10.5)
+2. Implementar hooks (`useLinkedInAccount`, `useProspects`, `useFunnel`, etc.)
+3. Implementar `LinkedInDashboard` con resumen de embudo, invitaciones y prospectos pendientes
+4. Implementar `SavedSearches` con CRUD y botón de ejecución manual
+5. Implementar `ProspectsList` con filtros por etapa, tags y búsqueda
+6. Implementar `ProspectDetail` con ficha, conversación embebida, historial de etapas
+7. Implementar `FunnelKanban` con drag-and-drop entre etapas
+8. Implementar `LinkedInInbox` con lista de conversaciones y hilo de mensajes
+9. Implementar `InvitationsList` con estados y contador semanal
+10. Implementar `TemplatesManager` para plantillas de invitación y mensaje
+11. Implementar `MessageComposer` e `InvitationComposer` con selector de plantilla
+12. Agregar rutas al `AppRoutes.jsx` y sección al sidebar
+13. Implementar notificaciones en tiempo real (badge + toast para mensajes LinkedIn)
+14. Conectar con `AccountStatus` (conexión/desconexión de cuenta LinkedIn)
+
+**Gate de salida de fase (obligatorio):**
+- Flujo funcional: conectar cuenta → buscar → invitar → conversar → mover embudo.
+- UI muestra errores de límite/rate limit con mensajes accionables.
+- Inbox maneja eventos en tiempo real sin duplicar mensajes en pantalla.
+
+### FASE 5: Testing y ajustes
+
+1. Tests de integración end-to-end del flujo completo
+2. Verificar rate limiting con contadores Redis
+3. Verificar deduplicación de prospectos en búsquedas
+4. Verificar transiciones automáticas de etapa (invitación aceptada → connection_accepted)
+5. Verificar notificaciones WebSocket en frontend
+6. Ajustes de UX según feedback
+
+**Gate de salida de fase (obligatorio):**
+- Cobertura backend módulo LinkedIn >= 80%.
+- Smoke test de resiliencia: caída simulada de Unipile devuelve 503 controlado.
+- Check de seguridad webhook y logs sin exposición de secretos.
+
+---
+
+## 11.B PLAN DE IMPLEMENTACIÓN RECOMENDADO (RIESGO-PRIMERO)
+
+Para reducir fallos en producción, ejecutar en este orden:
+
+1. **Sprint A — Foundation + Safety**
+   - Modelos, migraciones, constants, service base, Redis counters, seguridad webhook.
+2. **Sprint B — Core APIs**
+   - Cuentas, prospectos, invitaciones, mensajería básica.
+3. **Sprint C — Automation**
+   - Webhooks productivos + tasks periódicas + idempotencia completa.
+4. **Sprint D — Frontend funcional**
+   - Dashboard, listas, inbox, plantillas, badge en tiempo real.
+5. **Sprint E — Hardening**
+   - pruebas de carga ligera, errores externos, tuning de límites.
+
+---
+
+## 12. FORMATO DE RESPUESTA API
+
+Seguir el mismo estándar de Valfora ERP definido en `Valfora_ERP_CONTRACT.md` §7.1:
+
+```json
+{
+    "status": "success",
+    "data": { ... },
+    "message": "Operación exitosa"
+}
+```
+
+Errores específicos del módulo:
+
+| Código | HTTP | Descripción |
+|--------|------|-------------|
+| LINKEDIN_NOT_CONNECTED | 400 | El usuario no tiene cuenta LinkedIn conectada |
+| LINKEDIN_RATE_LIMITED | 429 | Se alcanzó el límite diario de LinkedIn |
+| LINKEDIN_INVITE_LIMIT | 429 | Se alcanzó el límite semanal de invitaciones |
+| LINKEDIN_CONNECTION_REQUIRED | 400 | Acción requiere ser conexión de 1er grado |
+| UNIPILE_UNAVAILABLE | 503 | Unipile API no disponible |
+| PROSPECT_ALREADY_EXISTS | 409 | El prospecto ya existe en la base |
+| PROSPECT_DISCARDED | 400 | El prospecto fue descartado previamente |
+
+---
+
+## 13. CONVENCIONES (RECORDATORIO PARA CODEX)
+
+- Todos los modelos heredan de `common.models.BaseModel`
+- Todos los UUIDs como PK
+- Naming: PascalCase modelos, snake_case archivos, kebab-case URLs
+- Cada modelo → serializer + viewset + urls + admin + tests
+- Docstrings en todo
+- No `print()`, solo `logging`
+- No hardcodear valores: usar `.env` y `constants.py`
+- Tests con coverage > 80%
+- Una feature a la vez: backend completo antes de frontend
+
+---
+
+## 14. NOTAS FINALES
+
+- Este documento se anexa al contrato principal `Valfora_ERP_CONTRACT.md` como módulo adicional
+- Los endpoints quedan documentados automáticamente en `/api/v1/docs/` vía OpenAPI
+- La cuenta de Unipile debe crearse previamente en https://dashboard.unipile.com antes de comenzar la implementación
+- El webhook de Unipile debe registrarse manualmente (o vía management command) apuntando a la URL pública del servidor
+- Los límites de LinkedIn son orientativos y deben ajustarse según el comportamiento real de la cuenta

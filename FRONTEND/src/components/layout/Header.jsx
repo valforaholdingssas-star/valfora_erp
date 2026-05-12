@@ -9,7 +9,7 @@ import { useTheme } from "../../contexts/ThemeContext.jsx";
 
 const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
   const { user, logout } = useAuth();
-  const { items, unreadCount, loading, markRead, markAllRead } = useNotifications();
+  const { items, unreadCount, linkedinUnreadCount, loading, markRead, markAllRead } = useNotifications();
   const { theme, toggleTheme, density, toggleDensity } = useTheme();
   const { t } = useI18n();
 
@@ -57,6 +57,23 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
             <i className={`bi ${theme === "dark" ? "bi-sun-fill" : "bi-moon-stars-fill"} me-1`} />
             {theme === "dark" ? "Claro" : "Oscuro"}
           </Button>
+          {user && (
+            <Button
+              as={Link}
+              to="/settings/linkedin"
+              variant="light"
+              size="sm"
+              className="app-header-pill-btn"
+            >
+              <i className="bi bi-linkedin me-1" />
+              LinkedIn
+              {linkedinUnreadCount > 0 && (
+                <Badge bg="danger" className="ms-1">
+                  {linkedinUnreadCount > 99 ? "99+" : linkedinUnreadCount}
+                </Badge>
+              )}
+            </Button>
+          )}
           {user && (
             <Dropdown align="end">
               <Dropdown.Toggle variant="light" size="sm" id="notif-dropdown" className="app-header-pill-btn">

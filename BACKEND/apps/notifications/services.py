@@ -73,3 +73,79 @@ def notify_inbound_chat_message(message: "Message") -> None:
         if layer:
             async_to_sync(layer.group_send)(f"chat_user_{uid}", event)
         cache.delete(f"platform_dashboard:{uid}")
+
+
+def notify_inbound_linkedin_message(*, prospect, message_text: str = "") -> None:
+    """
+    Persist + push a LinkedIn inbound notification through ws/user.
+
+    Uses existing notification_type=chat_message to avoid introducing a new enum
+    and keep compatibility with current frontend notification center.
+    """
+    account = getattr(prospect, "account", None)
+    if not account or not getattr(account, "user_id", None):
+        return
+
+    recipient_id = account.user_id
+    title = f"Nuevo mensaje LinkedIn · {prospect.full_name}".strip()
+    body = (message_text or "").strip()[:500]
+    action_url = f"/settings/linkedin?prospect={prospect.id}"
+
+    n = Notification.objects.create(
+        recipient_id=recipient_id,
+        notification_type="chat_message",
+        title=title,
+        message=body,
+        action_url=action_url,
+        related_object_type="LinkedInProspect",
+        related_object_id=prospect.id,
+    )
+
+    unread_count = prospect.__class__.objects.filter(
+        account=account,
+        is_active=True,
+        last_message_direction="inbound",
+        last_message_at__isnull=False,
+    ).count()
+
+    layer = get_channel_layer()
+    if layer:
+        preview = body[:100]
+        async_to_sync(layer.group_send)(
+            f"chat_user_{recipient_id}",
+            {
+                "type": "chat.event",
+                "payload": {
+                    "event": "notification.created",
+                    "notification": NotificationSerializer(n).data,
+                },
+            },
+        )
+        # Contract-compatible event payload requested by LinkedIn integration plan.
+        async_to_sync(layer.group_send)(
+            f"chat_user_{recipient_id}",
+            {
+                "type": "chat.event",
+                "payload": {
+                    "type": "linkedin_message",
+                    "prospect_id": str(prospect.id),
+                    "prospect_name": prospect.full_name,
+                    "message_preview": preview,
+                    "timestamp": n.created_at.isoformat(),
+                },
+            },
+        )
+        async_to_sync(layer.group_send)(
+            f"chat_user_{recipient_id}",
+            {
+                "type": "chat.event",
+                "payload": {
+                    "event": "linkedin.message.created",
+                    "prospect_id": str(prospect.id),
+                    "account_id": str(account.id),
+                    "unread_count": unread_count,
+                },
+            },
+        )
+
+    cache.delete(f"platform_dashboard:{recipient_id}")

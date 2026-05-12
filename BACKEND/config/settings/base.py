@@ -3,6 +3,7 @@
 from pathlib import Path
 import os
 from datetime import timedelta
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -37,6 +38,7 @@ INSTALLED_APPS = [
     "apps.finance",
     "apps.whatsapp",
     "apps.wiki",
+    "apps.linkedin",
 ]
 
 # CRM: días sin contacto para alertas Celery (tareas periódicas)
@@ -153,11 +155,35 @@ CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:63
 # Cuotas IA (DB distinta al broker para no mezclar con Celery/channels)
 REDIS_CACHE_URL = os.getenv("REDIS_CACHE_URL", "redis://127.0.0.1:6379/2")
 
+# LinkedIn / Unipile integration
+UNIPILE_API_BASE_URL = os.getenv("UNIPILE_API_BASE_URL", "https://api1.unipile.com:13111/api/v1")
+UNIPILE_API_KEY = os.getenv("UNIPILE_API_KEY", "")
+UNIPILE_WEBHOOK_SECRET = os.getenv("UNIPILE_WEBHOOK_SECRET", "")
+UNIPILE_LINK_CALLBACK_URL = os.getenv("UNIPILE_LINK_CALLBACK_URL", "")
+LINKEDIN_MAX_INVITATIONS_PER_DAY = int(os.getenv("LINKEDIN_MAX_INVITATIONS_PER_DAY", "40"))
+LINKEDIN_MAX_SEARCH_RESULTS_PER_DAY = int(os.getenv("LINKEDIN_MAX_SEARCH_RESULTS_PER_DAY", "1000"))
+LINKEDIN_MAX_MESSAGES_PER_DAY = int(os.getenv("LINKEDIN_MAX_MESSAGES_PER_DAY", "50"))
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
         "LOCATION": REDIS_CACHE_URL,
     }
+}
+
+CELERY_BEAT_SCHEDULE = {
+    "linkedin-execute-saved-searches": {
+        "task": "apps.linkedin.tasks.linkedin_execute_saved_searches",
+        "schedule": crontab(minute=0, hour="*/4"),
+    },
+    "linkedin-sync-invitation-statuses": {
+        "task": "apps.linkedin.tasks.linkedin_sync_invitation_statuses",
+        "schedule": crontab(minute=30, hour="*/6"),
+    },
+    "linkedin-reconcile-read-states": {
+        "task": "apps.linkedin.tasks.linkedin_reconcile_read_states",
+        "schedule": crontab(minute="*/10"),
+    },
 }
 
 LANGUAGE_CODE = "es-co"
@@ -201,6 +227,7 @@ LOGGING = {
         "apps.whatsapp": {"level": "INFO", "propagate": True},
         "apps.ai_config": {"level": "INFO", "propagate": True},
         "apps.wiki": {"level": "INFO", "propagate": True},
+        "apps.linkedin": {"level": "INFO", "propagate": True},
         "celery": {"level": "INFO", "propagate": True},
     },
 }

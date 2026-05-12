@@ -14,6 +14,7 @@ class Conversation(BaseModel):
     CHANNEL_CHOICES = (
         ("whatsapp", "WhatsApp"),
         ("internal", "Internal"),
+        ("linkedin", "LinkedIn"),
     )
     STATUS_CHOICES = (
         ("active", "Active"),
