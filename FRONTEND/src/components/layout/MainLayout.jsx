@@ -41,6 +41,7 @@ const SavedSearches = lazy(() => import("../../features/linkedin/pages/SavedSear
 const LinkedInInbox = lazy(() => import("../../features/linkedin/pages/LinkedInInbox.jsx"));
 const InvitationsList = lazy(() => import("../../features/linkedin/pages/InvitationsList.jsx"));
 const TemplatesManager = lazy(() => import("../../features/linkedin/pages/TemplatesManager.jsx"));
+const LinkedInPipelinePage = lazy(() => import("../../features/linkedin/pages/LinkedInPipelinePage.jsx"));
 const UsersManagementPage = lazy(() => import("../../features/users/pages/UsersManagementPage.jsx"));
 const ActivityLogPage = lazy(() => import("../../features/settings/audit/pages/ActivityLogPage.jsx"));
 const WhatsAppAccountsPage = lazy(() => import("../../features/settings/whatsapp/pages/WhatsAppAccountsPage.jsx"));
@@ -134,6 +135,7 @@ const MainLayout = () => {
                 <Route path="/linkedin/prospects" element={canViewLinkedIn ? <ProspectsList /> : <Navigate to="/" replace />} />
                 <Route path="/linkedin/prospects/:id" element={canViewLinkedIn ? <ProspectDetail /> : <Navigate to="/" replace />} />
                 <Route path="/linkedin/inbox" element={canViewLinkedIn ? <LinkedInInbox /> : <Navigate to="/" replace />} />
+                <Route path="/linkedin/pipeline" element={canViewLinkedIn ? <LinkedInPipelinePage /> : <Navigate to="/" replace />} />
                 <Route path="/linkedin/searches" element={canViewLinkedIn ? <SavedSearches /> : <Navigate to="/" replace />} />
                 <Route path="/linkedin/invitations" element={canViewLinkedIn ? <InvitationsList /> : <Navigate to="/" replace />} />
                 <Route path="/linkedin/templates" element={canViewLinkedIn ? <TemplatesManager /> : <Navigate to="/" replace />} />

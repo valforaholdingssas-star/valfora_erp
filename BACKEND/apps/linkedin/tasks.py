@@ -56,15 +56,15 @@ def handle_new_message(webhook_event_id: str) -> None:
         prospect.last_message_direction = "inbound"
         if not prospect.unipile_chat_id:
             prospect.unipile_chat_id = str(payload.get("chat_id") or "")
-        if prospect.funnel_stage == "first_message_sent":
+        if prospect.funnel_stage in {"contacted", "no_response"}:
             ProspectStageLog.objects.create(
                 prospect=prospect,
                 from_stage=prospect.funnel_stage,
-                to_stage="in_conversation",
+                to_stage="high_interest",
                 changed_by=None,
                 reason="Transición automática por webhook message_received",
             )
-            prospect.funnel_stage = "in_conversation"
+            prospect.funnel_stage = "high_interest"
         prospect.save(update_fields=["last_message_at", "last_message_direction", "unipile_chat_id", "funnel_stage", "updated_at"])
         notify_inbound_linkedin_message(prospect=prospect, message_text=message_text)
     event.status = "processed"
@@ -97,7 +97,7 @@ def handle_new_relation(webhook_event_id: str) -> None:
         prospect.invitation_status = "accepted"
         prospect.invitation_accepted_at = timezone.now()
         prospect.network_distance = "first"
-        prospect.funnel_stage = "connection_accepted"
+        prospect.funnel_stage = "high_interest"
         prospect.save(
             update_fields=[
                 "invitation_status",
@@ -110,7 +110,7 @@ def handle_new_relation(webhook_event_id: str) -> None:
         ProspectStageLog.objects.create(
             prospect=prospect,
             from_stage=old,
-            to_stage="connection_accepted",
+            to_stage="high_interest",
             changed_by=None,
             reason="Transición automática por webhook new_relation",
         )
@@ -241,8 +241,8 @@ def linkedin_sync_invitation_statuses() -> None:
                 prospect.invitation_status = provider_status
                 if provider_status == "accepted":
                     prospect.network_distance = "first"
-                    if prospect.funnel_stage in {"invitation_sent", "prospect_identified"}:
-                        prospect.funnel_stage = "connection_accepted"
+                    if prospect.funnel_stage in {"contacted", "no_response"}:
+                        prospect.funnel_stage = "high_interest"
                 prospect.save(update_fields=["invitation_status", "network_distance", "funnel_stage", "updated_at"])
 
 

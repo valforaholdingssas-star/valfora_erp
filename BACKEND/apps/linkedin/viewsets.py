@@ -158,7 +158,7 @@ class SavedSearchViewSet(viewsets.ModelViewSet):
                     "location": item.get("location", ""),
                     "profile_picture_url": item.get("profile_picture_url", ""),
                     "network_distance": item.get("network_distance", "out_of_network"),
-                    "funnel_stage": "prospect_identified",
+                    "funnel_stage": "contacted",
                 },
             )
             if was_created:
@@ -212,7 +212,7 @@ class LinkedInProspectViewSet(viewsets.ModelViewSet):
         prospect = self.get_object()
         prospect.is_discarded = False
         if prospect.funnel_stage == "discarded":
-            prospect.funnel_stage = "prospect_identified"
+            prospect.funnel_stage = "contacted"
         prospect.save(update_fields=["is_discarded", "funnel_stage", "updated_at"])
         return Response({"status": "ok"})
 
@@ -282,7 +282,7 @@ class LinkedInProspectViewSet(viewsets.ModelViewSet):
         serializer = BulkIdsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ids = serializer.validated_data["ids"]
-        updated = self.get_queryset().filter(id__in=ids).update(is_discarded=False, funnel_stage="prospect_identified")
+        updated = self.get_queryset().filter(id__in=ids).update(is_discarded=False, funnel_stage="contacted")
         return Response({"updated": updated})
 
     @action(detail=False, methods=["post"], url_path="bulk-discard")
@@ -319,7 +319,8 @@ class LinkedInProspectViewSet(viewsets.ModelViewSet):
         )
         prospect.invitation_status = "pending"
         prospect.invitation_sent_at = timezone.now()
-        prospect.funnel_stage = "invitation_sent"
+        if prospect.funnel_stage in {"contacted", "no_response"}:
+            prospect.funnel_stage = "high_interest"
         prospect.save(update_fields=["invitation_status", "invitation_sent_at", "funnel_stage", "updated_at"])
         return Response({"status": "ok", "provider_response": response})
 
@@ -404,8 +405,8 @@ class LinkedInMessagesViewSet(viewsets.ViewSet):
         payload = self.service_class().send_message(account.unipile_account_id, prospect.unipile_chat_id, serializer.validated_data["text"])
         prospect.last_message_at = timezone.now()
         prospect.last_message_direction = "outbound"
-        if prospect.funnel_stage == "connection_accepted":
-            prospect.funnel_stage = "first_message_sent"
+        if prospect.funnel_stage in {"contacted", "no_response"}:
+            prospect.funnel_stage = "high_interest"
         prospect.save(update_fields=["last_message_at", "last_message_direction", "funnel_stage", "updated_at"])
         return Response(payload)
 

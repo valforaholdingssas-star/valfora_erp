@@ -34,14 +34,12 @@ import { useAuth } from "../../../contexts/AuthContext.jsx";
 import { useNotifications } from "../../../contexts/NotificationContext.jsx";
 
 const STAGE_LABELS = {
-  prospect_identified: "Prospecto identificado",
-  invitation_sent: "Invitación enviada",
-  connection_accepted: "Conexión aceptada",
-  first_message_sent: "Primer mensaje enviado",
-  in_conversation: "En conversación",
-  meeting_scheduled: "Reunión agendada",
+  contacted: "Contactado",
+  low_interest: "Interés bajo",
+  high_interest: "Interés alto",
+  meeting_scheduling: "En agendamiento",
   proposal_sent: "Propuesta enviada",
-  client: "Cliente",
+  no_response: "No contesta",
   discarded: "Descartado",
 };
 
@@ -128,12 +126,22 @@ const LinkedInHubPage = ({ focus = "all" }) => {
     network_distance: "out_of_network",
     tags: "",
     notes: "",
+    conversation_summary: "",
+    product_interest: "",
+    opportunity_value: "",
+    opportunity_currency: "USD",
   });
 
   const [inviteDraft, setInviteDraft] = useState({});
   const [stageDraft, setStageDraft] = useState({});
-  const [editingNotesId, setEditingNotesId] = useState(null);
-  const [editingNotes, setEditingNotes] = useState("");
+  const [editingInfoId, setEditingInfoId] = useState(null);
+  const [editingInfo, setEditingInfo] = useState({
+    notes: "",
+    conversation_summary: "",
+    product_interest: "",
+    opportunity_value: "",
+    opportunity_currency: "USD",
+  });
 
   const [invitationTemplateForm, setInvitationTemplateForm] = useState({ name: "", body: "" });
   const [messageTemplateForm, setMessageTemplateForm] = useState({ name: "", body: "" });
@@ -354,6 +362,10 @@ const LinkedInHubPage = ({ focus = "all" }) => {
     try {
       await createLinkedInProspect({
         ...prospectForm,
+        opportunity_value:
+          prospectForm.opportunity_value === "" || prospectForm.opportunity_value == null
+            ? null
+            : Number(prospectForm.opportunity_value),
         tags: prospectForm.tags
           .split(",")
           .map((v) => v.trim())
@@ -370,6 +382,10 @@ const LinkedInHubPage = ({ focus = "all" }) => {
         network_distance: "out_of_network",
         tags: "",
         notes: "",
+        conversation_summary: "",
+        product_interest: "",
+        opportunity_value: "",
+        opportunity_currency: "USD",
       });
       setSuccess("Prospecto agregado.");
       await loadAll(true);
@@ -433,18 +449,26 @@ const LinkedInHubPage = ({ focus = "all" }) => {
     }
   };
 
-  const handleSaveNotes = async (prospectId) => {
-    setActionLoadingKey(`notes-${prospectId}`);
+  const handleSaveProspectInfo = async (prospectId) => {
+    setActionLoadingKey(`prospect-info-${prospectId}`);
     setError("");
     setSuccess("");
     try {
-      await updateLinkedInProspect(prospectId, { notes: editingNotes });
-      setEditingNotesId(null);
-      setEditingNotes("");
-      setSuccess("Notas actualizadas.");
+      await updateLinkedInProspect(prospectId, {
+        notes: editingInfo.notes,
+        conversation_summary: editingInfo.conversation_summary,
+        product_interest: editingInfo.product_interest,
+        opportunity_value:
+          editingInfo.opportunity_value === "" || editingInfo.opportunity_value == null
+            ? null
+            : Number(editingInfo.opportunity_value),
+        opportunity_currency: (editingInfo.opportunity_currency || "USD").toUpperCase(),
+      });
+      setEditingInfoId(null);
+      setSuccess("Ficha comercial actualizada.");
       await loadAll(true);
     } catch (err) {
-      setError(parseApiError(err, "No se pudieron guardar las notas."));
+      setError(parseApiError(err, "No se pudo guardar la ficha comercial."));
     } finally {
       setActionLoadingKey("");
     }
@@ -986,6 +1010,10 @@ const LinkedInHubPage = ({ focus = "all" }) => {
                   <Col md={3}><Form.Control placeholder="Ubicación" value={prospectForm.location} onChange={(e) => setProspectForm((prev) => ({ ...prev, location: e.target.value }))} /></Col>
                   <Col md={6}><Form.Control placeholder="Tags (separadas por coma)" value={prospectForm.tags} onChange={(e) => setProspectForm((prev) => ({ ...prev, tags: e.target.value }))} /></Col>
                   <Col md={6}><Form.Control placeholder="Notas" value={prospectForm.notes} onChange={(e) => setProspectForm((prev) => ({ ...prev, notes: e.target.value }))} /></Col>
+                  <Col md={6}><Form.Control placeholder="Producto de interés" value={prospectForm.product_interest} onChange={(e) => setProspectForm((prev) => ({ ...prev, product_interest: e.target.value }))} /></Col>
+                  <Col md={3}><Form.Control type="number" step="0.01" min="0" placeholder="Valor oportunidad" value={prospectForm.opportunity_value} onChange={(e) => setProspectForm((prev) => ({ ...prev, opportunity_value: e.target.value }))} /></Col>
+                  <Col md={3}><Form.Control placeholder="Moneda (USD/COP)" value={prospectForm.opportunity_currency} onChange={(e) => setProspectForm((prev) => ({ ...prev, opportunity_currency: e.target.value.toUpperCase() }))} /></Col>
+                  <Col md={12}><Form.Control as="textarea" rows={2} placeholder="Resumen conversación" value={prospectForm.conversation_summary} onChange={(e) => setProspectForm((prev) => ({ ...prev, conversation_summary: e.target.value }))} /></Col>
                   <Col xs={12}>
                     <Button size="sm" type="submit" disabled={!canEdit || actionLoadingKey === "create-prospect"}>
                       Crear prospecto
@@ -1034,6 +1062,7 @@ const LinkedInHubPage = ({ focus = "all" }) => {
                     <th>Prospecto</th>
                     <th>Empresa</th>
                     <th>Etapa</th>
+                    <th>Oportunidad</th>
                     <th>Invitación</th>
                     <th>Mensaje invitación</th>
                     <th>Acciones</th>
@@ -1041,7 +1070,7 @@ const LinkedInHubPage = ({ focus = "all" }) => {
                 </thead>
                 <tbody>
                   {prospects.length === 0 && (
-                    <tr><td colSpan={6} className="text-muted">No hay prospectos para los filtros actuales.</td></tr>
+                    <tr><td colSpan={7} className="text-muted">No hay prospectos para los filtros actuales.</td></tr>
                   )}
                   {prospects.map((p) => (
                     <tr key={p.id}>
@@ -1068,6 +1097,10 @@ const LinkedInHubPage = ({ focus = "all" }) => {
                             <option key={s.value} value={s.value}>{s.label}</option>
                           ))}
                         </Form.Select>
+                      </td>
+                      <td style={{ minWidth: 190 }}>
+                        <div className="small"><strong>Producto:</strong> {p.product_interest || "-"}</div>
+                        <div className="small"><strong>Valor:</strong> {p.opportunity_value || "-"} {p.opportunity_currency || ""}</div>
                       </td>
                       <td>
                         <Badge bg={INVITE_STATUS_STYLE[p.invitation_status] || "secondary"}>
@@ -1113,26 +1146,65 @@ const LinkedInHubPage = ({ focus = "all" }) => {
                             size="sm"
                             variant="outline-dark"
                             onClick={() => {
-                              setEditingNotesId(p.id);
-                              setEditingNotes(p.notes || "");
+                              setEditingInfoId(p.id);
+                              setEditingInfo({
+                                notes: p.notes || "",
+                                conversation_summary: p.conversation_summary || "",
+                                product_interest: p.product_interest || "",
+                                opportunity_value: p.opportunity_value ?? "",
+                                opportunity_currency: p.opportunity_currency || "USD",
+                              });
                             }}
                           >
-                            Notas
+                            Ficha
                           </Button>
                         </div>
-                        {editingNotesId === p.id && (
+                        {editingInfoId === p.id && (
                           <div className="mt-2">
+                            <Form.Control
+                              className="mb-1"
+                              placeholder="Producto de interés"
+                              value={editingInfo.product_interest}
+                              onChange={(e) => setEditingInfo((prev) => ({ ...prev, product_interest: e.target.value }))}
+                            />
+                            <div className="d-flex gap-1 mb-1">
+                              <Form.Control
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Valor oportunidad"
+                                value={editingInfo.opportunity_value}
+                                onChange={(e) => setEditingInfo((prev) => ({ ...prev, opportunity_value: e.target.value }))}
+                              />
+                              <Form.Control
+                                placeholder="Moneda"
+                                value={editingInfo.opportunity_currency}
+                                onChange={(e) =>
+                                  setEditingInfo((prev) => ({ ...prev, opportunity_currency: e.target.value.toUpperCase() }))
+                                }
+                              />
+                            </div>
+                            <Form.Control
+                              className="mb-1"
+                              as="textarea"
+                              rows={2}
+                              placeholder="Resumen de conversaciones"
+                              value={editingInfo.conversation_summary}
+                              onChange={(e) =>
+                                setEditingInfo((prev) => ({ ...prev, conversation_summary: e.target.value }))
+                              }
+                            />
                             <Form.Control
                               as="textarea"
                               rows={3}
-                              value={editingNotes}
-                              onChange={(e) => setEditingNotes(e.target.value)}
+                              value={editingInfo.notes}
+                              onChange={(e) => setEditingInfo((prev) => ({ ...prev, notes: e.target.value }))}
                             />
                             <div className="d-flex gap-2 mt-1">
                               <Button
                                 size="sm"
-                                onClick={() => void handleSaveNotes(p.id)}
-                                disabled={!canEdit || actionLoadingKey === `notes-${p.id}`}
+                                onClick={() => void handleSaveProspectInfo(p.id)}
+                                disabled={!canEdit || actionLoadingKey === `prospect-info-${p.id}`}
                               >
                                 Guardar
                               </Button>
@@ -1140,8 +1212,7 @@ const LinkedInHubPage = ({ focus = "all" }) => {
                                 size="sm"
                                 variant="outline-secondary"
                                 onClick={() => {
-                                  setEditingNotesId(null);
-                                  setEditingNotes("");
+                                  setEditingInfoId(null);
                                 }}
                               >
                                 Cancelar

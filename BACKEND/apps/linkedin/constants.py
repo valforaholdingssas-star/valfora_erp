@@ -1,14 +1,12 @@
 """Constants and choices for LinkedIn module."""
 
 FUNNEL_STAGES = [
-    ("prospect_identified", "Prospecto identificado"),
-    ("invitation_sent", "Invitación enviada"),
-    ("connection_accepted", "Conexión aceptada"),
-    ("first_message_sent", "Primer contacto enviado"),
-    ("in_conversation", "En conversación"),
-    ("meeting_scheduled", "Reunión agendada"),
+    ("contacted", "Contactado"),
+    ("low_interest", "Interés bajo"),
+    ("high_interest", "Interés alto"),
+    ("meeting_scheduling", "En agendamiento de reunión"),
     ("proposal_sent", "Propuesta enviada"),
-    ("client", "Cliente"),
+    ("no_response", "No contesta"),
     ("discarded", "Descartado"),
 ]
 
@@ -52,4 +50,3 @@ ERROR_LINKEDIN_CONNECTION_REQUIRED = "LINKEDIN_CONNECTION_REQUIRED"
 ERROR_UNIPILE_UNAVAILABLE = "UNIPILE_UNAVAILABLE"
 ERROR_PROSPECT_ALREADY_EXISTS = "PROSPECT_ALREADY_EXISTS"
 ERROR_PROSPECT_DISCARDED = "PROSPECT_DISCARDED"
-

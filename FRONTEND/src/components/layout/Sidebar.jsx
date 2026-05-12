@@ -111,6 +111,7 @@ const Sidebar = ({ collapsed }) => {
           ? [
               { to: "/linkedin", label: "Dashboard", icon: "bi-speedometer2" },
               { to: "/linkedin/prospects", label: "Prospectos", icon: "bi-people" },
+              { to: "/linkedin/pipeline", label: "Pipeline", icon: "bi-kanban" },
               { to: "/linkedin/inbox", label: "Inbox", icon: "bi-chat-left-text" },
               { to: "/linkedin/searches", label: "Búsquedas", icon: "bi-search" },
               { to: "/linkedin/invitations", label: "Invitaciones", icon: "bi-person-plus" },
