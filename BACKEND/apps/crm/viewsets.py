@@ -261,6 +261,10 @@ class DealViewSet(CRMBaseViewSet):
     search_fields = ("title", "description")
     ordering_fields = ("value", "expected_close_date", "stage", "updated_at")
 
+    def get_permissions(self):
+        # Deals can be deleted by any role with CRM edit permission.
+        return [permissions.IsAuthenticated(), IsCRMUser()]
+
     def perform_create(self, serializer):
         instance = serializer.save()
         if not instance.company_id and instance.contact.company_id:

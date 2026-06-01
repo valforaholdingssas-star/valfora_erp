@@ -65,7 +65,12 @@ class PipelineAutomationService:
     ) -> StageMoveResult:
         to_stage = cls.normalize_stage(to_stage)
         current = cls.normalize_stage(deal.stage)
-        if not cls.can_move(current, to_stage):
+        # Manual moves from UI/canvas are intentionally flexible.
+        # Automated moves remain constrained by can_move().
+        is_manual = trigger == "manual"
+        if not is_manual and not cls.can_move(current, to_stage):
+            return StageMoveResult(moved=False, reason=f"Invalid transition {current} -> {to_stage}")
+        if is_manual and current in TERMINAL_STAGES and to_stage not in TERMINAL_STAGES:
             return StageMoveResult(moved=False, reason=f"Invalid transition {current} -> {to_stage}")
 
         raw_from = deal.stage
