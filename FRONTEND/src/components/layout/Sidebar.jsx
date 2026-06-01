@@ -10,11 +10,6 @@ import { useNotifications } from "../../contexts/NotificationContext.jsx";
 const linkClass = ({ isActive }) =>
   `nav-link app-nav-link d-flex align-items-center gap-2 px-2 ${isActive ? "active" : ""}`;
 
-const itemIsActive = (pathname, to) => {
-  if (to === "/") return pathname === "/";
-  return pathname === to || pathname.startsWith(`${to}/`);
-};
-
 const Sidebar = ({ collapsed }) => {
   const { pathname } = useLocation();
   const { hasModuleAccess } = useAuth();
@@ -138,6 +133,7 @@ const Sidebar = ({ collapsed }) => {
           ? [
               showUserSettings ? { to: "/settings/users", label: "Usuarios", icon: "bi-person-gear" } : null,
               showUserSettings ? { to: "/settings/activity-log", label: "Log de actividad", icon: "bi-journal-text" } : null,
+              showCRM ? { to: "/settings/companies", label: "Empresas (gestión)", icon: "bi-buildings" } : null,
               showAiSettings ? { to: "/settings/ai", label: "Configuración IA", icon: "bi-cpu" } : null,
               showLinkedIn ? { to: "/settings/linkedin", label: "LinkedIn (vista unificada)", icon: "bi-linkedin" } : null,
               showWhatsAppSettings ? { to: "/settings/whatsapp/accounts", label: "WhatsApp Cuentas", icon: "bi-whatsapp" } : null,
@@ -186,21 +182,11 @@ const Sidebar = ({ collapsed }) => {
     setOpenGroups((prev) => {
       const next = { ...prev };
       sections.forEach((section) => {
-        if (next[section.key] === undefined) next[section.key] = true;
+        if (next[section.key] === undefined) next[section.key] = false;
       });
       return next;
     });
   }, [sections]);
-
-  useEffect(() => {
-    setOpenGroups((prev) => {
-      const next = { ...prev };
-      sections.forEach((section) => {
-        if (section.items.some((item) => itemIsActive(pathname, item.to))) next[section.key] = true;
-      });
-      return next;
-    });
-  }, [pathname, sections]);
 
   useEffect(() => {
     if (!query.trim()) return;
@@ -261,7 +247,7 @@ const Sidebar = ({ collapsed }) => {
           </div>
           <div className="app-sidebar-scroll">
             {filteredSections.map((section) => {
-              const expanded = openGroups[section.key] ?? true;
+              const expanded = openGroups[section.key] ?? false;
               return (
                 <div key={section.key} className={`app-sidebar-group tone-${section.tone || "slate"}`}>
                   <button

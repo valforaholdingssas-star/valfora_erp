@@ -6,6 +6,7 @@ import {
   createActivity,
   deleteDeal,
   fetchActivities,
+  fetchCompanies,
   fetchDeal,
   fetchDealStageHistory,
   moveDealStage,
@@ -26,6 +27,7 @@ const DealDetailPage = () => {
   const [savingDeal, setSavingDeal] = useState(false);
   const [dealError, setDealError] = useState("");
   const [dealSuccess, setDealSuccess] = useState("");
+  const [companies, setCompanies] = useState({ results: [] });
   const [dealForm, setDealForm] = useState({
     title: "",
     value: "",
@@ -35,6 +37,7 @@ const DealDetailPage = () => {
     expected_close_date: "",
     description: "",
     lost_reason: "",
+    company: "",
   });
   const [activityForm, setActivityForm] = useState({
     subject: "",
@@ -63,6 +66,7 @@ const DealDetailPage = () => {
         expected_close_date: dealRes.expected_close_date || "",
         description: dealRes.description || "",
         lost_reason: dealRes.lost_reason || "",
+        company: dealRes.company || "",
       });
     } finally {
       setLoading(false);
@@ -71,6 +75,7 @@ const DealDetailPage = () => {
 
   useEffect(() => {
     load().catch(() => {});
+    fetchCompanies({ page_size: 200 }).then(setCompanies).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -97,6 +102,10 @@ const DealDetailPage = () => {
     e.preventDefault();
     if (!deal?.contact) {
       setActivityError("El deal no tiene contacto asociado.");
+      return;
+    }
+    if (!activityForm.due_date) {
+      setActivityError("La fecha y hora son obligatorias para que se refleje en el calendario.");
       return;
     }
     setCreatingActivity(true);
@@ -151,6 +160,7 @@ const DealDetailPage = () => {
         expected_close_date: dealForm.expected_close_date || null,
         description: dealForm.description.trim(),
         lost_reason: dealForm.lost_reason.trim(),
+        company: dealForm.company || null,
       };
       await updateDeal(deal.id, payload);
       setDealSuccess("Deal actualizado.");
@@ -250,6 +260,18 @@ const DealDetailPage = () => {
                 />
               </div>
               <div className="col-md-6">
+                <Form.Label>Empresa</Form.Label>
+                <Form.Select
+                  value={dealForm.company}
+                  onChange={(e) => setDealForm((p) => ({ ...p, company: e.target.value }))}
+                >
+                  <option value="">Sin empresa</option>
+                  {(companies.results || []).map((co) => (
+                    <option key={co.id} value={co.id}>{co.name}</option>
+                  ))}
+                </Form.Select>
+              </div>
+              <div className="col-md-6">
                 <Form.Label>Motivo de pérdida</Form.Label>
                 <Form.Control
                   value={dealForm.lost_reason}
@@ -326,6 +348,7 @@ const DealDetailPage = () => {
               <div className="col-md-3">
                 <Form.Control
                   type="datetime-local"
+                  required
                   value={activityForm.due_date}
                   onChange={(e) => setActivityForm((p) => ({ ...p, due_date: e.target.value }))}
                 />

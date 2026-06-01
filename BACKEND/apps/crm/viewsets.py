@@ -421,7 +421,8 @@ class CRMDashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsCRMUser]
 
     def get(self, request):
-        return Response(build_crm_dashboard())
+        company = (request.query_params.get("company") or "").strip() or None
+        return Response(build_crm_dashboard(company_id=company))
 
 
 class LeadEngineConfigView(APIView):

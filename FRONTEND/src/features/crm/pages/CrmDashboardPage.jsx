@@ -1,20 +1,27 @@
 import { useEffect, useState } from "react";
-import { Card, Col, Row, Spinner, Table } from "react-bootstrap";
+import { Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
 
-import { fetchCrmDashboard } from "../../../api/crm.js";
+import { fetchCompanies, fetchCrmDashboard } from "../../../api/crm.js";
 import { formatDealValue } from "../utils/formatters.js";
 
 const CrmDashboardPage = () => {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [companies, setCompanies] = useState({ results: [] });
+  const [companyFilter, setCompanyFilter] = useState("");
 
   useEffect(() => {
-    fetchCrmDashboard()
+    fetchCompanies({ page_size: 200 }).then(setCompanies).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchCrmDashboard(companyFilter ? { company: companyFilter } : undefined)
       .then(setData)
       .catch(() => setError("No se pudo cargar el dashboard."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [companyFilter]);
 
   if (loading) {
     return (
@@ -36,6 +43,20 @@ const CrmDashboardPage = () => {
         <h1 className="h4 mb-1">Dashboard CRM</h1>
         <p className="text-muted mb-0">Rendimiento del pipeline y actividad reciente</p>
       </div>
+      <div className="app-section-card p-2 mb-3 d-flex align-items-center gap-2">
+        <span className="small text-muted">Empresa:</span>
+        <Form.Select
+          size="sm"
+          value={companyFilter}
+          onChange={(e) => setCompanyFilter(e.target.value)}
+          style={{ maxWidth: 360 }}
+        >
+          <option value="">Todas</option>
+          {(companies.results || []).map((co) => (
+            <option key={co.id} value={co.id}>{co.name}</option>
+          ))}
+        </Form.Select>
+      </div>
       <Row className="g-3 mb-4">
         {Object.entries(stages).map(([stage, info]) => (
           <Col md={4} key={stage}>
@@ -49,6 +70,31 @@ const CrmDashboardPage = () => {
           </Col>
         ))}
       </Row>
+      {!companyFilter && (
+        <Card className="app-card app-section-card mb-4">
+          <Card.Body>
+            <Card.Title className="h6 mb-3">Deals por empresa</Card.Title>
+            <Table responsive hover size="sm" className="mb-0">
+              <thead>
+                <tr>
+                  <th>Empresa</th>
+                  <th>Deals</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data.by_company || []).map((row) => (
+                  <tr key={row.company_id || "none"}>
+                    <td>{row.company_name}</td>
+                    <td>{row.count}</td>
+                    <td>{formatDealValue(row.value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card.Body>
+        </Card>
+      )}
       <Card className="app-card app-section-card">
         <Card.Body>
           <Card.Title className="h6 mb-3">

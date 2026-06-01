@@ -6,7 +6,7 @@ const unwrap = (res) => {
   return b;
 };
 
-export const fetchCrmDashboard = () => api.get("/crm/dashboard/").then(unwrap);
+export const fetchCrmDashboard = (params) => api.get("/crm/dashboard/", { params }).then(unwrap);
 
 export const fetchContacts = (params) => api.get("/crm/contacts/", { params }).then(unwrap);
 

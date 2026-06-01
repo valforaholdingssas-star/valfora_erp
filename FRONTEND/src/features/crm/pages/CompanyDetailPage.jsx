@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Nav, Spinner, Tab, Table } from "react-bootstrap";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { fetchCompany, fetchContacts, fetchDeals, fetchDocuments } from "../../../api/crm.js";
+import { deleteCompany, fetchCompany, fetchContacts, fetchDeals, fetchDocuments } from "../../../api/crm.js";
 import { formatDealValue } from "../utils/formatters.js";
 
 const CompanyDetailPage = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [company, setCompany] = useState(null);
   const [contacts, setContacts] = useState({ results: [] });
   const [deals, setDeals] = useState({ results: [] });
   const [documents, setDocuments] = useState({ results: [] });
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   const reload = useCallback(async () => {
     const [companyData, contactsData, dealsData, docsData] = await Promise.all([
@@ -33,6 +35,17 @@ const CompanyDetailPage = () => {
       .finally(() => setLoading(false));
   }, [reload]);
 
+  const handleDelete = async () => {
+    if (!window.confirm("¿Eliminar esta empresa?")) return;
+    setDeleting(true);
+    try {
+      await deleteCompany(id);
+      navigate("/crm/companies");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading || !company) {
     return (
       <div className="text-center py-5">
@@ -51,9 +64,14 @@ const CompanyDetailPage = () => {
           <h1 className="h4 mb-1">{company.name}</h1>
           <p className="text-muted mb-0">{company.industry || "Sin industria"}</p>
         </div>
-        <Button as={Link} to={`/crm/companies/${company.id}/edit`} variant="outline-primary" size="sm">
-          Editar
-        </Button>
+        <div className="d-flex gap-2">
+          <Button as={Link} to={`/crm/companies/${company.id}/edit`} variant="outline-primary" size="sm">
+            Editar
+          </Button>
+          <Button variant="outline-danger" size="sm" onClick={handleDelete} disabled={deleting}>
+            {deleting ? "Eliminando..." : "Eliminar"}
+          </Button>
+        </div>
       </div>
 
       <Tab.Container defaultActiveKey="info">

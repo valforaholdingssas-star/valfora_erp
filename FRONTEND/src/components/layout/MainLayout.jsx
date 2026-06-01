@@ -130,6 +130,7 @@ const MainLayout = () => {
                 <Route path="/wiki" element={canViewWiki ? <WikiDocumentsPage /> : <Navigate to="/" replace />} />
                 <Route path="/wiki/:slug" element={canViewWiki ? <WikiDocumentViewPage /> : <Navigate to="/" replace />} />
                 <Route path="/settings/ai" element={canViewAIConfig ? <AIConfigPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/companies" element={canViewCRM ? <CompaniesListPage /> : <Navigate to="/" replace />} />
                 <Route path="/settings/linkedin" element={canViewLinkedIn ? <LinkedInHubPage /> : <Navigate to="/" replace />} />
                 <Route path="/linkedin" element={canViewLinkedIn ? <LinkedInDashboard /> : <Navigate to="/" replace />} />
                 <Route path="/linkedin/prospects" element={canViewLinkedIn ? <ProspectsList /> : <Navigate to="/" replace />} />
