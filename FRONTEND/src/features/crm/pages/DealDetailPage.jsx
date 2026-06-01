@@ -9,6 +9,7 @@ import {
   fetchDeal,
   fetchDealStageHistory,
   moveDealStage,
+  updateDeal,
 } from "../../../api/crm.js";
 import { formatDealValue } from "../utils/formatters.js";
 
@@ -22,6 +23,19 @@ const DealDetailPage = () => {
   const [creatingActivity, setCreatingActivity] = useState(false);
   const [deletingDeal, setDeletingDeal] = useState(false);
   const [activityError, setActivityError] = useState("");
+  const [savingDeal, setSavingDeal] = useState(false);
+  const [dealError, setDealError] = useState("");
+  const [dealSuccess, setDealSuccess] = useState("");
+  const [dealForm, setDealForm] = useState({
+    title: "",
+    value: "",
+    currency: "USD",
+    stage: "new_lead",
+    probability: 0,
+    expected_close_date: "",
+    description: "",
+    lost_reason: "",
+  });
   const [activityForm, setActivityForm] = useState({
     subject: "",
     activity_type: "call",
@@ -40,6 +54,16 @@ const DealDetailPage = () => {
       setDeal(dealRes);
       setHistory(historyRes || []);
       setActivities(activitiesRes.results || []);
+      setDealForm({
+        title: dealRes.title || "",
+        value: dealRes.value ?? "",
+        currency: dealRes.currency || "USD",
+        stage: dealRes.stage || "new_lead",
+        probability: dealRes.probability ?? 0,
+        expected_close_date: dealRes.expected_close_date || "",
+        description: dealRes.description || "",
+        lost_reason: dealRes.lost_reason || "",
+      });
     } finally {
       setLoading(false);
     }
@@ -112,6 +136,33 @@ const DealDetailPage = () => {
     }
   };
 
+  const saveDeal = async (e) => {
+    e.preventDefault();
+    setSavingDeal(true);
+    setDealError("");
+    setDealSuccess("");
+    try {
+      const payload = {
+        title: dealForm.title.trim(),
+        value: dealForm.value === "" ? 0 : Number(dealForm.value),
+        currency: dealForm.currency.trim().toUpperCase() || "USD",
+        stage: dealForm.stage,
+        probability: Number(dealForm.probability || 0),
+        expected_close_date: dealForm.expected_close_date || null,
+        description: dealForm.description.trim(),
+        lost_reason: dealForm.lost_reason.trim(),
+      };
+      await updateDeal(deal.id, payload);
+      setDealSuccess("Deal actualizado.");
+      await load();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      setDealError(typeof detail === "string" ? detail : "No se pudo guardar el deal.");
+    } finally {
+      setSavingDeal(false);
+    }
+  };
+
   return (
     <div className="app-page">
       <div className="mb-2"><Link to="/crm/pipeline">← Pipeline</Link></div>
@@ -130,6 +181,97 @@ const DealDetailPage = () => {
               {deletingDeal ? "Eliminando..." : "Eliminar deal"}
             </Button>
           </div>
+        </Card.Body>
+      </Card>
+
+      <Card className="mb-3">
+        <Card.Header className="py-2">Editar deal</Card.Header>
+        <Card.Body>
+          {dealError ? <Alert variant="danger" className="py-2">{dealError}</Alert> : null}
+          {dealSuccess ? <Alert variant="success" className="py-2">{dealSuccess}</Alert> : null}
+          <Form onSubmit={saveDeal}>
+            <div className="row g-2">
+              <div className="col-md-6">
+                <Form.Label>Título</Form.Label>
+                <Form.Control
+                  required
+                  value={dealForm.title}
+                  onChange={(e) => setDealForm((p) => ({ ...p, title: e.target.value }))}
+                />
+              </div>
+              <div className="col-md-2">
+                <Form.Label>Valor</Form.Label>
+                <Form.Control
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={dealForm.value}
+                  onChange={(e) => setDealForm((p) => ({ ...p, value: e.target.value }))}
+                />
+              </div>
+              <div className="col-md-2">
+                <Form.Label>Moneda</Form.Label>
+                <Form.Control
+                  value={dealForm.currency}
+                  onChange={(e) => setDealForm((p) => ({ ...p, currency: e.target.value }))}
+                />
+              </div>
+              <div className="col-md-2">
+                <Form.Label>Probabilidad %</Form.Label>
+                <Form.Control
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={dealForm.probability}
+                  onChange={(e) => setDealForm((p) => ({ ...p, probability: e.target.value }))}
+                />
+              </div>
+              <div className="col-md-3">
+                <Form.Label>Etapa</Form.Label>
+                <Form.Select
+                  value={dealForm.stage}
+                  onChange={(e) => setDealForm((p) => ({ ...p, stage: e.target.value }))}
+                >
+                  <option value="new_lead">Nuevo lead</option>
+                  <option value="contacted">Contactado</option>
+                  <option value="qualified">Calificado</option>
+                  <option value="proposal">Propuesta</option>
+                  <option value="negotiation">Negociación</option>
+                  <option value="closed_won">Ganado</option>
+                  <option value="closed_lost">Perdido</option>
+                </Form.Select>
+              </div>
+              <div className="col-md-3">
+                <Form.Label>Cierre esperado</Form.Label>
+                <Form.Control
+                  type="date"
+                  value={dealForm.expected_close_date || ""}
+                  onChange={(e) => setDealForm((p) => ({ ...p, expected_close_date: e.target.value }))}
+                />
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Motivo de pérdida</Form.Label>
+                <Form.Control
+                  value={dealForm.lost_reason}
+                  onChange={(e) => setDealForm((p) => ({ ...p, lost_reason: e.target.value }))}
+                />
+              </div>
+              <div className="col-12">
+                <Form.Label>Descripción</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={3}
+                  value={dealForm.description}
+                  onChange={(e) => setDealForm((p) => ({ ...p, description: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="mt-3 d-flex justify-content-end">
+              <Button type="submit" disabled={savingDeal}>
+                {savingDeal ? "Guardando..." : "Guardar cambios"}
+              </Button>
+            </div>
+          </Form>
         </Card.Body>
       </Card>
 

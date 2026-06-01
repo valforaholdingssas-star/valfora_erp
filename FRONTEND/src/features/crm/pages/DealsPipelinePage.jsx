@@ -25,6 +25,7 @@ const STAGES = [
   { id: "closed_won", title: "Ganado", accent: "#22c55e", tint: "rgba(34, 197, 94, 0.14)" },
   { id: "closed_lost", title: "Perdido", accent: "#ef4444", tint: "rgba(239, 68, 68, 0.14)" },
 ];
+const MOVE_STAGE_OPTIONS = STAGES.filter((s) => s.id !== "qualification");
 
 const DealsPipelinePage = () => {
   const [byStage, setByStage] = useState({});
@@ -46,6 +47,7 @@ const DealsPipelinePage = () => {
     description: "",
   });
   const [activitySaving, setActivitySaving] = useState(false);
+  const [movingDealId, setMovingDealId] = useState(null);
   const [activityError, setActivityError] = useState("");
   const [activityForm, setActivityForm] = useState({
     subject: "",
@@ -109,6 +111,32 @@ const DealsPipelinePage = () => {
     };
   };
 
+  const extractApiError = (err, fallback) => {
+    const detail = err?.response?.data?.detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (typeof err?.message === "string" && err.message.trim()) return err.message;
+    return fallback;
+  };
+
+  const applyLocalStage = (dealId, toStageRaw) => {
+    const toStage = toStageRaw === "qualification" ? "qualified" : toStageRaw;
+    setByStage((prev) => {
+      const fromStage = getStageForId(dealId, prev);
+      if (!fromStage || fromStage === toStage) return prev;
+      const source = [...(prev[fromStage] || [])];
+      const idx = source.findIndex((d) => d.id === dealId);
+      if (idx < 0) return prev;
+      const [deal] = source.splice(idx, 1);
+      const target = [...(prev[toStage] || [])];
+      target.unshift({ ...deal, stage: toStage });
+      return {
+        ...prev,
+        [fromStage]: source,
+        [toStage]: target,
+      };
+    });
+  };
+
   const handleDragStart = (event) => {
     const { active } = event;
     const deal = findDealById(active.id);
@@ -156,11 +184,15 @@ const DealsPipelinePage = () => {
     }
 
     try {
+      setMovingDealId(activeId);
       await moveDealStage(activeId, { to_stage: newStage, notes: "Cambio manual desde pipeline canvas" });
+      applyLocalStage(activeId, newStage);
       setError("");
-    } catch {
+    } catch (err) {
       setByStage(previousState);
-      setError("No se pudo mover el deal. Se revirtió el cambio.");
+      setError(extractApiError(err, "No se pudo mover el deal. Se revirtió el cambio."));
+    } finally {
+      setMovingDealId(null);
     }
   };
 
@@ -357,19 +389,28 @@ const DealsPipelinePage = () => {
                     <Form.Select
                       size="sm"
                       value={deal.stage}
+                      disabled={movingDealId === deal.id}
                       onChange={async (e) => {
+                        const toStage = e.target.value;
+                        if (toStage === deal.stage) return;
+                        const snapshot = structuredClone(byStage);
                         try {
+                          setMovingDealId(deal.id);
                           await moveDealStage(deal.id, {
-                            to_stage: e.target.value,
+                            to_stage: toStage,
                             notes: "Cambio manual desde tabla",
                           });
-                          load();
-                        } catch {
-                          setError("No se pudo mover el deal.");
+                          applyLocalStage(deal.id, toStage);
+                          setError("");
+                        } catch (err) {
+                          setByStage(snapshot);
+                          setError(extractApiError(err, "No se pudo mover el deal."));
+                        } finally {
+                          setMovingDealId(null);
                         }
                       }}
                     >
-                      {STAGES.map((s) => (
+                      {MOVE_STAGE_OPTIONS.map((s) => (
                         <option key={s.id} value={s.id}>{s.title}</option>
                       ))}
                     </Form.Select>
