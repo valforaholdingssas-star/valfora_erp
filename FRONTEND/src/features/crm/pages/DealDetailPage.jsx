@@ -12,6 +12,7 @@ import {
   moveDealStage,
   updateDeal,
 } from "../../../api/crm.js";
+import { createOrOpenConversation } from "../../../api/chat.js";
 import { formatDealValue } from "../utils/formatters.js";
 
 const DealDetailPage = () => {
@@ -145,6 +146,15 @@ const DealDetailPage = () => {
     }
   };
 
+  const handleOpenWhatsappConversation = async () => {
+    try {
+      await createOrOpenConversation({ deal: deal.id, channel: "whatsapp" });
+      navigate(`/chat/deal/${deal.id}`);
+    } catch {
+      // noop
+    }
+  };
+
   const saveDeal = async (e) => {
     e.preventDefault();
     setSavingDeal(true);
@@ -187,6 +197,9 @@ const DealDetailPage = () => {
           <div className="small text-muted mb-3">Valor: {formatDealValue(deal.value)} {deal.currency}</div>
           <div className="d-flex gap-2">
             <Button size="sm" onClick={advance}>Avanzar etapa</Button>
+            <Button size="sm" variant="outline-primary" onClick={handleOpenWhatsappConversation}>
+              Abrir WhatsApp
+            </Button>
             <Button size="sm" variant="outline-danger" onClick={handleDeleteDeal} disabled={deletingDeal}>
               {deletingDeal ? "Eliminando..." : "Eliminar deal"}
             </Button>

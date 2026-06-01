@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Badge, Form } from "react-bootstrap";
+import { Alert, Badge, Button, Form, Modal } from "react-bootstrap";
 import { Link, useParams } from "react-router-dom";
 
 import { fetchAiConfigurations } from "../../../api/aiConfig.js";
@@ -164,7 +164,7 @@ const ChatView = () => {
   const [input, setInput] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [channelFilter, setChannelFilter] = useState(dealId ? "internal" : "whatsapp");
+  const [channelFilter, setChannelFilter] = useState("whatsapp");
   const [filters, setFilters] = useState({
     dealStage: "",
     dealOpenedFrom: "",
@@ -192,11 +192,11 @@ const ChatView = () => {
   const [loadingDeal, setLoadingDeal] = useState(false);
   const [savingDeal, setSavingDeal] = useState(false);
   const [dealSaveError, setDealSaveError] = useState("");
-  const [dealPanelCollapsed, setDealPanelCollapsed] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [dealDrawerOpen, setDealDrawerOpen] = useState(false);
   const [mobileSection, setMobileSection] = useState("chat");
-  const [conversationInfoExpanded, setConversationInfoExpanded] = useState(true);
+  const [quickDealModalOpen, setQuickDealModalOpen] = useState(false);
+  const [chatInfoModalOpen, setChatInfoModalOpen] = useState(false);
+  const [chatFiltersModalOpen, setChatFiltersModalOpen] = useState(false);
   const [globalAiModeEnabled, setGlobalAiModeEnabled] = useState(false);
   const [globalAiModeLoading, setGlobalAiModeLoading] = useState(false);
   const typingTimerRef = useRef(null);
@@ -313,7 +313,7 @@ const ChatView = () => {
 
   useEffect(() => {
     if (dealId && !activeId) {
-      createOrOpenConversation({ deal: dealId, channel: "internal" })
+      createOrOpenConversation({ deal: dealId, channel: "whatsapp" })
         .then((conv) => {
           setActiveId(conv.id);
           loadConversations();
@@ -323,7 +323,7 @@ const ChatView = () => {
   }, [dealId, activeId, loadConversations]);
 
   useEffect(() => {
-    setChannelFilter(dealId ? "internal" : "whatsapp");
+    setChannelFilter("whatsapp");
   }, [dealId]);
 
   useEffect(() => {
@@ -911,20 +911,30 @@ const ChatView = () => {
           <button
             type="button"
             className="btn btn-outline-secondary btn-sm"
-            onClick={() => setDealPanelCollapsed((prev) => !prev)}
-            aria-label={dealPanelCollapsed ? "Mostrar panel de deal" : "Ocultar panel de deal"}
+            onClick={() => setChatFiltersModalOpen(true)}
+            aria-label="Abrir filtros"
           >
-            <i className={`bi ${dealPanelCollapsed ? "bi-layout-three-columns" : "bi-layout-sidebar-reverse"}`} />
-            <span className="ms-1">{dealPanelCollapsed ? "Panel deal" : "Ocultar deal"}</span>
+            <i className="bi bi-funnel" />
+            <span className="ms-1">Filtros</span>
           </button>
           <button
             type="button"
-            className="btn btn-primary btn-sm d-none d-lg-inline-flex"
-            onClick={() => setDealDrawerOpen(true)}
+            className="btn btn-outline-primary btn-sm"
+            onClick={() => setChatInfoModalOpen(true)}
             disabled={!activeConv}
-            aria-label="Abrir drawer del deal"
+            aria-label="Abrir información de conversación"
           >
-            <i className="bi bi-sliders2-vertical" />
+            <i className="bi bi-info-circle" />
+            <span className="ms-1">Información</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => setQuickDealModalOpen(true)}
+            disabled={!activeConv}
+            aria-label="Abrir edición rápida del deal"
+          >
+            <i className="bi bi-briefcase" />
             <span className="ms-1">Deal rápido</span>
           </button>
         </div>
@@ -944,19 +954,9 @@ const ChatView = () => {
         >
           Chat
         </button>
-        <button
-          type="button"
-          className={`btn btn-sm ${mobileSection === "deal" ? "btn-primary" : "btn-outline-secondary"}`}
-          onClick={() => setMobileSection("deal")}
-          disabled={!activeConv}
-        >
-          Deal
-        </button>
       </div>
       <div
-        className={`app-chat-layout ${dealPanelCollapsed ? "app-chat-layout-meta-collapsed" : ""} ${
-          sidebarCollapsed ? "app-chat-layout-sidebar-collapsed" : ""
-        }`}
+        className={`app-chat-layout app-chat-layout-meta-collapsed ${sidebarCollapsed ? "app-chat-layout-sidebar-collapsed" : ""}`}
       >
         {!sidebarCollapsed && (
           <ChatSidebar
@@ -968,23 +968,6 @@ const ChatView = () => {
             onQueryChange={setSearchQuery}
             channelFilter={channelFilter}
             onChannelFilterChange={setChannelFilter}
-            filters={filters}
-            onApplyFilters={setFilters}
-            onClearFilters={() =>
-              setFilters({
-                dealStage: "",
-                dealOpenedFrom: "",
-                dealOpenedTo: "",
-                responsible: "",
-              })
-            }
-            responsibleOptions={responsibleOptions}
-            showGlobalAiSwitch={Boolean(canManageAiConfigs)}
-            globalAiModeEnabled={globalAiModeEnabled}
-            globalAiModeLoading={globalAiModeLoading}
-            onToggleGlobalAiMode={handleToggleGlobalAiMode}
-            showOnlyOverdue={showOnlyOverdue}
-            onToggleShowOnlyOverdue={setShowOnlyOverdue}
             className={mobileSection !== "conversations" ? "d-none d-lg-block" : ""}
           />
         )}
@@ -1018,87 +1001,8 @@ const ChatView = () => {
                         Ver contacto
                       </Link>
                     )}
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary btn-sm"
-                      onClick={() => setConversationInfoExpanded((prev) => !prev)}
-                      aria-label={conversationInfoExpanded ? "Ocultar panel de contexto" : "Mostrar panel de contexto"}
-                    >
-                      <i className={`bi ${conversationInfoExpanded ? "bi-chevron-up" : "bi-chevron-down"}`} />
-                      <span className="ms-1">{conversationInfoExpanded ? "Ocultar" : "Mostrar"}</span>
-                    </button>
                   </div>
                 </div>
-                {conversationInfoExpanded && (
-                  <>
-                    <div className="app-chat-kpi-row">
-                      <div className="app-chat-kpi-card">
-                        <span className="app-chat-kpi-label">Ventana WhatsApp</span>
-                        <strong className={serviceWindowOpen ? "text-success" : "text-muted"}>
-                          {serviceWindowOpen === null ? "No aplica" : serviceWindowOpen ? "Abierta" : "Cerrada"}
-                        </strong>
-                        {activeConv?.channel === "whatsapp" && (
-                          <span className="small text-muted">
-                            Expira: {formatDateTime(activeConv.customer_service_window_expires)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="app-chat-kpi-card">
-                        <span className="app-chat-kpi-label">Último mensaje</span>
-                        <strong>{formatRelativeTime(lastMessageAt)}</strong>
-                        <span className="small text-muted">{formatDateTime(lastMessageAt)}</span>
-                      </div>
-                      <div className="app-chat-kpi-card">
-                        <span className="app-chat-kpi-label">Mensajes cargados</span>
-                        <strong>{messageCount}</strong>
-                        <span className="small text-muted">
-                          {activeConv?.unread_count ? `${activeConv.unread_count} sin leer` : "Sin pendientes"}
-                        </span>
-                      </div>
-                      <div className="app-chat-kpi-card">
-                        <span className="app-chat-kpi-label">Automatización</span>
-                        <strong>{aiEnabled ? "IA activa" : "IA desactivada"}</strong>
-                        <span className="small text-muted">
-                          {activeConv?.human_handoff_requested ? "Requiere atención humana" : "Sin handoff activo"}
-                        </span>
-                      </div>
-                      <div className={`app-chat-kpi-card app-chat-kpi-card-sla app-chat-kpi-card-sla--${pendingReplySla.status}`}>
-                        <span className="app-chat-kpi-label">SLA de respuesta</span>
-                        <strong>{pendingReplySla.label}</strong>
-                        <span className="small">{pendingReplySla.detail}</span>
-                      </div>
-                    </div>
-                    {canManageAiConfigs && (
-                      <Form.Group className="mb-0" controlId="conv-ai-config">
-                        <Form.Label className="small text-muted mb-1">
-                          Configuración IA (esta conversación)
-                        </Form.Label>
-                        <Form.Select
-                          size="sm"
-                          value={aiConfigId || ""}
-                          onChange={(e) => {
-                            void handleAiConfigChange(e);
-                          }}
-                          disabled={savingAiConfig}
-                          aria-busy={savingAiConfig}
-                        >
-                          <option value="">Predeterminada del sistema</option>
-                          {aiConfigs.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                              {c.is_default ? " (predeterminada)" : ""}
-                            </option>
-                          ))}
-                        </Form.Select>
-                      </Form.Group>
-                    )}
-                    {!canManageAiConfigs && activeConv?.ai_configuration_name && (
-                      <p className="small text-muted mb-0">
-                        Configuración IA: <strong>{activeConv.ai_configuration_name}</strong>
-                      </p>
-                    )}
-                  </>
-                )}
               </div>
               <div className="app-chat-center-body">
                 <ChatThread
@@ -1156,219 +1060,128 @@ const ChatView = () => {
             <Link to="/crm/contacts">← Volver al CRM</Link>
           </div>
         </div>
-        <aside className={`app-chat-panel app-chat-meta d-none d-lg-block ${dealPanelCollapsed ? "d-none" : ""}`}>
-          {activeConv ? (
-            <>
-              <div className="d-flex align-items-center justify-content-between mb-3">
-                {!dealPanelCollapsed && <h3 className="h6 mb-0">Edición rápida del deal</h3>}
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary btn-sm"
-                  aria-label={dealPanelCollapsed ? "Expandir panel de deal" : "Colapsar panel de deal"}
-                  title={dealPanelCollapsed ? "Expandir" : "Colapsar"}
-                  onClick={() => setDealPanelCollapsed((prev) => !prev)}
-                >
-                  <i className={`bi ${dealPanelCollapsed ? "bi-chevron-left" : "bi-chevron-right"}`} />
-                </button>
-              </div>
-              {dealPanelCollapsed ? (
-                <div className="small text-muted">Deal</div>
-              ) : (
-                <>
-              {loadingDeal && <p className="small text-muted mb-0">Cargando deal...</p>}
-              {!loadingDeal && !dealDetail && (
-                <div>
-                  <p className="small text-muted mb-2">Este chat no tiene deal asociado.</p>
-                  {activeConv.contact && (
-                    <Link className="small" to={`/crm/contacts/${activeConv.contact}`}>
-                      Ver contacto
-                    </Link>
-                  )}
-                </div>
-              )}
-              {!loadingDeal && dealDetail && dealDraft && (
-                <div className="d-flex flex-column gap-2">
-                  <div className="small text-muted">Deal</div>
-                  <div className="fw-semibold">{dealDetail.title}</div>
-                  <Form.Group controlId="chat-deal-stage">
-                    <Form.Label className="small text-muted mb-1">Etapa</Form.Label>
-                    <Form.Select
-                      size="sm"
-                      value={dealDraft.stage}
-                      onChange={(e) => handleDealDraftChange("stage", e.target.value)}
-                      disabled={savingDeal}
-                    >
-                      {dealStages.map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  </Form.Group>
-                  <Form.Group controlId="chat-deal-value">
-                    <Form.Label className="small text-muted mb-1">Valor</Form.Label>
-                    <Form.Control
-                      size="sm"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={dealDraft.value}
-                      onChange={(e) => handleDealDraftChange("value", e.target.value)}
-                      disabled={savingDeal}
-                    />
-                  </Form.Group>
-                  <Form.Group controlId="chat-deal-probability">
-                    <Form.Label className="small text-muted mb-1">Probabilidad (%)</Form.Label>
-                    <Form.Control
-                      size="sm"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={dealDraft.probability}
-                      onChange={(e) => handleDealDraftChange("probability", e.target.value)}
-                      disabled={savingDeal}
-                    />
-                  </Form.Group>
-                  <Form.Group controlId="chat-deal-close-date">
-                    <Form.Label className="small text-muted mb-1">Cierre estimado</Form.Label>
-                    <Form.Control
-                      size="sm"
-                      type="date"
-                      value={dealDraft.expected_close_date || ""}
-                      onChange={(e) => handleDealDraftChange("expected_close_date", e.target.value)}
-                      disabled={savingDeal}
-                    />
-                  </Form.Group>
-                  <Form.Group controlId="chat-deal-assigned">
-                    <Form.Label className="small text-muted mb-1">Responsable</Form.Label>
-                    <Form.Select
-                      size="sm"
-                      value={dealDraft.assigned_to || ""}
-                      onChange={(e) => handleDealDraftChange("assigned_to", e.target.value)}
-                      disabled={savingDeal}
-                    >
-                      <option value="">Sin asignar</option>
-                      {responsibleOptions.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {[u.first_name, u.last_name].filter(Boolean).join(" ") || u.email}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  </Form.Group>
-                  {dealSaveError && (
-                    <Alert variant="warning" className="py-2 px-3 small mb-0 mt-1">
-                      {dealSaveError}
-                    </Alert>
-                  )}
-                  <div className="d-flex justify-content-between align-items-center mt-1">
-                    <Link className="small" to={`/crm/deals/${dealDetail.id}`}>
-                      Abrir deal
-                    </Link>
-                    <div className="d-flex gap-2">
-                      <button
-                        type="button"
-                        className="btn btn-outline-primary btn-sm"
-                        onClick={() => {
-                          void handleAdvanceDealStage();
-                        }}
-                        disabled={
-                          savingDeal
-                          || orderedStageKeys.indexOf(dealDraft.stage) < 0
-                          || orderedStageKeys.indexOf(dealDraft.stage) >= orderedStageKeys.length - 1
-                        }
-                      >
-                        Siguiente etapa
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={() => {
-                          void handleSaveDealQuickEdit();
-                        }}
-                        disabled={savingDeal}
-                      >
-                        {savingDeal ? "Guardando..." : "Guardar cambios"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-                </>
-              )}
-            </>
-          ) : (
-            <p className="text-muted mb-0 small">Sin conversación seleccionada.</p>
-          )}
-        </aside>
-        <aside className={`app-chat-panel app-chat-meta d-lg-none ${mobileSection !== "deal" ? "d-none" : ""}`}>
-          {activeConv ? (
-            <>
-              <h3 className="h6 mb-3">Edición rápida del deal</h3>
-              {loadingDeal && <p className="small text-muted mb-0">Cargando deal...</p>}
-              {!loadingDeal && !dealDetail && (
-                <div>
-                  <p className="small text-muted mb-2">Este chat no tiene deal asociado.</p>
-                  {activeConv.contact && (
-                    <Link className="small" to={`/crm/contacts/${activeConv.contact}`}>
-                      Ver contacto
-                    </Link>
-                  )}
-                </div>
-              )}
-              {!loadingDeal && dealDetail && dealDraft && (
-                <div className="d-flex flex-column gap-2">
-                  <div className="small text-muted">Deal</div>
-                  <div className="fw-semibold">{dealDetail.title}</div>
-                  <Form.Group controlId="chat-deal-stage-mobile">
-                    <Form.Label className="small text-muted mb-1">Etapa</Form.Label>
-                    <Form.Select
-                      size="sm"
-                      value={dealDraft.stage}
-                      onChange={(e) => handleDealDraftChange("stage", e.target.value)}
-                      disabled={savingDeal}
-                    >
-                      {dealStages.map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  </Form.Group>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={() => {
-                      void handleSaveDealQuickEdit();
-                    }}
-                    disabled={savingDeal}
-                  >
-                    {savingDeal ? "Guardando..." : "Guardar cambios"}
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="text-muted mb-0 small">Sin conversación seleccionada.</p>
-          )}
-        </aside>
       </div>
-      <div className={`app-chat-deal-drawer ${dealDrawerOpen ? "is-open" : ""}`}>
-        <div className="app-chat-deal-drawer-backdrop" onClick={() => setDealDrawerOpen(false)} />
-        <aside className="app-chat-deal-drawer-panel">
-          <div className="d-flex align-items-center justify-content-between mb-3">
-            <h3 className="h6 mb-0">Deal rápido</h3>
-            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setDealDrawerOpen(false)}>
-              <i className="bi bi-x-lg" />
-            </button>
+      <Modal show={chatFiltersModalOpen} onHide={() => setChatFiltersModalOpen(false)} centered>
+        <Modal.Header closeButton><Modal.Title>Filtros de bandeja</Modal.Title></Modal.Header>
+        <Modal.Body className="d-flex flex-column gap-2">
+          <Form.Group>
+            <Form.Label>Canal</Form.Label>
+            <Form.Select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="">Todos</option>
+            </Form.Select>
+          </Form.Group>
+          <Form.Group>
+            <Form.Label>Etapa del deal</Form.Label>
+            <Form.Select value={filters.dealStage} onChange={(e) => setFilters((p) => ({ ...p, dealStage: e.target.value }))}>
+              <option value="">Todas</option>
+              {dealStages.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </Form.Select>
+          </Form.Group>
+          <div className="d-flex gap-2">
+            <Form.Group className="w-100">
+              <Form.Label>Desde</Form.Label>
+              <Form.Control type="date" value={filters.dealOpenedFrom} onChange={(e) => setFilters((p) => ({ ...p, dealOpenedFrom: e.target.value }))} />
+            </Form.Group>
+            <Form.Group className="w-100">
+              <Form.Label>Hasta</Form.Label>
+              <Form.Control type="date" value={filters.dealOpenedTo} onChange={(e) => setFilters((p) => ({ ...p, dealOpenedTo: e.target.value }))} />
+            </Form.Group>
           </div>
-          {!activeConv && <p className="small text-muted mb-0">Sin conversación seleccionada.</p>}
-          {activeConv && (
-            <div className="small text-muted">
-              Usa el panel derecho para edición completa del deal. Este drawer está pensado para acceso rápido.
+          <Form.Group>
+            <Form.Label>Responsable</Form.Label>
+            <Form.Select value={filters.responsible} onChange={(e) => setFilters((p) => ({ ...p, responsible: e.target.value }))}>
+              <option value="">Todos</option>
+              {responsibleOptions.map((u) => (
+                <option key={u.id} value={u.id}>{[u.first_name, u.last_name].filter(Boolean).join(" ") || u.email}</option>
+              ))}
+            </Form.Select>
+          </Form.Group>
+          <Form.Check type="switch" label="Solo vencidas SLA" checked={Boolean(showOnlyOverdue)} onChange={(e) => setShowOnlyOverdue(e.target.checked)} />
+          {canManageAiConfigs && (
+            <Form.Check
+              type="switch"
+              label="Modo IA global"
+              checked={Boolean(globalAiModeEnabled)}
+              disabled={globalAiModeLoading}
+              onChange={(e) => { void handleToggleGlobalAiMode(e.target.checked); }}
+            />
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="outline-secondary" onClick={() => setChatFiltersModalOpen(false)}>Cerrar</Button>
+        </Modal.Footer>
+      </Modal>
+      <Modal show={chatInfoModalOpen} onHide={() => setChatInfoModalOpen(false)} centered>
+        <Modal.Header closeButton><Modal.Title>Información de conversación</Modal.Title></Modal.Header>
+        <Modal.Body>
+          <div className="app-chat-kpi-row">
+            <div className="app-chat-kpi-card">
+              <span className="app-chat-kpi-label">Ventana WhatsApp</span>
+              <strong className={serviceWindowOpen ? "text-success" : "text-muted"}>
+                {serviceWindowOpen === null ? "No aplica" : serviceWindowOpen ? "Abierta" : "Cerrada"}
+              </strong>
+            </div>
+            <div className="app-chat-kpi-card">
+              <span className="app-chat-kpi-label">Último mensaje</span>
+              <strong>{formatRelativeTime(lastMessageAt)}</strong>
+              <span className="small text-muted">{formatDateTime(lastMessageAt)}</span>
+            </div>
+            <div className="app-chat-kpi-card">
+              <span className="app-chat-kpi-label">Mensajes cargados</span>
+              <strong>{messageCount}</strong>
+            </div>
+            <div className={`app-chat-kpi-card app-chat-kpi-card-sla app-chat-kpi-card-sla--${pendingReplySla.status}`}>
+              <span className="app-chat-kpi-label">SLA</span>
+              <strong>{pendingReplySla.label}</strong>
+              <span className="small">{pendingReplySla.detail}</span>
+            </div>
+          </div>
+          {canManageAiConfigs && (
+            <Form.Group className="mt-2" controlId="conv-ai-config-modal">
+              <Form.Label className="small text-muted mb-1">Configuración IA</Form.Label>
+              <Form.Select size="sm" value={aiConfigId || ""} onChange={(e) => { void handleAiConfigChange(e); }} disabled={savingAiConfig}>
+                <option value="">Predeterminada del sistema</option>
+                {aiConfigs.map((c) => <option key={c.id} value={c.id}>{c.name}{c.is_default ? " (predeterminada)" : ""}</option>)}
+              </Form.Select>
+            </Form.Group>
+          )}
+        </Modal.Body>
+      </Modal>
+      <Modal show={quickDealModalOpen} onHide={() => setQuickDealModalOpen(false)} centered>
+        <Modal.Header closeButton><Modal.Title>Edición rápida del deal</Modal.Title></Modal.Header>
+        <Modal.Body>
+          {loadingDeal && <p className="small text-muted mb-0">Cargando deal...</p>}
+          {!loadingDeal && !dealDetail && <p className="small text-muted mb-0">Este chat no tiene deal asociado.</p>}
+          {!loadingDeal && dealDetail && dealDraft && (
+            <div className="d-flex flex-column gap-2">
+              <div className="fw-semibold">{dealDetail.title}</div>
+              <Form.Group><Form.Label>Etapa</Form.Label><Form.Select value={dealDraft.stage} onChange={(e) => handleDealDraftChange("stage", e.target.value)}>{dealStages.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Form.Select></Form.Group>
+              <Form.Group><Form.Label>Valor</Form.Label><Form.Control type="number" min="0" step="0.01" value={dealDraft.value} onChange={(e) => handleDealDraftChange("value", e.target.value)} /></Form.Group>
+              <Form.Group><Form.Label>Probabilidad (%)</Form.Label><Form.Control type="number" min="0" max="100" value={dealDraft.probability} onChange={(e) => handleDealDraftChange("probability", e.target.value)} /></Form.Group>
+              <Form.Group><Form.Label>Cierre estimado</Form.Label><Form.Control type="date" value={dealDraft.expected_close_date || ""} onChange={(e) => handleDealDraftChange("expected_close_date", e.target.value)} /></Form.Group>
+              <Form.Group>
+                <Form.Label>Responsable</Form.Label>
+                <Form.Select value={dealDraft.assigned_to || ""} onChange={(e) => handleDealDraftChange("assigned_to", e.target.value)}>
+                  <option value="">Sin asignar</option>
+                  {responsibleOptions.map((u) => <option key={u.id} value={u.id}>{[u.first_name, u.last_name].filter(Boolean).join(" ") || u.email}</option>)}
+                </Form.Select>
+              </Form.Group>
+              {dealSaveError && <Alert variant="warning" className="py-2 px-3 small mb-0 mt-1">{dealSaveError}</Alert>}
             </div>
           )}
-        </aside>
-      </div>
+        </Modal.Body>
+        <Modal.Footer>
+          {dealDetail && (
+            <Button variant="outline-primary" onClick={() => { void handleAdvanceDealStage(); }} disabled={savingDeal || !dealDraft || orderedStageKeys.indexOf(dealDraft.stage) >= orderedStageKeys.length - 1}>
+              Siguiente etapa
+            </Button>
+          )}
+          <Button variant="primary" onClick={() => { void handleSaveDealQuickEdit(); }} disabled={savingDeal || !dealDetail}>
+            {savingDeal ? "Guardando..." : "Guardar cambios"}
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 };

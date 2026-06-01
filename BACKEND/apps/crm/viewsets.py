@@ -44,6 +44,7 @@ from apps.crm.pipeline_automation import PipelineAutomationService
 from apps.whatsapp.models import WhatsAppTemplate
 from apps.whatsapp.tasks import send_whatsapp_template
 from apps.chat.models import Message
+from apps.chat.models import Conversation
 from apps.chat.serializers import MessageSerializer
 from apps.crm.services import build_contact_timeline, build_crm_dashboard
 
@@ -275,6 +276,38 @@ class DealViewSet(CRMBaseViewSet):
             action="create",
             instance=instance,
             changes={},
+            request=self.request,
+        )
+
+    def perform_destroy(self, instance):
+        """Soft-delete deal and its linked WhatsApp conversations."""
+        related_whatsapp = Conversation.objects.filter(
+            deal=instance,
+            channel="whatsapp",
+            is_active=True,
+        )
+        related_whatsapp_ids = list(related_whatsapp.values_list("id", flat=True))
+        if related_whatsapp_ids:
+            related_whatsapp.update(is_active=False, updated_at=timezone.now())
+            for conv_id in related_whatsapp_ids:
+                write_audit_log(
+                    user=self.request.user,
+                    action="delete",
+                    instance=Conversation(id=conv_id),
+                    changes={"is_active": False, "reason": "deal_deleted"},
+                    request=self.request,
+                )
+
+        instance.is_active = False
+        instance.save(update_fields=["is_active", "updated_at"])
+        write_audit_log(
+            user=self.request.user,
+            action="delete",
+            instance=instance,
+            changes={
+                "is_active": False,
+                "deleted_linked_whatsapp_conversations": [str(cid) for cid in related_whatsapp_ids],
+            },
             request=self.request,
         )
 
