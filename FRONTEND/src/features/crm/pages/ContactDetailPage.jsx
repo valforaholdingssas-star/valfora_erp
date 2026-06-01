@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 
 import {
   createActivity,
+  createDeal,
   fetchActivities,
   fetchContact,
   fetchContactChatHistory,
@@ -27,32 +28,49 @@ const ContactDetailPage = () => {
   const [contracts, setContracts] = useState({ results: [] });
   const [invoices, setInvoices] = useState({ results: [] });
   const [loading, setLoading] = useState(true);
+  const [selectedDealId, setSelectedDealId] = useState("");
   const [activityForm, setActivityForm] = useState({
     subject: "",
     activity_type: "note",
     description: "",
   });
+  const [dealSaving, setDealSaving] = useState(false);
+  const [dealForm, setDealForm] = useState({
+    title: "",
+    value: "",
+    currency: "USD",
+    stage: "new_lead",
+    probability: 0,
+    description: "",
+  });
 
   const reload = useCallback(async () => {
-    const [c, tl, dl, act, doc, ch, ctr, inv] = await Promise.all([
+    const [c, tl, dl, doc, ch, ctr, inv] = await Promise.all([
       fetchContact(id),
       fetchContactTimeline(id),
       fetchDeals({ contact: id, page_size: 100 }),
-      fetchActivities({ contact: id, page_size: 100 }),
       fetchDocuments({ contact: id, page_size: 100 }),
       fetchContactChatHistory(id, { limit: 200 }),
       fetchContracts({ contact: id, page_size: 100 }),
       fetchInvoices({ contact: id, page_size: 100 }),
     ]);
+    const dealRows = dl.results || [];
+    const nextDealId = dealRows.some((d) => d.id === selectedDealId)
+      ? selectedDealId
+      : (dealRows[0]?.id || "");
+    const act = nextDealId
+      ? await fetchActivities({ deal: nextDealId, page_size: 100 })
+      : { results: [] };
     setContact(c);
     setTimeline(tl);
     setDeals(dl);
     setActivities(act);
+    setSelectedDealId(nextDealId);
     setDocuments(doc);
     setChatHistory(ch);
     setContracts(ctr || { results: [] });
     setInvoices(inv || { results: [] });
-  }, [id]);
+  }, [id, selectedDealId]);
 
   useEffect(() => {
     setLoading(true);
@@ -63,8 +81,10 @@ const ContactDetailPage = () => {
 
   const handleAddActivity = async (e) => {
     e.preventDefault();
+    if (!selectedDealId) return;
     await createActivity({
       contact: id,
+      deal: selectedDealId,
       subject: activityForm.subject,
       activity_type: activityForm.activity_type,
       description: activityForm.description,
@@ -86,6 +106,34 @@ const ContactDetailPage = () => {
     await reload();
   };
 
+  const handleCreateDeal = async (e) => {
+    e.preventDefault();
+    setDealSaving(true);
+    try {
+      await createDeal({
+        title: dealForm.title.trim(),
+        contact: id,
+        company: contact.company || null,
+        value: dealForm.value === "" ? 0 : Number(dealForm.value),
+        currency: dealForm.currency.trim().toUpperCase() || "USD",
+        stage: dealForm.stage,
+        probability: Number(dealForm.probability || 0),
+        description: dealForm.description.trim(),
+      });
+      setDealForm({
+        title: "",
+        value: "",
+        currency: "USD",
+        stage: "new_lead",
+        probability: 0,
+        description: "",
+      });
+      await reload();
+    } finally {
+      setDealSaving(false);
+    }
+  };
+
   if (loading || !contact) {
     return (
       <div className="text-center py-5">
@@ -95,6 +143,8 @@ const ContactDetailPage = () => {
   }
 
   const primaryDealId = deals.results?.[0]?.id || null;
+  const selectedDeal =
+    deals.results?.find((d) => d.id === selectedDealId) || deals.results?.[0] || null;
 
   return (
     <div className="app-page">
@@ -132,16 +182,16 @@ const ContactDetailPage = () => {
         </div>
       </div>
 
-      <Tab.Container defaultActiveKey="info">
+      <Tab.Container defaultActiveKey="deals">
         <Nav variant="tabs" className="mb-3">
           <Nav.Item>
-            <Nav.Link eventKey="info">Información</Nav.Link>
+            <Nav.Link eventKey="deals">Deals</Nav.Link>
           </Nav.Item>
           <Nav.Item>
             <Nav.Link eventKey="activities">Actividades</Nav.Link>
           </Nav.Item>
           <Nav.Item>
-            <Nav.Link eventKey="deals">Deals</Nav.Link>
+            <Nav.Link eventKey="info">Información</Nav.Link>
           </Nav.Item>
           <Nav.Item>
             <Nav.Link eventKey="documents">Documentos</Nav.Link>
@@ -160,21 +210,142 @@ const ContactDetailPage = () => {
           </Nav.Item>
         </Nav>
         <Tab.Content>
-          <Tab.Pane eventKey="info">
-            <p>
-              <strong>Etapa:</strong> {contact.lifecycle_stage}
-            </p>
-            <p>
-              <strong>Intención:</strong> {contact.intent_level}
-            </p>
-            <p>
-              <strong>Empresa:</strong> {contact.company_name || "—"}
-            </p>
-            <p className="mb-0">
-              <strong>Notas:</strong> {contact.notes || "—"}
-            </p>
+          <Tab.Pane eventKey="deals">
+            {selectedDeal ? (
+              <div className="app-section-card p-3 mb-3">
+                <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                  <div>
+                    <div className="small text-muted">Deal activo</div>
+                    <div className="fw-semibold">{selectedDeal.title}</div>
+                  </div>
+                  <div className="d-flex align-items-center gap-2">
+                    <Badge bg="light" text="dark">{selectedDeal.stage}</Badge>
+                    <Badge bg="primary">
+                      {formatDealValue(selectedDeal.value)} {selectedDeal.currency}
+                    </Badge>
+                    <Button as={Link} to={`/crm/deals/${selectedDeal.id}`} size="sm" variant="outline-primary">
+                      Ver deal
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-muted">Aún no hay deals para este contacto.</p>
+            )}
+            <Form className="mb-3" onSubmit={handleCreateDeal}>
+              <div className="row g-2">
+                <div className="col-md-4">
+                  <Form.Control
+                    placeholder="Título del deal"
+                    value={dealForm.title}
+                    onChange={(e) => setDealForm((p) => ({ ...p, title: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="col-md-2">
+                  <Form.Control
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Valor"
+                    value={dealForm.value}
+                    onChange={(e) => setDealForm((p) => ({ ...p, value: e.target.value }))}
+                  />
+                </div>
+                <div className="col-md-2">
+                  <Form.Control
+                    placeholder="Moneda"
+                    value={dealForm.currency}
+                    onChange={(e) => setDealForm((p) => ({ ...p, currency: e.target.value }))}
+                  />
+                </div>
+                <div className="col-md-2">
+                  <Form.Select
+                    value={dealForm.stage}
+                    onChange={(e) => setDealForm((p) => ({ ...p, stage: e.target.value }))}
+                  >
+                    <option value="new_lead">Nuevo lead</option>
+                    <option value="contacted">Contactado</option>
+                    <option value="qualified">Calificado</option>
+                    <option value="proposal">Propuesta</option>
+                    <option value="negotiation">Negociación</option>
+                    <option value="closed_won">Ganado</option>
+                    <option value="closed_lost">Perdido</option>
+                  </Form.Select>
+                </div>
+                <div className="col-md-2">
+                  <Form.Control
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="% prob."
+                    value={dealForm.probability}
+                    onChange={(e) => setDealForm((p) => ({ ...p, probability: e.target.value }))}
+                  />
+                </div>
+                <div className="col-md-10">
+                  <Form.Control
+                    placeholder="Descripción (opcional)"
+                    value={dealForm.description}
+                    onChange={(e) => setDealForm((p) => ({ ...p, description: e.target.value }))}
+                  />
+                </div>
+                <div className="col-md-2 d-grid">
+                  <Button type="submit" size="sm" disabled={dealSaving}>
+                    {dealSaving ? "Creando..." : "Crear deal"}
+                  </Button>
+                </div>
+              </div>
+            </Form>
+            <Table size="sm">
+              <thead>
+                <tr>
+                  <th>Título</th>
+                  <th>Etapa</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deals.results?.map((d) => (
+                  <tr key={d.id}>
+                    <td>
+                      <Link to={`/crm/deals/${d.id}`}>{d.title}</Link>
+                    </td>
+                    <td>{d.stage}</td>
+                    <td>
+                      {formatDealValue(d.value)} {d.currency}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
           </Tab.Pane>
           <Tab.Pane eventKey="activities">
+            <div className="d-flex align-items-center gap-2 mb-3">
+              <strong className="small mb-0">Deal activo:</strong>
+              <Form.Select
+                size="sm"
+                value={selectedDealId}
+                onChange={async (e) => {
+                  const nextId = e.target.value;
+                  setSelectedDealId(nextId);
+                  const nextActivities = nextId
+                    ? await fetchActivities({ deal: nextId, page_size: 100 })
+                    : { results: [] };
+                  setActivities(nextActivities);
+                }}
+                style={{ maxWidth: 420 }}
+              >
+                {(deals.results || []).map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.title} · {d.stage} · {formatDealValue(d.value)} {d.currency}
+                  </option>
+                ))}
+              </Form.Select>
+            </div>
+            {!selectedDeal ? (
+              <p className="text-muted mb-0">Este contacto no tiene deals. Crea uno en la pestaña Deals.</p>
+            ) : null}
             <Form className="mb-3" onSubmit={handleAddActivity}>
               <Form.Group className="mb-2">
                 <Form.Control
@@ -225,29 +396,19 @@ const ContactDetailPage = () => {
               </tbody>
             </Table>
           </Tab.Pane>
-          <Tab.Pane eventKey="deals">
-            <Table size="sm">
-              <thead>
-                <tr>
-                  <th>Título</th>
-                  <th>Etapa</th>
-                  <th>Valor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {deals.results?.map((d) => (
-                  <tr key={d.id}>
-                    <td>
-                      <Link to={`/crm/deals/${d.id}`}>{d.title}</Link>
-                    </td>
-                    <td>{d.stage}</td>
-                    <td>
-                      {formatDealValue(d.value)} {d.currency}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
+          <Tab.Pane eventKey="info">
+            <p>
+              <strong>Etapa:</strong> {contact.lifecycle_stage}
+            </p>
+            <p>
+              <strong>Intención:</strong> {contact.intent_level}
+            </p>
+            <p>
+              <strong>Empresa:</strong> {contact.company_name || "—"}
+            </p>
+            <p className="mb-0">
+              <strong>Notas:</strong> {contact.notes || "—"}
+            </p>
           </Tab.Pane>
           <Tab.Pane eventKey="documents">
             <Form.Group className="mb-3">

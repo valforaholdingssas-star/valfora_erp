@@ -112,7 +112,7 @@ Valores recomendados (ejemplo realista):
 DJANGO_SECRET_KEY=<pega_aqui_salida_de_openssl_rand_base64_48>
 POSTGRES_PASSWORD=<pega_aqui_salida_de_openssl_rand_base64_32>
 
-# Tu dominio público (sin protocolo)
+# Tu dominio público (sin protocolo)3
 DJANGO_ALLOWED_HOSTS=erp.tu-dominio.com
 
 # Origen permitido del frontend (con https)

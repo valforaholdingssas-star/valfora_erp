@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Alert, Badge, Button, Card, Form, Spinner, Table } from "react-bootstrap";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import {
   createActivity,
+  deleteDeal,
   fetchActivities,
   fetchDeal,
   fetchDealStageHistory,
@@ -13,11 +14,13 @@ import { formatDealValue } from "../utils/formatters.js";
 
 const DealDetailPage = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [deal, setDeal] = useState(null);
   const [history, setHistory] = useState([]);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creatingActivity, setCreatingActivity] = useState(false);
+  const [deletingDeal, setDeletingDeal] = useState(false);
   const [activityError, setActivityError] = useState("");
   const [activityForm, setActivityForm] = useState({
     subject: "",
@@ -98,6 +101,17 @@ const DealDetailPage = () => {
     }
   };
 
+  const handleDeleteDeal = async () => {
+    if (!window.confirm("¿Seguro que quieres eliminar este deal?")) return;
+    setDeletingDeal(true);
+    try {
+      await deleteDeal(deal.id);
+      navigate("/crm/pipeline");
+    } finally {
+      setDeletingDeal(false);
+    }
+  };
+
   return (
     <div className="app-page">
       <div className="mb-2"><Link to="/crm/pipeline">← Pipeline</Link></div>
@@ -110,7 +124,12 @@ const DealDetailPage = () => {
           </div>
           <div className="small text-muted mb-2">Contacto: {deal.contact_name}</div>
           <div className="small text-muted mb-3">Valor: {formatDealValue(deal.value)} {deal.currency}</div>
-          <Button size="sm" onClick={advance}>Avanzar etapa</Button>
+          <div className="d-flex gap-2">
+            <Button size="sm" onClick={advance}>Avanzar etapa</Button>
+            <Button size="sm" variant="outline-danger" onClick={handleDeleteDeal} disabled={deletingDeal}>
+              {deletingDeal ? "Eliminando..." : "Eliminar deal"}
+            </Button>
+          </div>
         </Card.Body>
       </Card>
 

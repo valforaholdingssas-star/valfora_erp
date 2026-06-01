@@ -48,6 +48,7 @@ export const fetchDeal = (id) => api.get(`/crm/deals/${id}/`).then(unwrap);
 export const createDeal = (payload) => api.post("/crm/deals/", payload).then(unwrap);
 
 export const updateDeal = (id, payload) => api.patch(`/crm/deals/${id}/`, payload).then(unwrap);
+export const deleteDeal = (id) => api.delete(`/crm/deals/${id}/`).then(unwrap);
 export const moveDealStage = (id, payload) => api.post(`/crm/deals/${id}/move-stage/`, payload).then(unwrap);
 export const fetchDealStageHistory = (id) => api.get(`/crm/deals/${id}/stage-history/`).then(unwrap);
 
