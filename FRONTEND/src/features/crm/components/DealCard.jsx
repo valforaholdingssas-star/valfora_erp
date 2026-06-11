@@ -12,6 +12,7 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
   });
   const assigneeLabel = deal.assigned_to_name || "Sin asignar";
   const assigneeChip = getAssigneeChipStyle(assigneeLabel);
+  const companyLabel = deal.company_name || "Sin empresa";
 
   return (
     <Card
@@ -28,7 +29,9 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
       <Card.Body className="py-2 px-2">
         <div className="d-flex flex-wrap align-items-center gap-1 mb-1">
           <span className="pipeline-chip pipeline-chip-neutral">{formatDealDisplayNumber(deal.id, orderIndex)}</span>
-          {deal.company_name ? <span className="pipeline-chip pipeline-chip-company">{deal.company_name}</span> : null}
+          <span className={`pipeline-chip ${deal.company_name ? "pipeline-chip-company" : "pipeline-chip-company-empty"}`}>
+            {companyLabel}
+          </span>
           <span
             className="pipeline-chip pipeline-chip-assignee"
             style={{

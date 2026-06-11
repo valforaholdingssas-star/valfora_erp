@@ -97,7 +97,7 @@ class DealSerializer(serializers.ModelSerializer):
     """Serializer for Deal."""
 
     contact_name = serializers.SerializerMethodField()
-    company_name = serializers.CharField(source="company.name", read_only=True, default="")
+    company_name = serializers.SerializerMethodField()
     assigned_to_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -129,6 +129,13 @@ class DealSerializer(serializers.ModelSerializer):
     def get_contact_name(self, obj: Deal) -> str:
         return str(obj.contact)
 
+    def get_company_name(self, obj: Deal) -> str:
+        if obj.company_id and obj.company:
+            return obj.company.name
+        if obj.contact_id and obj.contact and obj.contact.company_id and obj.contact.company:
+            return obj.contact.company.name
+        return ""
+
     def get_assigned_to_name(self, obj: Deal) -> str:
         if not obj.assigned_to:
             return ""
@@ -139,6 +146,13 @@ class DealSerializer(serializers.ModelSerializer):
         if value < 0 or value > 100:
             raise serializers.ValidationError("Probability must be between 0 and 100.")
         return value
+
+    def validate(self, attrs):
+        contact = attrs.get("contact", getattr(self.instance, "contact", None))
+        company = attrs.get("company", getattr(self.instance, "company", None))
+        if not company and contact and getattr(contact, "company_id", None):
+            attrs["company"] = contact.company
+        return attrs
 
 
 class ActivitySerializer(serializers.ModelSerializer):
