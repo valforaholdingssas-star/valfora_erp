@@ -26,20 +26,20 @@ export const resolveUserDisplayName = (user) => {
 };
 
 const ASSIGNEE_CHIP_PALETTE = [
-  { bg: "#E8F1FF", text: "#0F3D91", border: "#B9D1FF" },
-  { bg: "#EAFBF3", text: "#12633F", border: "#B9E8CC" },
-  { bg: "#FFF4E8", text: "#9A4A00", border: "#FFD7AE" },
-  { bg: "#F6ECFF", text: "#6B21A8", border: "#DEC7FF" },
-  { bg: "#FFECEF", text: "#A61B3C", border: "#FFC5D2" },
-  { bg: "#ECFDF5", text: "#047857", border: "#A7F3D0" },
-  { bg: "#EEF2FF", text: "#3730A3", border: "#C7D2FE" },
-  { bg: "#FFF7ED", text: "#C2410C", border: "#FED7AA" },
+  { bg: "#1D4ED8", text: "#FFFFFF", border: "#1E40AF" },
+  { bg: "#0F766E", text: "#FFFFFF", border: "#115E59" },
+  { bg: "#B45309", text: "#FFFFFF", border: "#92400E" },
+  { bg: "#7C3AED", text: "#FFFFFF", border: "#6D28D9" },
+  { bg: "#BE123C", text: "#FFFFFF", border: "#9F1239" },
+  { bg: "#047857", text: "#FFFFFF", border: "#065F46" },
+  { bg: "#4338CA", text: "#FFFFFF", border: "#3730A3" },
+  { bg: "#C2410C", text: "#FFFFFF", border: "#9A3412" },
 ];
 
 export const getAssigneeChipStyle = (label) => {
   const normalized = String(label || "sin asignar").trim().toLowerCase();
   if (!normalized || normalized === "sin asignar") {
-    return { bg: "#F3F4F6", text: "#4B5563", border: "#D1D5DB" };
+    return { bg: "#E5E7EB", text: "#374151", border: "#CBD5E1" };
   }
   let hash = 0;
   for (let i = 0; i < normalized.length; i += 1) {

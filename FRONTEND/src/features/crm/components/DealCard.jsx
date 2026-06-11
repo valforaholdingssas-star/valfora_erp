@@ -27,10 +27,9 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
     >
       <Card.Body className="py-2 px-2">
         <div className="d-flex flex-wrap align-items-center gap-1 mb-1">
-          <Badge pill className="pipeline-chip pipeline-chip-neutral">{formatDealDisplayNumber(deal.id, orderIndex)}</Badge>
-          {deal.company_name ? <Badge pill className="pipeline-chip pipeline-chip-company">{deal.company_name}</Badge> : null}
-          <Badge
-            pill
+          <span className="pipeline-chip pipeline-chip-neutral">{formatDealDisplayNumber(deal.id, orderIndex)}</span>
+          {deal.company_name ? <span className="pipeline-chip pipeline-chip-company">{deal.company_name}</span> : null}
+          <span
             className="pipeline-chip pipeline-chip-assignee"
             style={{
               backgroundColor: assigneeChip.bg,
@@ -39,7 +38,7 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
             }}
           >
             {assigneeLabel}
-          </Badge>
+          </span>
         </div>
         <div className="small fw-medium d-flex align-items-start justify-content-between gap-2 mb-1">
           <span>{deal.title || deal.contact_name || `Deal ${deal.id.slice(0, 8)}`}</span>
