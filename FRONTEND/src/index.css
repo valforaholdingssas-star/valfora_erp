@@ -737,22 +737,14 @@ a {
 
 .app-chat-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr) minmax(320px, 400px);
+  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
   gap: 1rem;
   min-height: 700px;
   height: calc(100vh - 136px);
 }
 
 .app-chat-layout.app-chat-layout-sidebar-collapsed {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
-}
-
-.app-chat-layout.app-chat-layout-meta-collapsed {
-  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr) 86px;
-}
-
-.app-chat-layout.app-chat-layout-meta-collapsed.app-chat-layout-sidebar-collapsed {
-  grid-template-columns: minmax(0, 1fr) 86px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .app-chat-panel,
@@ -810,6 +802,41 @@ a {
   display: flex;
   flex-direction: column;
   gap: 0.14rem;
+}
+
+.app-chat-info-modal .modal-dialog {
+  max-width: min(1120px, calc(100vw - 2rem));
+}
+
+.app-chat-info-modal .modal-body {
+  padding: 1.35rem;
+}
+
+.app-chat-info-modal .app-chat-kpi-row {
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  align-items: stretch;
+  margin-bottom: 1rem;
+}
+
+.app-chat-info-modal .app-chat-kpi-card {
+  min-height: 170px;
+  padding: 1rem;
+  gap: 0.4rem;
+}
+
+.app-chat-info-modal .app-chat-kpi-card strong {
+  font-size: 1.05rem;
+}
+
+.app-chat-info-modal .app-chat-kpi-card .small {
+  font-size: 0.98rem;
+  line-height: 1.45;
+  color: var(--vf-text-soft);
+}
+
+.app-chat-info-modal .form-label,
+.app-chat-deal-modal .form-label {
+  font-weight: 600;
 }
 
 .app-chat-kpi-label {
@@ -1243,10 +1270,6 @@ a {
     height: auto;
   }
 
-  .app-chat-layout.app-chat-layout-meta-collapsed {
-    grid-template-columns: 1fr;
-  }
-
   .app-chat-layout.app-chat-layout-sidebar-collapsed {
     grid-template-columns: 1fr;
   }
@@ -1276,6 +1299,19 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .app-chat-info-modal .modal-dialog {
+    max-width: calc(100vw - 1rem);
+    margin: 0.5rem auto;
+  }
+
+  .app-chat-info-modal .app-chat-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-chat-info-modal .app-chat-kpi-card {
+    min-height: 0;
+  }
+
   .wiki-editor-card {
     position: static;
     top: auto;
@@ -1296,6 +1332,10 @@ a {
   }
 
   .app-chat-kpi-row {
+    grid-template-columns: 1fr;
+  }
+
+  .app-chat-info-modal .app-chat-kpi-row {
     grid-template-columns: 1fr;
   }
 }

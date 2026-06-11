@@ -956,7 +956,7 @@ const ChatView = () => {
         </button>
       </div>
       <div
-        className={`app-chat-layout app-chat-layout-meta-collapsed ${sidebarCollapsed ? "app-chat-layout-sidebar-collapsed" : ""}`}
+        className={`app-chat-layout ${sidebarCollapsed ? "app-chat-layout-sidebar-collapsed" : ""}`}
       >
         {!sidebarCollapsed && (
           <ChatSidebar
@@ -1112,7 +1112,13 @@ const ChatView = () => {
           <Button variant="outline-secondary" onClick={() => setChatFiltersModalOpen(false)}>Cerrar</Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={chatInfoModalOpen} onHide={() => setChatInfoModalOpen(false)} centered>
+      <Modal
+        show={chatInfoModalOpen}
+        onHide={() => setChatInfoModalOpen(false)}
+        centered
+        size="xl"
+        dialogClassName="app-chat-info-modal"
+      >
         <Modal.Header closeButton><Modal.Title>Información de conversación</Modal.Title></Modal.Header>
         <Modal.Body>
           <div className="app-chat-kpi-row">
@@ -1148,7 +1154,13 @@ const ChatView = () => {
           )}
         </Modal.Body>
       </Modal>
-      <Modal show={quickDealModalOpen} onHide={() => setQuickDealModalOpen(false)} centered>
+      <Modal
+        show={quickDealModalOpen}
+        onHide={() => setQuickDealModalOpen(false)}
+        centered
+        size="lg"
+        dialogClassName="app-chat-deal-modal"
+      >
         <Modal.Header closeButton><Modal.Title>Edición rápida del deal</Modal.Title></Modal.Header>
         <Modal.Body>
           {loadingDeal && <p className="small text-muted mb-0">Cargando deal...</p>}

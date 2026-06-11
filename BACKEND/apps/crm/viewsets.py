@@ -267,7 +267,8 @@ class DealViewSet(CRMBaseViewSet):
         return [permissions.IsAuthenticated(), IsCRMUser()]
 
     def perform_create(self, serializer):
-        instance = serializer.save()
+        assigned_to = serializer.validated_data.get("assigned_to") or self.request.user
+        instance = serializer.save(assigned_to=assigned_to)
         if not instance.company_id and instance.contact.company_id:
             instance.company_id = instance.contact.company_id
             instance.save(update_fields=["company"])

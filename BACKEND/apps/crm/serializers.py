@@ -98,6 +98,7 @@ class DealSerializer(serializers.ModelSerializer):
 
     contact_name = serializers.SerializerMethodField()
     company_name = serializers.CharField(source="company.name", read_only=True, default="")
+    assigned_to_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Deal
@@ -115,6 +116,7 @@ class DealSerializer(serializers.ModelSerializer):
             "probability",
             "expected_close_date",
             "assigned_to",
+            "assigned_to_name",
             "description",
             "lost_reason",
             "is_stale",
@@ -122,10 +124,16 @@ class DealSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "contact_name", "company_name", "created_at", "updated_at")
+        read_only_fields = ("id", "contact_name", "company_name", "assigned_to_name", "created_at", "updated_at")
 
     def get_contact_name(self, obj: Deal) -> str:
         return str(obj.contact)
+
+    def get_assigned_to_name(self, obj: Deal) -> str:
+        if not obj.assigned_to:
+            return ""
+        full_name = getattr(obj.assigned_to, "get_full_name", lambda: "")()
+        return full_name.strip() or getattr(obj.assigned_to, "email", "") or getattr(obj.assigned_to, "username", "")
 
     def validate_probability(self, value: int) -> int:
         if value < 0 or value > 100:

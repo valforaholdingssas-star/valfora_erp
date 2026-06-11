@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
+import { Badge, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
 
 import { fetchCompanies, fetchCrmDashboard } from "../../../api/crm.js";
 import { formatDealValue } from "../utils/formatters.js";
@@ -36,6 +36,7 @@ const CrmDashboardPage = () => {
 
   const stages = data.pipeline_by_stage || {};
   const recent = data.recent_activities || [];
+  const summary = data.summary || {};
 
   return (
     <div className="app-page">
@@ -57,6 +58,44 @@ const CrmDashboardPage = () => {
           ))}
         </Form.Select>
       </div>
+      <Row className="g-3 mb-4">
+        <Col md={3}>
+          <Card className="app-card h-100 app-kpi-card">
+            <Card.Body>
+              <p className="text-uppercase app-kpi-label mb-1">Pipeline consolidado</p>
+              <div className="app-kpi mb-1">{summary.active_count || 0} deals</div>
+              <p className="mb-0 text-muted">Valor {formatDealValue(summary.active_value)}</p>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
+          <Card className="app-card h-100 app-kpi-card">
+            <Card.Body>
+              <p className="text-uppercase app-kpi-label mb-1">Total negocios</p>
+              <div className="app-kpi mb-1">{summary.total_count || 0}</div>
+              <p className="mb-0 text-muted">Incluye abiertos y cerrados</p>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
+          <Card className="app-card h-100 app-kpi-card">
+            <Card.Body>
+              <p className="text-uppercase app-kpi-label mb-1">Ganados</p>
+              <div className="app-kpi mb-1">{summary.won_count || 0}</div>
+              <p className="mb-0 text-muted">Deals convertidos</p>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
+          <Card className="app-card h-100 app-kpi-card">
+            <Card.Body>
+              <p className="text-uppercase app-kpi-label mb-1">Perdidos</p>
+              <div className="app-kpi mb-1">{summary.lost_count || 0}</div>
+              <p className="mb-0 text-muted">Deals cerrados sin conversión</p>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
       <Row className="g-3 mb-4">
         {Object.entries(stages).map(([stage, info]) => (
           <Col md={4} key={stage}>
@@ -80,6 +119,7 @@ const CrmDashboardPage = () => {
                   <th>Empresa</th>
                   <th>Deals</th>
                   <th>Valor</th>
+                  <th>Pipeline</th>
                 </tr>
               </thead>
               <tbody>
@@ -88,6 +128,15 @@ const CrmDashboardPage = () => {
                     <td>{row.company_name}</td>
                     <td>{row.count}</td>
                     <td>{formatDealValue(row.value)}</td>
+                    <td>
+                      <div className="d-flex flex-wrap gap-1">
+                        {Object.entries(row.pipeline_by_stage || {}).map(([stage, stageInfo]) => (
+                          <Badge key={`${row.company_id || "none"}-${stage}`} bg="light" text="dark" className="border">
+                            {stage.replace("_", " ")}: {stageInfo.count}
+                          </Badge>
+                        ))}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -105,6 +154,8 @@ const CrmDashboardPage = () => {
             <thead>
               <tr>
                 <th>Asunto</th>
+                <th>Deal</th>
+                <th>Empresa</th>
                 <th>Tipo</th>
                 <th>Contacto</th>
                 <th>Fecha</th>
@@ -113,7 +164,7 @@ const CrmDashboardPage = () => {
             <tbody>
               {recent.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="text-muted">
+                  <td colSpan={6} className="text-muted">
                     Sin actividades aún.
                   </td>
                 </tr>
@@ -121,6 +172,8 @@ const CrmDashboardPage = () => {
               {recent.map((a) => (
                 <tr key={a.id}>
                   <td>{a.subject}</td>
+                  <td>{a.deal_title || "—"}</td>
+                  <td>{a.company_name || "—"}</td>
                   <td>{a.activity_type}</td>
                   <td>{a.contact_name}</td>
                   <td>{new Date(a.created_at).toLocaleString()}</td>

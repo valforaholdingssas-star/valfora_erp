@@ -12,8 +12,9 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { Link } from "react-router-dom";
 
 import { createActivity, createDeal, fetchCompanies, fetchContacts, fetchDeals, moveDealStage } from "../../../api/crm.js";
+import { fetchUsers } from "../../../api/users.js";
 import PipelineColumn from "../components/PipelineColumn.jsx";
-import { formatDealValue } from "../utils/formatters.js";
+import { formatDealDisplayNumber, formatDealValue } from "../utils/formatters.js";
 
 const STAGES = [
   { id: "new_lead", title: "Nuevo lead", accent: "#3b82f6", tint: "rgba(59, 130, 246, 0.14)" },
@@ -36,6 +37,7 @@ const DealsPipelinePage = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [contacts, setContacts] = useState({ results: [] });
   const [companies, setCompanies] = useState({ results: [] });
+  const [users, setUsers] = useState({ results: [] });
   const [companyFilter, setCompanyFilter] = useState("");
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -48,6 +50,7 @@ const DealsPipelinePage = () => {
     probability: 0,
     description: "",
     company: "",
+    assigned_to: "",
   });
   const [activitySaving, setActivitySaving] = useState(false);
   const [movingDealId, setMovingDealId] = useState(null);
@@ -65,8 +68,8 @@ const DealsPipelinePage = () => {
   const load = useCallback(() => {
     const params = { page_size: 200 };
     if (companyFilter) params.company = companyFilter;
-    Promise.all([fetchDeals(params), fetchContacts({ page_size: 200 }), fetchCompanies({ page_size: 200 })])
-      .then(([data, contactsData, companiesData]) => {
+    Promise.all([fetchDeals(params), fetchContacts({ page_size: 200 }), fetchCompanies({ page_size: 200 }), fetchUsers({ page_size: 200, is_active: true })])
+      .then(([data, contactsData, companiesData, usersData]) => {
         const map = {};
         STAGES.forEach((s) => {
           map[s.id] = [];
@@ -78,6 +81,7 @@ const DealsPipelinePage = () => {
         setByStage(map);
         setContacts(contactsData || { results: [] });
         setCompanies(companiesData || { results: [] });
+        setUsers(usersData || { results: [] });
         setError("");
       })
       .catch(() => setError("No se pudieron cargar los deals del pipeline."))
@@ -253,6 +257,12 @@ const DealsPipelinePage = () => {
     setCreateError("");
   };
 
+  const openCreateModalForStage = (stageId) => {
+    setCreateForm((prev) => ({ ...prev, stage: stageId }));
+    setShowCreateModal(true);
+    setCreateError("");
+  };
+
   const closeCreateModal = () => {
     setShowCreateModal(false);
     setCreateError("");
@@ -265,6 +275,7 @@ const DealsPipelinePage = () => {
       probability: 0,
       description: "",
       company: "",
+      assigned_to: "",
     });
   };
 
@@ -286,6 +297,7 @@ const DealsPipelinePage = () => {
         probability: Number(createForm.probability || 0),
         description: createForm.description.trim(),
         company: createForm.company || null,
+        assigned_to: createForm.assigned_to || null,
       });
       closeCreateModal();
       load();
@@ -372,6 +384,7 @@ const DealsPipelinePage = () => {
                 stage={stage}
                 deals={byStage[stage.id] || []}
                 onCreateActivity={openActivityModal}
+                onCreateDeal={openCreateModalForStage}
               />
             ))}
           </div>
@@ -396,21 +409,25 @@ const DealsPipelinePage = () => {
           <Table responsive hover size="sm" className="mb-0">
             <thead>
               <tr>
+                <th>#</th>
                 <th>Deal</th>
                 <th>Contacto</th>
                 <th>Empresa</th>
+                <th>Asignado</th>
                 <th>Valor</th>
                 <th>Etapa</th>
                 <th style={{ width: 220 }}>Mover a</th>
-                <th style={{ width: 180 }}>Acciones</th>
+                <th style={{ width: 280 }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {allDeals.map((deal) => (
+              {allDeals.map((deal, index) => (
                 <tr key={deal.id}>
+                  <td>{formatDealDisplayNumber(deal.id, index)}</td>
                   <td>{deal.title}</td>
                   <td>{deal.contact_name || "—"}</td>
                   <td>{deal.company_name || "—"}</td>
+                  <td>{deal.assigned_to_name || "Sin asignar"}</td>
                   <td>{formatDealValue(deal.value)} {deal.currency}</td>
                   <td>{deal.stage}</td>
                   <td>
@@ -445,7 +462,10 @@ const DealsPipelinePage = () => {
                   </td>
                   <td className="d-flex gap-2">
                     <Button as={Link} to={`/crm/deals/${deal.id}`} size="sm" variant="outline-primary">
-                      Abrir
+                      Editar
+                    </Button>
+                    <Button as={Link} to={`/chat/deal/${deal.id}`} size="sm" variant="outline-success">
+                      Chat
                     </Button>
                     <Button size="sm" variant="outline-secondary" onClick={() => openActivityModal(deal)}>
                       Actividad
@@ -455,7 +475,7 @@ const DealsPipelinePage = () => {
               ))}
               {!allDeals.length ? (
                 <tr>
-                  <td colSpan={7} className="text-muted">No hay deals para mostrar.</td>
+                  <td colSpan={9} className="text-muted">No hay deals para mostrar.</td>
                 </tr>
               ) : null}
             </tbody>
@@ -509,6 +529,20 @@ const DealsPipelinePage = () => {
                 <option value="">Sin empresa</option>
                 {(companies.results || []).map((co) => (
                   <option key={co.id} value={co.id}>{co.name}</option>
+                ))}
+              </Form.Select>
+            </Form.Group>
+            <Form.Group>
+              <Form.Label>Asignado</Form.Label>
+              <Form.Select
+                value={createForm.assigned_to}
+                onChange={(e) => setCreateForm((p) => ({ ...p, assigned_to: e.target.value }))}
+              >
+                <option value="">Automático: quien crea el deal</option>
+                {(users.results || []).map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {[user.first_name, user.last_name].filter(Boolean).join(" ").trim() || user.email}
+                  </option>
                 ))}
               </Form.Select>
             </Form.Group>

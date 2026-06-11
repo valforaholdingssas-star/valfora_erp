@@ -5,15 +5,19 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   createActivity,
   deleteDeal,
+  deleteDocument,
   fetchActivities,
   fetchCompanies,
   fetchDeal,
   fetchDealStageHistory,
+  fetchDocuments,
   moveDealStage,
+  uploadDocument,
   updateDeal,
 } from "../../../api/crm.js";
 import { createOrOpenConversation } from "../../../api/chat.js";
-import { formatDealValue } from "../utils/formatters.js";
+import { fetchUsers } from "../../../api/users.js";
+import { formatDealDisplayNumber, formatDealValue } from "../utils/formatters.js";
 
 const DealDetailPage = () => {
   const { id } = useParams();
@@ -29,6 +33,15 @@ const DealDetailPage = () => {
   const [dealError, setDealError] = useState("");
   const [dealSuccess, setDealSuccess] = useState("");
   const [companies, setCompanies] = useState({ results: [] });
+  const [users, setUsers] = useState({ results: [] });
+  const [documents, setDocuments] = useState({ results: [] });
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [documentError, setDocumentError] = useState("");
+  const [documentForm, setDocumentForm] = useState({
+    name: "",
+    description: "",
+    file: null,
+  });
   const [dealForm, setDealForm] = useState({
     title: "",
     value: "",
@@ -39,6 +52,7 @@ const DealDetailPage = () => {
     description: "",
     lost_reason: "",
     company: "",
+    assigned_to: "",
   });
   const [activityForm, setActivityForm] = useState({
     subject: "",
@@ -68,7 +82,10 @@ const DealDetailPage = () => {
         description: dealRes.description || "",
         lost_reason: dealRes.lost_reason || "",
         company: dealRes.company || "",
+        assigned_to: dealRes.assigned_to || "",
       });
+      const docs = await fetchDocuments({ deal: id, page_size: 100 });
+      setDocuments(docs || { results: [] });
     } finally {
       setLoading(false);
     }
@@ -77,6 +94,7 @@ const DealDetailPage = () => {
   useEffect(() => {
     load().catch(() => {});
     fetchCompanies({ page_size: 200 }).then(setCompanies).catch(() => {});
+    fetchUsers({ page_size: 200, is_active: true }).then(setUsers).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -171,6 +189,7 @@ const DealDetailPage = () => {
         description: dealForm.description.trim(),
         lost_reason: dealForm.lost_reason.trim(),
         company: dealForm.company || null,
+        assigned_to: dealForm.assigned_to || null,
       };
       await updateDeal(deal.id, payload);
       setDealSuccess("Deal actualizado.");
@@ -183,10 +202,43 @@ const DealDetailPage = () => {
     }
   };
 
+  const submitDocument = async (e) => {
+    e.preventDefault();
+    if (!documentForm.file) {
+      setDocumentError("Selecciona un archivo.");
+      return;
+    }
+    setUploadingDocument(true);
+    setDocumentError("");
+    try {
+      const formData = new FormData();
+      formData.append("deal", deal.id);
+      formData.append("name", documentForm.name.trim() || documentForm.file.name);
+      formData.append("description", documentForm.description.trim());
+      formData.append("file", documentForm.file);
+      await uploadDocument(formData);
+      setDocumentForm({ name: "", description: "", file: null });
+      await load();
+    } catch {
+      setDocumentError("No se pudo adjuntar el archivo al deal.");
+    } finally {
+      setUploadingDocument(false);
+    }
+  };
+
+  const removeDocument = async (documentId) => {
+    if (!window.confirm("¿Eliminar este archivo del deal?")) return;
+    await deleteDocument(documentId);
+    await load();
+  };
+
   return (
     <div className="app-page">
       <div className="mb-2"><Link to="/crm/pipeline">← Pipeline</Link></div>
-      <h1 className="h4 mb-3">{deal.title}</h1>
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <h1 className="h4 mb-0">{deal.title}</h1>
+        <Badge bg="light" text="dark" className="border">{formatDealDisplayNumber(deal.id)}</Badge>
+      </div>
       <Card className="mb-3">
         <Card.Body>
           <div className="d-flex align-items-center gap-2 mb-2">
@@ -194,6 +246,8 @@ const DealDetailPage = () => {
             {deal.is_stale && <Badge bg="secondary">stale</Badge>}
           </div>
           <div className="small text-muted mb-2">Contacto: {deal.contact_name}</div>
+          <div className="small text-muted mb-2">Empresa: {deal.company_name || "Sin empresa"}</div>
+          <div className="small text-muted mb-2">Asignado: {deal.assigned_to_name || "Sin asignar"}</div>
           <div className="small text-muted mb-3">Valor: {formatDealValue(deal.value)} {deal.currency}</div>
           <div className="d-flex gap-2">
             <Button size="sm" onClick={advance}>Avanzar etapa</Button>
@@ -285,6 +339,20 @@ const DealDetailPage = () => {
                 </Form.Select>
               </div>
               <div className="col-md-6">
+                <Form.Label>Asignado a</Form.Label>
+                <Form.Select
+                  value={dealForm.assigned_to}
+                  onChange={(e) => setDealForm((p) => ({ ...p, assigned_to: e.target.value }))}
+                >
+                  <option value="">Sin asignar</option>
+                  {(users.results || []).map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {[user.first_name, user.last_name].filter(Boolean).join(" ").trim() || user.email}
+                    </option>
+                  ))}
+                </Form.Select>
+              </div>
+              <div className="col-md-6">
                 <Form.Label>Motivo de pérdida</Form.Label>
                 <Form.Control
                   value={dealForm.lost_reason}
@@ -332,6 +400,67 @@ const DealDetailPage = () => {
       </Card>
 
       <Card>
+        <Card.Header className="py-2">Archivos del deal</Card.Header>
+        <Card.Body>
+          {documentError ? <Alert variant="danger" className="py-2">{documentError}</Alert> : null}
+          <Form onSubmit={submitDocument} className="mb-3">
+            <div className="row g-2">
+              <div className="col-md-4">
+                <Form.Control
+                  value={documentForm.name}
+                  onChange={(e) => setDocumentForm((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="Nombre visible"
+                />
+              </div>
+              <div className="col-md-4">
+                <Form.Control
+                  value={documentForm.description}
+                  onChange={(e) => setDocumentForm((p) => ({ ...p, description: e.target.value }))}
+                  placeholder="Descripción"
+                />
+              </div>
+              <div className="col-md-4">
+                <Form.Control
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.png,.jpg,.jpeg"
+                  onChange={(e) => setDocumentForm((p) => ({ ...p, file: e.target.files?.[0] || null }))}
+                />
+              </div>
+            </div>
+            <div className="mt-2 d-flex justify-content-end">
+              <Button type="submit" size="sm" disabled={uploadingDocument}>
+                {uploadingDocument ? "Adjuntando..." : "Adjuntar archivo"}
+              </Button>
+            </div>
+          </Form>
+          <Table size="sm" className="mb-0">
+            <thead>
+              <tr><th>Archivo</th><th>Descripción</th><th>Tamaño</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+              {(documents.results || []).length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-muted">No hay archivos adjuntos en este deal.</td>
+                </tr>
+              ) : null}
+              {(documents.results || []).map((doc) => (
+                <tr key={doc.id}>
+                  <td>{doc.name}</td>
+                  <td>{doc.description || "—"}</td>
+                  <td>{doc.file_size ? `${Math.round(doc.file_size / 1024)} KB` : "—"}</td>
+                  <td>
+                    <Button size="sm" variant="outline-danger" onClick={() => removeDocument(doc.id)}>
+                      Eliminar
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </Card.Body>
+      </Card>
+
+      <Card className="mt-3">
         <Card.Header className="py-2">Actividades vinculadas</Card.Header>
         <Card.Body>
           <Form onSubmit={createDealActivity} className="mb-3">

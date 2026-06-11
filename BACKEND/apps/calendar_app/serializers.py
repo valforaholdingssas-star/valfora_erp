@@ -10,7 +10,7 @@ class CalendarEventSerializer(serializers.Serializer):
     title = serializers.CharField()
     start = serializers.DateTimeField()
     end = serializers.DateTimeField(required=False, allow_null=True)
-    type = serializers.ChoiceField(choices=("activity", "follow_up", "deal_close", "overdue"))
+    type = serializers.ChoiceField(choices=("activity", "follow_up", "deal_close", "overdue", "whatsapp_follow_up", "stale_alert"))
     color = serializers.CharField()
     url = serializers.CharField(required=False, allow_blank=True)
     metadata = serializers.JSONField()

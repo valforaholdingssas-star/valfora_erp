@@ -3,9 +3,9 @@ import { CSS } from "@dnd-kit/utilities";
 import { Badge, Button, Card } from "react-bootstrap";
 import { useSortable } from "@dnd-kit/sortable";
 import { Link } from "react-router-dom";
-import { formatDealValue } from "../utils/formatters.js";
+import { formatDealDisplayNumber, formatDealValue } from "../utils/formatters.js";
 
-const DealCard = ({ deal, stageAccent, onCreateActivity }) => {
+const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: deal.id,
     data: { stage: deal.stage, deal },
@@ -24,7 +24,11 @@ const DealCard = ({ deal, stageAccent, onCreateActivity }) => {
       }}
     >
       <Card.Body className="py-2 px-2">
-        <div className="small fw-medium d-flex align-items-center justify-content-between gap-2 mb-1">
+        <div className="d-flex flex-wrap align-items-center gap-1 mb-1">
+          <Badge bg="light" text="dark" className="border">{formatDealDisplayNumber(deal.id, orderIndex)}</Badge>
+          {deal.company_name ? <Badge bg="info-subtle" text="dark" className="border">{deal.company_name}</Badge> : null}
+        </div>
+        <div className="small fw-medium d-flex align-items-start justify-content-between gap-2 mb-1">
           <span>{deal.title || deal.contact_name || `Deal ${deal.id.slice(0, 8)}`}</span>
           <div className="d-flex align-items-center gap-1">
             {deal.is_stale ? <Badge bg="secondary">stale</Badge> : null}
@@ -44,9 +48,15 @@ const DealCard = ({ deal, stageAccent, onCreateActivity }) => {
           {formatDealValue(deal.value)} {deal.currency}
         </div>
         <div className="text-muted small mb-2">{deal.contact_name}</div>
+        <div className="text-muted small mb-2">
+          Asignado: {deal.assigned_to_name || "Sin asignar"}
+        </div>
         <div className="d-flex gap-2">
           <Button as={Link} to={`/crm/deals/${deal.id}`} size="sm" variant="outline-primary">
-            Abrir deal
+            Editar
+          </Button>
+          <Button as={Link} to={`/chat/deal/${deal.id}`} size="sm" variant="outline-success">
+            Chat
           </Button>
           <Button
             size="sm"
@@ -73,9 +83,12 @@ DealCard.propTypes = {
     currency: PropTypes.string,
     stage: PropTypes.string,
     is_stale: PropTypes.bool,
+    company_name: PropTypes.string,
+    assigned_to_name: PropTypes.string,
   }).isRequired,
   stageAccent: PropTypes.string,
   onCreateActivity: PropTypes.func,
+  orderIndex: PropTypes.number,
 };
 
 export default DealCard;

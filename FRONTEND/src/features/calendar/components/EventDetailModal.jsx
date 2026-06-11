@@ -16,9 +16,14 @@ const EventDetailModal = ({ show, eventData, onHide }) => {
   const dealId = metadata?.deal_id;
   const activityType = metadata?.activity_type;
   const isCompleted = metadata?.is_completed;
+  const dealTitle = metadata?.deal_title;
+  const companyName = metadata?.company_name;
+  const contactName = metadata?.contact_name;
+  const assignedToName = metadata?.assigned_to_name;
+  const stage = metadata?.stage;
 
   return (
-    <Modal show={show} onHide={onHide} centered>
+    <Modal show={show} onHide={onHide} centered size="lg">
       <Modal.Header closeButton>
         <Modal.Title>Detalle del evento</Modal.Title>
       </Modal.Header>
@@ -35,6 +40,36 @@ const EventDetailModal = ({ show, eventData, onHide }) => {
           <div className="small text-muted mb-1">Fecha</div>
           <div>{new Date(start).toLocaleString("es-CO")}</div>
         </div>
+        {dealTitle ? (
+          <div className="mb-3">
+            <div className="small text-muted mb-1">Deal</div>
+            <div className="fw-semibold">{dealTitle}</div>
+          </div>
+        ) : null}
+        {companyName ? (
+          <div className="mb-3">
+            <div className="small text-muted mb-1">Empresa</div>
+            <div>{companyName}</div>
+          </div>
+        ) : null}
+        {contactName ? (
+          <div className="mb-3">
+            <div className="small text-muted mb-1">Contacto</div>
+            <div>{contactName}</div>
+          </div>
+        ) : null}
+        {assignedToName ? (
+          <div className="mb-3">
+            <div className="small text-muted mb-1">Asignado</div>
+            <div>{assignedToName}</div>
+          </div>
+        ) : null}
+        {stage ? (
+          <div className="mb-3">
+            <div className="small text-muted mb-1">Etapa</div>
+            <div>{String(stage).replaceAll("_", " ")}</div>
+          </div>
+        ) : null}
         {activityType ? (
           <div className="mb-3">
             <div className="small text-muted mb-1">Tipo de actividad</div>

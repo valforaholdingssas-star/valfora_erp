@@ -40,6 +40,8 @@ def build_crm_dashboard(company_id: str | None = None) -> dict[str, Any]:
         deals_qs = deals_qs.filter(company_id=company_id)
 
     active_deals = deals_qs.exclude(stage__in=("closed_won", "closed_lost"))
+    active_deals_total = active_deals.count()
+    active_deals_value = active_deals.aggregate(total=Sum("value")).get("total") or Decimal("0")
     pipeline_by_stage: dict[str, dict[str, Any]] = {}
     stage_qs = active_deals.values("stage").annotate(total=Sum("value"), count=Count("id"))
     for row in stage_qs:
@@ -58,7 +60,7 @@ def build_crm_dashboard(company_id: str | None = None) -> dict[str, Any]:
     recent_activities = (
         Activity.objects.filter(is_active=True)
         .filter(Q(deal__in=deals_qs) if company_id else Q())
-        .select_related("contact")
+        .select_related("contact", "deal", "deal__company")
         .order_by("-created_at")[:15]
     )
     recent = [
@@ -67,6 +69,9 @@ def build_crm_dashboard(company_id: str | None = None) -> dict[str, Any]:
             "subject": a.subject,
             "activity_type": a.activity_type,
             "contact_name": str(a.contact),
+            "deal_id": str(a.deal_id) if a.deal_id else "",
+            "deal_title": a.deal.title if a.deal_id else "",
+            "company_name": a.deal.company.name if a.deal_id and a.deal.company_id else "",
             "created_at": a.created_at.isoformat(),
         }
         for a in recent_activities
@@ -86,20 +91,43 @@ def build_crm_dashboard(company_id: str | None = None) -> dict[str, Any]:
         .annotate(count=Count("id"), total=Sum("value"))
         .order_by("-total", "-count")
     )
+    company_stage_rows = (
+        Deal.objects.filter(is_active=True)
+        .exclude(stage__in=("closed_won", "closed_lost"))
+        .values("company_id", "company__name", "stage")
+        .annotate(count=Count("id"), total=Sum("value"))
+        .order_by("company__name", "stage")
+    )
     companies_map = {
         str(c.id): c.name for c in Company.objects.filter(is_active=True).only("id", "name")
     }
+    company_stage_map: dict[str, dict[str, dict[str, Any]]] = {}
+    for row in company_stage_rows:
+        key = str(row["company_id"] or "")
+        company_stage_map.setdefault(key, {})
+        company_stage_map[key][row["stage"]] = {
+            "count": row["count"],
+            "value": str(row["total"] or Decimal("0")),
+        }
     by_company_rows = [
         {
             "company_id": str(row["company_id"]) if row["company_id"] else "",
             "company_name": row["company__name"] or "Sin empresa",
             "count": row["count"],
             "value": str(row["total"] or Decimal("0")),
+            "pipeline_by_stage": company_stage_map.get(str(row["company_id"] or ""), {}),
         }
         for row in by_company
     ]
 
     return {
+        "summary": {
+            "active_count": active_deals_total,
+            "active_value": str(active_deals_value),
+            "total_count": deals_qs.count(),
+            "won_count": deals_qs.filter(stage="closed_won").count(),
+            "lost_count": deals_qs.filter(stage="closed_lost").count(),
+        },
         "pipeline_by_stage": pipeline_by_stage,
         "deals_by_assignee": list(deals_by_owner),
         "recent_activities": recent,

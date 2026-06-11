@@ -9,3 +9,10 @@ export const formatDealValue = (value) => {
   }).format(parsed);
 };
 
+export const formatDealDisplayNumber = (dealId, index = null) => {
+  if (typeof index === "number" && Number.isFinite(index)) {
+    return `Deal #${String(index + 1).padStart(3, "0")}`;
+  }
+  if (!dealId) return "Deal";
+  return `Deal #${String(dealId).replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+};
