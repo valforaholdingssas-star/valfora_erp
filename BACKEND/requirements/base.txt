@@ -20,7 +20,6 @@ daphne>=4.0
 
 # HTTP clients
 requests>=2.31
-unipile>=0.1.0
 cryptography>=42.0
 
 # API Docs
