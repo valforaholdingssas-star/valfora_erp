@@ -3,13 +3,15 @@ import { CSS } from "@dnd-kit/utilities";
 import { Badge, Button, Card } from "react-bootstrap";
 import { useSortable } from "@dnd-kit/sortable";
 import { Link } from "react-router-dom";
-import { formatDealDisplayNumber, formatDealValue } from "../utils/formatters.js";
+import { formatDealDisplayNumber, formatDealValue, getAssigneeChipStyle } from "../utils/formatters.js";
 
 const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: deal.id,
     data: { stage: deal.stage, deal },
   });
+  const assigneeLabel = deal.assigned_to_name || "Sin asignar";
+  const assigneeChip = getAssigneeChipStyle(assigneeLabel);
 
   return (
     <Card
@@ -27,8 +29,16 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
         <div className="d-flex flex-wrap align-items-center gap-1 mb-1">
           <Badge pill className="pipeline-chip pipeline-chip-neutral">{formatDealDisplayNumber(deal.id, orderIndex)}</Badge>
           {deal.company_name ? <Badge pill className="pipeline-chip pipeline-chip-company">{deal.company_name}</Badge> : null}
-          <Badge pill className="pipeline-chip pipeline-chip-assignee">
-            {deal.assigned_to_name || "Sin asignar"}
+          <Badge
+            pill
+            className="pipeline-chip pipeline-chip-assignee"
+            style={{
+              backgroundColor: assigneeChip.bg,
+              color: assigneeChip.text,
+              borderColor: assigneeChip.border,
+            }}
+          >
+            {assigneeLabel}
           </Badge>
         </div>
         <div className="small fw-medium d-flex align-items-start justify-content-between gap-2 mb-1">
