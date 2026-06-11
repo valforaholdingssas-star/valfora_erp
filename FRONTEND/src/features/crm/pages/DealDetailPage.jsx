@@ -17,7 +17,7 @@ import {
 } from "../../../api/crm.js";
 import { createOrOpenConversation } from "../../../api/chat.js";
 import { fetchUsers } from "../../../api/users.js";
-import { formatDealDisplayNumber, formatDealValue } from "../utils/formatters.js";
+import { formatDealDisplayNumber, formatDealValue, resolveUserDisplayName } from "../utils/formatters.js";
 
 const DealDetailPage = () => {
   const { id } = useParams();
@@ -101,6 +101,9 @@ const DealDetailPage = () => {
   if (loading || !deal) {
     return <div className="text-center py-5"><Spinner animation="border" /></div>;
   }
+
+  const assignedUser = (users.results || []).find((user) => user.id === deal.assigned_to);
+  const assignedToDisplay = deal.assigned_to_name || resolveUserDisplayName(assignedUser) || "Sin asignar";
 
   const advance = async () => {
     const nextMap = {
@@ -247,7 +250,7 @@ const DealDetailPage = () => {
           </div>
           <div className="small text-muted mb-2">Contacto: {deal.contact_name}</div>
           <div className="small text-muted mb-2">Empresa: {deal.company_name || "Sin empresa"}</div>
-          <div className="small text-muted mb-2">Asignado: {deal.assigned_to_name || "Sin asignar"}</div>
+          <div className="small text-muted mb-2">Asignado: {assignedToDisplay}</div>
           <div className="small text-muted mb-3">Valor: {formatDealValue(deal.value)} {deal.currency}</div>
           <div className="d-flex gap-2">
             <Button size="sm" onClick={advance}>Avanzar etapa</Button>

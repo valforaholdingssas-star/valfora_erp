@@ -16,3 +16,11 @@ export const formatDealDisplayNumber = (dealId, index = null) => {
   if (!dealId) return "Deal";
   return `Deal #${String(dealId).replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 };
+
+export const resolveUserDisplayName = (user) => {
+  if (!user) return "";
+  const firstName = (user.first_name || "").trim();
+  const lastName = (user.last_name || "").trim();
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+  return fullName || user.email || user.username || "";
+};

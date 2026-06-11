@@ -670,6 +670,31 @@ a {
   background: var(--vf-surface-strong);
 }
 
+.pipeline-chip {
+  border: 1px solid transparent;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 0.45rem 0.72rem;
+}
+
+.pipeline-chip-neutral {
+  color: var(--vf-slate) !important;
+  background: rgba(85, 99, 125, 0.1) !important;
+  border-color: rgba(85, 99, 125, 0.18) !important;
+}
+
+.pipeline-chip-company {
+  color: #1f5d9c !important;
+  background: rgba(31, 93, 156, 0.12) !important;
+  border-color: rgba(31, 93, 156, 0.2) !important;
+}
+
+.pipeline-chip-assignee {
+  color: #0f7a51 !important;
+  background: rgba(15, 122, 81, 0.12) !important;
+  border-color: rgba(15, 122, 81, 0.22) !important;
+}
+
 .pipeline-card.is-dragging {
   border-color: rgba(38, 103, 223, 0.58) !important;
 }

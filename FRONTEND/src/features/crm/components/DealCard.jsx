@@ -25,8 +25,11 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
     >
       <Card.Body className="py-2 px-2">
         <div className="d-flex flex-wrap align-items-center gap-1 mb-1">
-          <Badge bg="light" text="dark" className="border">{formatDealDisplayNumber(deal.id, orderIndex)}</Badge>
-          {deal.company_name ? <Badge bg="info-subtle" text="dark" className="border">{deal.company_name}</Badge> : null}
+          <Badge pill className="pipeline-chip pipeline-chip-neutral">{formatDealDisplayNumber(deal.id, orderIndex)}</Badge>
+          {deal.company_name ? <Badge pill className="pipeline-chip pipeline-chip-company">{deal.company_name}</Badge> : null}
+          <Badge pill className="pipeline-chip pipeline-chip-assignee">
+            {deal.assigned_to_name || "Sin asignar"}
+          </Badge>
         </div>
         <div className="small fw-medium d-flex align-items-start justify-content-between gap-2 mb-1">
           <span>{deal.title || deal.contact_name || `Deal ${deal.id.slice(0, 8)}`}</span>
@@ -48,9 +51,6 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
           {formatDealValue(deal.value)} {deal.currency}
         </div>
         <div className="text-muted small mb-2">{deal.contact_name}</div>
-        <div className="text-muted small mb-2">
-          Asignado: {deal.assigned_to_name || "Sin asignar"}
-        </div>
         <div className="d-flex gap-2">
           <Button as={Link} to={`/crm/deals/${deal.id}`} size="sm" variant="outline-primary">
             Editar

@@ -14,7 +14,7 @@ import { Link } from "react-router-dom";
 import { createActivity, createDeal, fetchCompanies, fetchContacts, fetchDeals, moveDealStage } from "../../../api/crm.js";
 import { fetchUsers } from "../../../api/users.js";
 import PipelineColumn from "../components/PipelineColumn.jsx";
-import { formatDealDisplayNumber, formatDealValue } from "../utils/formatters.js";
+import { formatDealDisplayNumber, formatDealValue, resolveUserDisplayName } from "../utils/formatters.js";
 
 const STAGES = [
   { id: "new_lead", title: "Nuevo lead", accent: "#3b82f6", tint: "rgba(59, 130, 246, 0.14)" },
@@ -39,6 +39,7 @@ const DealsPipelinePage = () => {
   const [companies, setCompanies] = useState({ results: [] });
   const [users, setUsers] = useState({ results: [] });
   const [companyFilter, setCompanyFilter] = useState("");
+  const [assignedToFilter, setAssignedToFilter] = useState("");
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createForm, setCreateForm] = useState({
@@ -68,15 +69,20 @@ const DealsPipelinePage = () => {
   const load = useCallback(() => {
     const params = { page_size: 200 };
     if (companyFilter) params.company = companyFilter;
+    if (assignedToFilter) params.assigned_to = assignedToFilter;
     Promise.all([fetchDeals(params), fetchContacts({ page_size: 200 }), fetchCompanies({ page_size: 200 }), fetchUsers({ page_size: 200, is_active: true })])
       .then(([data, contactsData, companiesData, usersData]) => {
+        const userMap = new Map((usersData?.results || []).map((user) => [user.id, resolveUserDisplayName(user)]));
         const map = {};
         STAGES.forEach((s) => {
           map[s.id] = [];
         });
         (data.results || []).forEach((d) => {
           if (!map[d.stage]) map[d.stage] = [];
-          map[d.stage].push(d);
+          map[d.stage].push({
+            ...d,
+            assigned_to_name: d.assigned_to_name || userMap.get(d.assigned_to) || "",
+          });
         });
         setByStage(map);
         setContacts(contactsData || { results: [] });
@@ -86,7 +92,7 @@ const DealsPipelinePage = () => {
       })
       .catch(() => setError("No se pudieron cargar los deals del pipeline."))
       .finally(() => setLoading(false));
-  }, [companyFilter]);
+  }, [assignedToFilter, companyFilter]);
 
   useEffect(() => {
     load();
@@ -350,19 +356,37 @@ const DealsPipelinePage = () => {
           </Button>
         </div>
       </div>
-      <div className="app-section-card p-2 mb-3 d-flex align-items-center gap-2">
-        <span className="small text-muted">Empresa:</span>
-        <Form.Select
-          size="sm"
-          value={companyFilter}
-          onChange={(e) => setCompanyFilter(e.target.value)}
-          style={{ maxWidth: 360 }}
-        >
-          <option value="">Todas</option>
-          {(companies.results || []).map((co) => (
-            <option key={co.id} value={co.id}>{co.name}</option>
-          ))}
-        </Form.Select>
+      <div className="app-section-card p-2 mb-3 d-flex align-items-center gap-2 flex-wrap">
+        <div className="d-flex align-items-center gap-2">
+          <span className="small text-muted">Empresa:</span>
+          <Form.Select
+            size="sm"
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            style={{ maxWidth: 320 }}
+          >
+            <option value="">Todas</option>
+            {(companies.results || []).map((co) => (
+              <option key={co.id} value={co.id}>{co.name}</option>
+            ))}
+          </Form.Select>
+        </div>
+        <div className="d-flex align-items-center gap-2">
+          <span className="small text-muted">Asignado:</span>
+          <Form.Select
+            size="sm"
+            value={assignedToFilter}
+            onChange={(e) => setAssignedToFilter(e.target.value)}
+            style={{ maxWidth: 320 }}
+          >
+            <option value="">Todos</option>
+            {(users.results || []).map((user) => (
+              <option key={user.id} value={user.id}>
+                {resolveUserDisplayName(user)}
+              </option>
+            ))}
+          </Form.Select>
+        </div>
       </div>
       {error && (
         <Alert variant="danger" className="py-2 small">
