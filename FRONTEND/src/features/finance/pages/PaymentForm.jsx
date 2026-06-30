@@ -39,30 +39,38 @@ const PaymentForm = () => {
   };
 
   return (
-    <div>
-      <h1 className="h4 mb-3">Registrar pago</h1>
-      <Form onSubmit={submit} className="d-grid gap-2">
-        <Form.Select value={form.invoice} onChange={(e) => setForm((p) => ({ ...p, invoice: e.target.value }))} required>
-          <option value="">Factura</option>
-          {invoices.map((inv) => (
-            <option key={inv.id} value={inv.id}>
-              {inv.invoice_number} · saldo {inv.balance_due}
-            </option>
-          ))}
-        </Form.Select>
-        <Form.Control type="number" min="0" step="0.01" placeholder="Monto" value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} required />
-        <Form.Control type="date" value={form.payment_date} onChange={(e) => setForm((p) => ({ ...p, payment_date: e.target.value }))} required />
-        <Form.Select value={form.payment_method} onChange={(e) => setForm((p) => ({ ...p, payment_method: e.target.value }))}>
-          <option value="bank_transfer">Transferencia</option>
-          <option value="cash">Efectivo</option>
-          <option value="credit_card">Tarjeta</option>
-          <option value="check">Cheque</option>
-          <option value="other">Otro</option>
-        </Form.Select>
-        <Form.Control placeholder="Referencia" value={form.reference_number} onChange={(e) => setForm((p) => ({ ...p, reference_number: e.target.value }))} />
-        <Form.Control as="textarea" rows={3} placeholder="Notas" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
-        <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
-      </Form>
+    <div className="app-page">
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div>
+          <div className="app-eyebrow">Finanzas</div>
+          <h1 className="h3 mb-1">Registrar pago</h1>
+          <p className="text-muted mb-0">Asocia recaudos a facturas emitidas y conserva referencia, método y trazabilidad.</p>
+        </div>
+      </div>
+      <div className="app-surface app-surface-padded">
+        <Form onSubmit={submit} className="d-grid gap-3">
+          <Form.Select value={form.invoice} onChange={(e) => setForm((p) => ({ ...p, invoice: e.target.value }))} required>
+            <option value="">Factura</option>
+            {invoices.map((inv) => (
+              <option key={inv.id} value={inv.id}>
+                {inv.invoice_number} · saldo {inv.balance_due}
+              </option>
+            ))}
+          </Form.Select>
+          <Form.Control type="number" min="0" step="0.01" placeholder="Monto" value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} required />
+          <Form.Control type="date" value={form.payment_date} onChange={(e) => setForm((p) => ({ ...p, payment_date: e.target.value }))} required />
+          <Form.Select value={form.payment_method} onChange={(e) => setForm((p) => ({ ...p, payment_method: e.target.value }))}>
+            <option value="bank_transfer">Transferencia</option>
+            <option value="cash">Efectivo</option>
+            <option value="credit_card">Tarjeta</option>
+            <option value="check">Cheque</option>
+            <option value="other">Otro</option>
+          </Form.Select>
+          <Form.Control placeholder="Referencia" value={form.reference_number} onChange={(e) => setForm((p) => ({ ...p, reference_number: e.target.value }))} />
+          <Form.Control as="textarea" rows={3} placeholder="Notas" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
+          <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
+        </Form>
+      </div>
     </div>
   );
 };

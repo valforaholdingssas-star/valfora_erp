@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Badge, Button, Card, Col, Form, Row, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Col, Form, Row, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 
 import {
@@ -131,25 +131,31 @@ const WikiDocumentsPage = () => {
 
   return (
     <div className="app-page">
-      <div className="d-flex justify-content-between align-items-center mb-3 app-page-header app-page-headline">
+      <div className="app-page-headline app-hero-headline mb-4">
         <div>
-          <h1 className="h4 mb-1">Wiki · Gestión</h1>
+          <div className="app-eyebrow">Wiki</div>
+          <h1 className="h3 mb-1">Gestión de documentos</h1>
           <p className="text-muted mb-0">Administra el contenido HTML y la publicación de documentos.</p>
         </div>
-        <Button variant="outline-secondary" onClick={resetForm}>
-          Nuevo documento
-        </Button>
+        <div className="app-action-cluster">
+          <Button variant="outline-secondary" onClick={resetForm}>
+            Nuevo documento
+          </Button>
+        </div>
       </div>
       {error && <Alert variant="danger" className="py-2">{error}</Alert>}
-      <Row className="g-3">
+      <Row className="g-4">
         <Col lg={7}>
-          <Card className="app-card app-section-card">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-center mb-2">
+          <section className="app-surface app-surface-padded h-100">
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <div className="app-eyebrow">Listado</div>
                 <h2 className="h6 mb-0">Documentos</h2>
-                <Badge bg="secondary">{rows.length}</Badge>
               </div>
-              <Table size="sm" responsive hover>
+              <Badge className="app-badge-soft">{rows.length}</Badge>
+            </div>
+            <div className="app-table-shell">
+              <Table size="sm" responsive hover className="app-table-clean">
                 <thead>
                   <tr>
                     <th>Título</th>
@@ -181,13 +187,18 @@ const WikiDocumentsPage = () => {
                   )}
                 </tbody>
               </Table>
-            </Card.Body>
-          </Card>
+            </div>
+          </section>
         </Col>
         <Col lg={5}>
-          <Card className="app-card app-section-card wiki-editor-card">
-            <Card.Body>
-              <Form onSubmit={handleSubmit}>
+          <section className="app-surface app-surface-padded h-100 wiki-editor-card">
+            <div className="app-surface-header">
+              <div>
+                <div className="app-eyebrow">Editor</div>
+                <h2 className="h6 mb-0">{selectedId ? "Editar documento" : "Crear documento"}</h2>
+              </div>
+            </div>
+            <Form onSubmit={handleSubmit}>
                 <Form.Group className="mb-2">
                   <Form.Label>Título</Form.Label>
                   <Form.Control
@@ -262,9 +273,8 @@ const WikiDocumentsPage = () => {
                     </Button>
                   )}
                 </div>
-              </Form>
-            </Card.Body>
-          </Card>
+            </Form>
+          </section>
         </Col>
       </Row>
     </div>

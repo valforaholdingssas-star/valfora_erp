@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Form, Table } from "react-bootstrap";
+import { Badge, Button, Card, Form, Table } from "react-bootstrap";
 
 import {
   fetchWhatsAppAccounts,
@@ -29,8 +29,18 @@ const WhatsAppPhoneNumbersPage = () => {
 
   return (
     <div className="app-page">
-      <h1 className="h4 mb-3">WhatsApp · Números conectados</h1>
-      <Card className="mb-3">
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div>
+          <div className="app-eyebrow">WhatsApp</div>
+          <h1 className="h3 mb-1">Números conectados</h1>
+          <p className="text-muted mb-0">Administra sincronización, calidad y número por defecto por cuenta.</p>
+        </div>
+        <div className="app-inline-stat">
+          <span className="app-inline-stat-label">Números cargados</span>
+          <strong>{rows.length}</strong>
+        </div>
+      </div>
+      <Card className="mb-4 app-section-card">
         <Card.Body className="d-flex gap-2 align-items-center">
           <Form.Select style={{ maxWidth: 360 }} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             <option value="">Selecciona cuenta</option>
@@ -43,9 +53,17 @@ const WhatsAppPhoneNumbersPage = () => {
           }}>Sincronizar números</Button>
         </Card.Body>
       </Card>
-      <Card>
+      <Card className="app-section-card">
         <Card.Body>
-          <Table size="sm" responsive>
+          <div className="app-surface-header">
+            <div>
+              <div className="app-eyebrow">Inventario</div>
+              <h2 className="h6 mb-0">Números disponibles</h2>
+            </div>
+            <Badge className="app-badge-soft">{rows.length}</Badge>
+          </div>
+          <div className="app-table-shell">
+            <Table size="sm" responsive className="mb-0 app-table-clean">
             <thead><tr><th>Número</th><th>Nombre</th><th>Calidad</th><th>Límite</th><th>Estado</th><th>Default</th></tr></thead>
             <tbody>
               {rows.map((r) => (
@@ -69,6 +87,7 @@ const WhatsAppPhoneNumbersPage = () => {
               ))}
             </tbody>
           </Table>
+          </div>
         </Card.Body>
       </Card>
     </div>

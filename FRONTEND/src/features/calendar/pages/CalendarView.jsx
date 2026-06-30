@@ -73,7 +73,13 @@ const CalendarView = () => {
 
   return (
     <div className="app-page">
-      <h1 className="h4 mb-3">Calendario</h1>
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div>
+          <div className="app-eyebrow">Agenda</div>
+          <h1 className="h3 mb-1">Calendario operativo</h1>
+          <p className="text-muted mb-0">Visualiza actividades, cierres esperados y seguimientos desde una sola vista de planificación.</p>
+        </div>
+      </div>
       <div className="app-chat-layout">
         <CalendarSidebar
           selectedTypes={selectedTypes}
@@ -82,7 +88,7 @@ const CalendarView = () => {
           assignedTo={assignedTo}
           onChangeAssignedTo={setAssignedTo}
         />
-        <div className="app-chat-panel p-3" style={{ gridColumn: "span 2" }}>
+        <div className="app-chat-panel app-surface app-surface-padded" style={{ gridColumn: "span 2" }}>
           {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
           <FullCalendar
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}

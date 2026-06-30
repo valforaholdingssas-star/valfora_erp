@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Badge, Button, Card, Col, Row, Spinner } from "react-bootstrap";
+import { Badge, Button, Col, Row, Spinner } from "react-bootstrap";
 import { Link } from "react-router-dom";
 
 import { fetchPlatformDashboard } from "../../../api/platform.js";
@@ -11,6 +11,44 @@ const DashboardPage = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const quickLinks = [
+    {
+      title: "CRM",
+      description: "Contactos, pipeline y operación comercial.",
+      icon: "bi-briefcase",
+      to: "/crm/dashboard",
+      action: "Abrir CRM",
+    },
+    {
+      title: "Chat",
+      description: "Conversaciones, SLA y seguimiento comercial.",
+      icon: "bi-chat-square-text",
+      to: "/chat",
+      action: "Ir al chat",
+    },
+    {
+      title: "Finanzas",
+      description: "Facturación, recaudo y contratos activos.",
+      icon: "bi-cash-coin",
+      to: "/finance/dashboard",
+      action: "Ver finanzas",
+    },
+    {
+      title: "Wiki",
+      description: "Documentación operativa y conocimiento interno.",
+      icon: "bi-journal-richtext",
+      to: "/wiki",
+      action: "Abrir wiki",
+    },
+    {
+      title: "IA",
+      description: "Agentes, runtime y contexto RAG por módulo.",
+      icon: "bi-cpu",
+      to: "/settings/ai",
+      action: "Configurar IA",
+    },
+  ];
+
   useEffect(() => {
     fetchPlatformDashboard()
       .then(setStats)
@@ -20,81 +58,113 @@ const DashboardPage = () => {
 
   return (
     <div className="app-page">
-      <div className="app-page-header mb-4">
-        <h1 className="h4 mb-1">Panel principal</h1>
-        <p className="text-muted small mb-0">Resumen ejecutivo de actividad y operación</p>
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div className="app-hero-copy">
+          <div className="app-eyebrow">Visión general</div>
+          <h1 className="h3 mb-2">Panel principal</h1>
+          <p className="text-muted mb-0">Resumen ejecutivo de actividad, operación y accesos de trabajo frecuentes.</p>
+        </div>
+        <div className="app-hero-meta">
+          <div className="app-inline-stat">
+            <span className="app-inline-stat-label">Usuario activo</span>
+            <strong>{user?.email || "Sin sesión"}</strong>
+          </div>
+          <div className="app-action-cluster">
+            <Button as={Link} to="/chat" variant="primary">
+              Abrir chat
+            </Button>
+            <Button as={Link} to="/crm/pipeline" variant="outline-secondary">
+              Pipeline
+            </Button>
+          </div>
+        </div>
       </div>
       {error && (
         <p className="text-danger small" role="alert">
           {error}
         </p>
       )}
-      <Row className="g-3">
-        <Col md={6}>
-          <Card className="app-card h-100">
-            <Card.Body>
-              <Card.Title className="h6 mb-2">
-                <i className="bi bi-person-circle me-2 text-primary" />
-                Sesión
-              </Card.Title>
-              <p className="mb-0 text-muted small">
-                Conectado como <strong>{user?.email}</strong>
-              </p>
-            </Card.Body>
-          </Card>
+      <div className="app-kpi-grid mb-4">
+        {loading ? (
+          <div className="app-surface app-surface-centered">
+            <Spinner animation="border" size="sm" />
+          </div>
+        ) : stats ? (
+          <>
+            <div className="app-kpi-tile">
+              <span className="app-kpi-label">Contactos</span>
+              <strong className="app-kpi-value">{stats.contacts_total}</strong>
+            </div>
+            <div className="app-kpi-tile">
+              <span className="app-kpi-label">Deals abiertos</span>
+              <strong className="app-kpi-value">{stats.deals_open}</strong>
+            </div>
+            <div className="app-kpi-tile">
+              <span className="app-kpi-label">Conversaciones activas</span>
+              <strong className="app-kpi-value">{stats.conversations_active}</strong>
+            </div>
+            <div className="app-kpi-tile">
+              <span className="app-kpi-label">Notificaciones</span>
+              <div className="d-flex align-items-center gap-2">
+                <strong className="app-kpi-value">{stats.notifications_unread}</strong>
+                {stats.notifications_unread > 0 && (
+                  <Badge className="app-badge-soft-warning">Nuevo</Badge>
+                )}
+              </div>
+            </div>
+          </>
+        ) : null}
+      </div>
+      <Row className="g-4">
+        <Col xl={8}>
+          <section className="app-surface app-surface-padded h-100">
+            <div className="app-surface-header">
+              <div>
+                <div className="app-eyebrow">Acceso rápido</div>
+                <h2 className="h5 mb-1">Módulos clave</h2>
+                <p className="text-muted mb-0">Entradas directas a las áreas que más mueven la operación.</p>
+              </div>
+            </div>
+            <div className="app-feature-grid">
+              {quickLinks.map((item) => (
+                <Link key={item.to} to={item.to} className="app-feature-card">
+                  <div className="app-feature-icon">
+                    <i className={`bi ${item.icon}`} />
+                  </div>
+                  <div>
+                    <h3>{item.title}</h3>
+                    <p>{item.description}</p>
+                    <span>{item.action}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
         </Col>
-        <Col md={6}>
-          <Card className="app-card h-100">
-            <Card.Body>
-              <Card.Title className="h6 mb-2">
-                <i className="bi bi-briefcase me-2 text-primary" />
-                CRM
-              </Card.Title>
-              <p className="text-muted small mb-3">
-                Contactos, pipeline de deals y dashboard de métricas.
-              </p>
-              <Button as={Link} to="/crm/contacts" variant="primary" size="sm">
-                Ir a contactos
-              </Button>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={12}>
-          <Card className="app-card">
-            <Card.Body>
-              <Card.Title className="h6 mb-3">
-                <i className="bi bi-speedometer2 me-2 text-primary" />
-                Resumen de la plataforma
-              </Card.Title>
-              {loading ? (
-                <div className="text-center py-3">
-                  <Spinner animation="border" size="sm" />
-                </div>
-              ) : stats ? (
-                <Row className="g-2">
-                  <Col xs={6} md={3}>
-                    <div className="text-muted small">Contactos</div>
-                    <div className="app-kpi">{stats.contacts_total}</div>
-                  </Col>
-                  <Col xs={6} md={3}>
-                    <div className="text-muted small">Deals abiertos</div>
-                    <div className="app-kpi">{stats.deals_open}</div>
-                  </Col>
-                  <Col xs={6} md={3}>
-                    <div className="text-muted small">Conversaciones activas</div>
-                    <div className="app-kpi">{stats.conversations_active}</div>
-                  </Col>
-                  <Col xs={6} md={3}>
-                    <div className="text-muted small">Notificaciones sin leer</div>
-                    <div className="app-kpi d-flex align-items-center gap-2">
-                      {stats.notifications_unread}
-                      {stats.notifications_unread > 0 && <Badge bg="warning" text="dark">Nuevo</Badge>}
-                    </div>
-                  </Col>
-                </Row>
-              ) : null}
-            </Card.Body>
-          </Card>
+        <Col xl={4}>
+          <section className="app-surface app-surface-padded h-100">
+            <div className="app-surface-header">
+              <div>
+                <div className="app-eyebrow">Sesión</div>
+                <h2 className="h5 mb-1">Estado actual</h2>
+                <p className="text-muted mb-0">Información operativa inmediata del usuario conectado.</p>
+              </div>
+            </div>
+            <div className="app-detail-stack">
+              <div className="app-detail-row">
+                <span>Correo</span>
+                <strong>{user?.email || "-"}</strong>
+              </div>
+              <div className="app-detail-row">
+                <span>Rol</span>
+                <strong>{user?.role || "-"}</strong>
+              </div>
+              <div className="app-detail-row">
+                <span>Atajo recomendado</span>
+                <strong>Continuar conversaciones</strong>
+              </div>
+            </div>
+          </section>
         </Col>
       </Row>
     </div>

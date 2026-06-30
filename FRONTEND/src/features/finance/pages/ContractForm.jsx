@@ -83,66 +83,74 @@ const ContractForm = () => {
   if (loading) return <Spinner animation="border" />;
 
   return (
-    <div>
-      <h1 className="h4 mb-3">{isEdit ? "Editar contrato" : "Nuevo contrato"}</h1>
-      <Form onSubmit={submit} className="d-grid gap-2">
-        <Form.Control
-          placeholder="Título"
-          value={form.title}
-          onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-          required
-        />
-        <Form.Select value={form.contact} onChange={(e) => setForm((p) => ({ ...p, contact: e.target.value }))} required>
-          <option value="">Contacto</option>
-          {contacts.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.first_name} {c.last_name}
-            </option>
-          ))}
-        </Form.Select>
-        <Form.Select value={form.company} onChange={(e) => setForm((p) => ({ ...p, company: e.target.value }))}>
-          <option value="">Empresa (opcional)</option>
-          {companies.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </Form.Select>
-        <Form.Select value={form.deal} onChange={(e) => setForm((p) => ({ ...p, deal: e.target.value }))}>
-          <option value="">Deal (opcional)</option>
-          {deals.map((d) => (
-            <option key={d.id} value={d.id}>{d.title}</option>
-          ))}
-        </Form.Select>
-        <div className="d-flex gap-2">
-          <Form.Control type="number" placeholder="Valor total" value={form.total_value} onChange={(e) => setForm((p) => ({ ...p, total_value: e.target.value }))} required />
-          <Form.Control type="date" value={form.start_date} onChange={(e) => setForm((p) => ({ ...p, start_date: e.target.value }))} required />
-          <Form.Control type="date" value={form.end_date} onChange={(e) => setForm((p) => ({ ...p, end_date: e.target.value }))} />
+    <div className="app-page">
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div>
+          <div className="app-eyebrow">Finanzas</div>
+          <h1 className="h3 mb-1">{isEdit ? "Editar contrato" : "Nuevo contrato"}</h1>
+          <p className="text-muted mb-0">Crea o ajusta acuerdos comerciales vinculados a contactos, empresas y deals.</p>
         </div>
-        <Form.Select value={form.contract_type} onChange={(e) => setForm((p) => ({ ...p, contract_type: e.target.value }))}>
-          <option value="service">Servicio</option>
-          <option value="product">Producto</option>
-          <option value="subscription">Suscripción</option>
-          <option value="consulting">Consultoría</option>
-          <option value="other">Otro</option>
-        </Form.Select>
-        <Form.Select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}>
-          <option value="draft">Borrador</option>
-          <option value="pending_signature">Pendiente firma</option>
-          <option value="active">Activo</option>
-          <option value="completed">Completado</option>
-          <option value="cancelled">Cancelado</option>
-          <option value="expired">Expirado</option>
-        </Form.Select>
-        <Form.Select value={form.payment_terms} onChange={(e) => setForm((p) => ({ ...p, payment_terms: e.target.value }))}>
-          <option value="custom">Custom</option>
-          <option value="upfront">Upfront</option>
-          <option value="net_15">Net 15</option>
-          <option value="net_30">Net 30</option>
-          <option value="net_60">Net 60</option>
-          <option value="installments">Cuotas</option>
-        </Form.Select>
-        <Form.Control as="textarea" rows={3} placeholder="Notas" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
-        <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
-      </Form>
+      </div>
+      <div className="app-surface app-surface-padded">
+        <Form onSubmit={submit} className="d-grid gap-3">
+          <Form.Control
+            placeholder="Título"
+            value={form.title}
+            onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+            required
+          />
+          <Form.Select value={form.contact} onChange={(e) => setForm((p) => ({ ...p, contact: e.target.value }))} required>
+            <option value="">Contacto</option>
+            {contacts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.first_name} {c.last_name}
+              </option>
+            ))}
+          </Form.Select>
+          <Form.Select value={form.company} onChange={(e) => setForm((p) => ({ ...p, company: e.target.value }))}>
+            <option value="">Empresa (opcional)</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </Form.Select>
+          <Form.Select value={form.deal} onChange={(e) => setForm((p) => ({ ...p, deal: e.target.value }))}>
+            <option value="">Deal (opcional)</option>
+            {deals.map((d) => (
+              <option key={d.id} value={d.id}>{d.title}</option>
+            ))}
+          </Form.Select>
+          <div className="d-flex gap-2">
+            <Form.Control type="number" placeholder="Valor total" value={form.total_value} onChange={(e) => setForm((p) => ({ ...p, total_value: e.target.value }))} required />
+            <Form.Control type="date" value={form.start_date} onChange={(e) => setForm((p) => ({ ...p, start_date: e.target.value }))} required />
+            <Form.Control type="date" value={form.end_date} onChange={(e) => setForm((p) => ({ ...p, end_date: e.target.value }))} />
+          </div>
+          <Form.Select value={form.contract_type} onChange={(e) => setForm((p) => ({ ...p, contract_type: e.target.value }))}>
+            <option value="service">Servicio</option>
+            <option value="product">Producto</option>
+            <option value="subscription">Suscripción</option>
+            <option value="consulting">Consultoría</option>
+            <option value="other">Otro</option>
+          </Form.Select>
+          <Form.Select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}>
+            <option value="draft">Borrador</option>
+            <option value="pending_signature">Pendiente firma</option>
+            <option value="active">Activo</option>
+            <option value="completed">Completado</option>
+            <option value="cancelled">Cancelado</option>
+            <option value="expired">Expirado</option>
+          </Form.Select>
+          <Form.Select value={form.payment_terms} onChange={(e) => setForm((p) => ({ ...p, payment_terms: e.target.value }))}>
+            <option value="custom">Custom</option>
+            <option value="upfront">Upfront</option>
+            <option value="net_15">Net 15</option>
+            <option value="net_30">Net 30</option>
+            <option value="net_60">Net 60</option>
+            <option value="installments">Cuotas</option>
+          </Form.Select>
+          <Form.Control as="textarea" rows={3} placeholder="Notas" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
+          <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
+        </Form>
+      </div>
     </div>
   );
 };

@@ -1,9 +1,27 @@
 import PropTypes from "prop-types";
 import { CSS } from "@dnd-kit/utilities";
-import { Badge, Button, Card } from "react-bootstrap";
+import { Card } from "react-bootstrap";
 import { useSortable } from "@dnd-kit/sortable";
 import { Link } from "react-router-dom";
-import { formatDealDisplayNumber, formatDealValue, getAssigneeChipStyle } from "../utils/formatters.js";
+import { formatDealDisplayNumber, formatDealValue } from "../utils/formatters.js";
+
+const buildAssigneeMeta = (label) => {
+  const normalized = String(label || "").trim();
+  if (!normalized || normalized.toLowerCase() === "sin asignar") {
+    return {
+      initials: "SA",
+      shortName: "Sin asignar",
+    };
+  }
+
+  const parts = normalized.split(/\s+/).filter(Boolean);
+  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() || "").join("") || normalized.slice(0, 2).toUpperCase();
+  const shortName = parts.length > 1
+    ? `${parts[0][0]?.toUpperCase() || ""}. ${parts[parts.length - 1]}`
+    : normalized;
+
+  return { initials, shortName };
+};
 
 const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -11,7 +29,7 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
     data: { stage: deal.stage, deal },
   });
   const assigneeLabel = deal.assigned_to_name || "Sin asignar";
-  const assigneeChip = getAssigneeChipStyle(assigneeLabel);
+  const assigneeMeta = buildAssigneeMeta(assigneeLabel);
   const companyLabel = deal.company_name || "Sin empresa";
 
   return (
@@ -27,26 +45,15 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
       }}
     >
       <Card.Body className="crm-deal-card-body">
-        <div className="crm-deal-card-chips">
-          <span className="pipeline-chip pipeline-chip-neutral">{formatDealDisplayNumber(deal.id, orderIndex)}</span>
-          <span className={`pipeline-chip ${deal.company_name ? "pipeline-chip-company" : "pipeline-chip-company-empty"}`}>
+        <div className="crm-deal-card-topline">
+          <span className="crm-deal-card-number">{formatDealDisplayNumber(deal.id, orderIndex)}</span>
+          <span className={`crm-deal-card-company-badge ${deal.company_name ? "" : "is-empty"}`}>
             {companyLabel}
-          </span>
-          <span
-            className="pipeline-chip pipeline-chip-assignee"
-            style={{
-              backgroundColor: assigneeChip.bg,
-              color: assigneeChip.text,
-              borderColor: assigneeChip.border,
-            }}
-          >
-            {assigneeLabel}
           </span>
         </div>
         <div className="crm-deal-card-title-row">
           <span className="crm-deal-card-title">{deal.title || deal.contact_name || `Deal ${deal.id.slice(0, 8)}`}</span>
           <div className="crm-deal-card-title-actions">
-            {deal.is_stale ? <Badge bg="secondary">stale</Badge> : null}
             <button
               type="button"
               className="pipeline-drag-handle crm-deal-drag-handle"
@@ -60,27 +67,33 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
           </div>
         </div>
         <div className="crm-deal-card-value">
-          {formatDealValue(deal.value)} {deal.currency}
+          {formatDealValue(deal.value)} <span>{deal.currency}</span>
         </div>
         <div className="crm-deal-card-contact">{deal.contact_name}</div>
         <div className="crm-deal-card-footer">
+          <div className="crm-deal-card-assignee">
+            <span className="crm-deal-card-assignee-avatar">{assigneeMeta.initials}</span>
+            <span className="crm-deal-card-assignee-name">{assigneeMeta.shortName}</span>
+          </div>
           <div className="crm-deal-card-actions">
-            <Button as={Link} to={`/crm/deals/${deal.id}`} size="sm" variant="outline-primary">
-              Editar
-            </Button>
-            <Button as={Link} to={`/chat/deal/${deal.id}`} size="sm" variant="outline-success">
-              Chat
-            </Button>
-            <Button
-              size="sm"
-              variant="outline-secondary"
+            <Link to={`/crm/deals/${deal.id}`} className="crm-deal-card-icon-action" title="Editar deal" aria-label="Editar deal">
+              <i className="bi bi-pencil" />
+            </Link>
+            <Link to={`/chat/deal/${deal.id}`} className="crm-deal-card-icon-action" title="Abrir chat" aria-label="Abrir chat">
+              <i className="bi bi-chat-square-text" />
+            </Link>
+            <button
+              type="button"
+              className="crm-deal-card-icon-action"
               onClick={(e) => {
                 e.stopPropagation();
                 onCreateActivity?.(deal);
               }}
+              title="Crear actividad"
+              aria-label="Crear actividad"
             >
-              Actividad
-            </Button>
+              <i className="bi bi-lightning-charge" />
+            </button>
           </div>
         </div>
       </Card.Body>

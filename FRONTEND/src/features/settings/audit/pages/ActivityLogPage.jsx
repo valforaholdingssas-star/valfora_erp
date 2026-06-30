@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Badge, Button, Card, Form, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Form, Spinner, Table } from "react-bootstrap";
 import { Navigate } from "react-router-dom";
 
 import { fetchActivityLogs } from "../../../../api/activityLogs.js";
@@ -96,102 +96,116 @@ const ActivityLogPage = () => {
 
   return (
     <div className="app-page">
-      <div className="d-flex justify-content-between align-items-center mb-3 app-page-headline flex-wrap gap-2">
+      <div className="app-page-headline app-hero-headline mb-4">
         <div>
-          <h1 className="h4 mb-1">Log de actividad</h1>
+          <div className="app-eyebrow">Auditoría</div>
+          <h1 className="h3 mb-1">Log de actividad</h1>
           <p className="text-muted mb-0">Audita acciones críticas de usuarios y cambios de información.</p>
         </div>
-        <Button size="sm" variant="outline-secondary" onClick={() => void loadLogs(1)}>
-          Recargar
-        </Button>
+        <div className="app-action-cluster">
+          <Button size="sm" variant="outline-secondary" onClick={() => void loadLogs(1)}>
+            Recargar
+          </Button>
+        </div>
       </div>
 
-      <Card className="app-card mb-3 app-section-card">
-        <Card.Body>
-          <Form
-            className="row g-2 align-items-end"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void loadLogs(1);
-            }}
-          >
-            <div className="col-lg-3">
-              <Form.Label className="small mb-1">Buscar</Form.Label>
-              <Form.Control
-                value={filters.search}
-                placeholder="Email, nombre, modelo o IP"
-                onChange={(e) => setFilters((p) => ({ ...p, search: e.target.value }))}
-              />
-            </div>
-            <div className="col-lg-2">
-              <Form.Label className="small mb-1">Acción</Form.Label>
-              <Form.Select
-                value={filters.action}
-                onChange={(e) => setFilters((p) => ({ ...p, action: e.target.value }))}
-              >
-                {ACTION_OPTIONS.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </Form.Select>
-            </div>
-            <div className="col-lg-3">
-              <Form.Label className="small mb-1">Usuario</Form.Label>
-              <Form.Select
-                value={filters.user}
-                onChange={(e) => setFilters((p) => ({ ...p, user: e.target.value }))}
-              >
-                <option value="">Todos</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.email}
-                  </option>
-                ))}
-              </Form.Select>
-            </div>
-            <div className="col-lg-2">
-              <Form.Label className="small mb-1">Desde</Form.Label>
-              <Form.Control
-                type="date"
-                value={filters.date_from}
-                onChange={(e) => setFilters((p) => ({ ...p, date_from: e.target.value }))}
-              />
-            </div>
-            <div className="col-lg-2">
-              <Form.Label className="small mb-1">Hasta</Form.Label>
-              <Form.Control
-                type="date"
-                value={filters.date_to}
-                onChange={(e) => setFilters((p) => ({ ...p, date_to: e.target.value }))}
-              />
-            </div>
-            <div className="col-lg-2">
-              <Form.Label className="small mb-1">Modelo</Form.Label>
-              <Form.Control
-                value={filters.model_name}
-                placeholder="Deal, User..."
-                onChange={(e) => setFilters((p) => ({ ...p, model_name: e.target.value }))}
-              />
-            </div>
-            <div className="col-lg-2">
-              <Button type="submit" size="sm" className="w-100">
-                Filtrar
-              </Button>
-            </div>
-          </Form>
-        </Card.Body>
-      </Card>
+      <section className="app-surface app-surface-padded mb-4">
+        <div className="app-surface-header">
+          <div>
+            <div className="app-eyebrow">Filtros</div>
+            <h2 className="h6 mb-0">Explorar actividad</h2>
+          </div>
+        </div>
+        <Form
+          className="row g-3 align-items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void loadLogs(1);
+          }}
+        >
+          <div className="col-xl-3 col-lg-4">
+            <Form.Label className="small mb-1">Buscar</Form.Label>
+            <Form.Control
+              value={filters.search}
+              placeholder="Email, nombre, modelo o IP"
+              onChange={(e) => setFilters((p) => ({ ...p, search: e.target.value }))}
+            />
+          </div>
+          <div className="col-xl-2 col-lg-4">
+            <Form.Label className="small mb-1">Acción</Form.Label>
+            <Form.Select
+              value={filters.action}
+              onChange={(e) => setFilters((p) => ({ ...p, action: e.target.value }))}
+            >
+              {ACTION_OPTIONS.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Form.Select>
+          </div>
+          <div className="col-xl-3 col-lg-4">
+            <Form.Label className="small mb-1">Usuario</Form.Label>
+            <Form.Select
+              value={filters.user}
+              onChange={(e) => setFilters((p) => ({ ...p, user: e.target.value }))}
+            >
+              <option value="">Todos</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.email}
+                </option>
+              ))}
+            </Form.Select>
+          </div>
+          <div className="col-xl-2 col-lg-3">
+            <Form.Label className="small mb-1">Desde</Form.Label>
+            <Form.Control
+              type="date"
+              value={filters.date_from}
+              onChange={(e) => setFilters((p) => ({ ...p, date_from: e.target.value }))}
+            />
+          </div>
+          <div className="col-xl-2 col-lg-3">
+            <Form.Label className="small mb-1">Hasta</Form.Label>
+            <Form.Control
+              type="date"
+              value={filters.date_to}
+              onChange={(e) => setFilters((p) => ({ ...p, date_to: e.target.value }))}
+            />
+          </div>
+          <div className="col-xl-2 col-lg-3">
+            <Form.Label className="small mb-1">Modelo</Form.Label>
+            <Form.Control
+              value={filters.model_name}
+              placeholder="Deal, User..."
+              onChange={(e) => setFilters((p) => ({ ...p, model_name: e.target.value }))}
+            />
+          </div>
+          <div className="col-xl-2 col-lg-3">
+            <Button type="submit" size="sm" className="w-100">
+              Filtrar
+            </Button>
+          </div>
+        </Form>
+      </section>
 
       {error ? <Alert variant="danger">{error}</Alert> : null}
 
-      <Card className="app-card app-section-card">
-        <Card.Body>
-          {loading ? (
-            <div className="text-center py-4"><Spinner animation="border" size="sm" /></div>
-          ) : (
-            <>
-              <Table responsive hover size="sm" className="mb-3">
+      <section className="app-surface app-surface-padded">
+        {loading ? (
+          <div className="text-center py-4"><Spinner animation="border" size="sm" /></div>
+        ) : (
+          <>
+            <div className="app-surface-header">
+              <div>
+                <div className="app-eyebrow">Resultados</div>
+                <h2 className="h6 mb-0">Actividad registrada</h2>
+              </div>
+              <Badge className="app-badge-soft">{logs.count || 0} registros</Badge>
+            </div>
+            <div className="app-table-shell mb-3">
+              <Table responsive hover size="sm" className="mb-0 app-table-clean">
                 <thead>
                   <tr>
                     <th>Fecha</th>
@@ -230,37 +244,33 @@ const ActivityLogPage = () => {
                   )}
                 </tbody>
               </Table>
-
-              <div className="d-flex justify-content-between align-items-center">
-                <span className="small text-muted">
-                  Total: {logs.count || 0} registros
-                </span>
-                <div className="d-flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline-secondary"
-                    disabled={page <= 1}
-                    onClick={() => void loadLogs(page - 1)}
-                  >
-                    Anterior
-                  </Button>
-                  <span className="small align-self-center">
-                    Página {page} de {totalPages}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline-secondary"
-                    disabled={page >= totalPages}
-                    onClick={() => void loadLogs(page + 1)}
-                  >
-                    Siguiente
-                  </Button>
-                </div>
+            </div>
+            <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <span className="small text-muted">
+                Página {page} de {totalPages}
+              </span>
+              <div className="d-flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline-secondary"
+                  disabled={page <= 1}
+                  onClick={() => void loadLogs(page - 1)}
+                >
+                  Anterior
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline-secondary"
+                  disabled={page >= totalPages}
+                  onClick={() => void loadLogs(page + 1)}
+                >
+                  Siguiente
+                </Button>
               </div>
-            </>
-          )}
-        </Card.Body>
-      </Card>
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
 };

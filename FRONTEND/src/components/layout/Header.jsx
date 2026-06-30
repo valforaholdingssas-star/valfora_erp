@@ -87,40 +87,49 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
                   </Badge>
                 )}
               </Dropdown.Toggle>
-              <Dropdown.Menu className="shadow" style={{ minWidth: "320px", maxHeight: "360px" }}>
-                <Dropdown.Header className="d-flex justify-content-between align-items-center">
-                  <span>Centro de notificaciones</span>
+              <Dropdown.Menu className="app-notification-menu">
+                <div className="app-notification-menu-head">
+                  <div>
+                    <strong>Centro de notificaciones</strong>
+                    <span>
+                      {unreadCount > 0 ? `${unreadCount} sin leer` : "Todo al día"}
+                    </span>
+                  </div>
                   {unreadCount > 0 && (
-                    <Button variant="link" size="sm" className="p-0" onClick={() => markAllRead()}>
-                      Marcar todas leídas
+                    <Button variant="link" size="sm" className="app-notification-mark-all" onClick={() => markAllRead()}>
+                      Marcar leídas
                     </Button>
                   )}
-                </Dropdown.Header>
+                </div>
                 {loading ? (
-                  <div className="text-center py-3">
+                  <div className="app-notification-menu-state">
                     <Spinner animation="border" size="sm" />
                   </div>
                 ) : items.length === 0 ? (
-                  <Dropdown.ItemText className="text-muted small">No hay notificaciones.</Dropdown.ItemText>
+                  <div className="app-notification-menu-state app-notification-menu-state-empty">
+                    <i className="bi bi-bell-slash" />
+                    <span>No hay notificaciones.</span>
+                  </div>
                 ) : (
-                  items.slice(0, 15).map((n) => (
+                  <div className="app-notification-menu-list">
+                    {items.slice(0, 15).map((n) => (
                     <Dropdown.Item
                       key={n.id}
                       as={n.action_url ? Link : "div"}
                       to={n.action_url || "#"}
-                      className={n.is_read ? "" : "fw-semibold"}
+                      className={`app-notification-item ${n.is_read ? "" : "is-unread"}`}
                       onClick={() => {
                         if (!n.is_read) markRead(n.id);
                       }}
                     >
-                      <div className="small text-truncate">{n.title}</div>
-                      {n.message && (
-                        <div className="text-muted small text-truncate" style={{ maxWidth: "280px" }}>
-                          {n.message}
-                        </div>
-                      )}
+                      <span className="app-notification-item-dot" />
+                      <div className="app-notification-item-body">
+                        <div className="app-notification-item-title">{n.title}</div>
+                        {n.message ? <div className="app-notification-item-message">{n.message}</div> : null}
+                      </div>
                     </Dropdown.Item>
-                  ))
+                    ))}
+                  </div>
                 )}
               </Dropdown.Menu>
             </Dropdown>

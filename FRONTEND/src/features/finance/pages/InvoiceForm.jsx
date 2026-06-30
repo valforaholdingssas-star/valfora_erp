@@ -82,39 +82,47 @@ const InvoiceForm = () => {
   if (loading) return <Spinner animation="border" />;
 
   return (
-    <div>
-      <h1 className="h4 mb-3">{isEdit ? "Editar factura" : "Nueva factura"}</h1>
-      <Form onSubmit={submit} className="d-grid gap-2">
-        <Form.Select value={form.contact} onChange={(e) => setForm((p) => ({ ...p, contact: e.target.value }))} required>
-          <option value="">Contacto</option>
-          {contacts.map((c) => (
-            <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
-          ))}
-        </Form.Select>
-        <Form.Select value={form.company} onChange={(e) => setForm((p) => ({ ...p, company: e.target.value }))}>
-          <option value="">Empresa (opcional)</option>
-          {companies.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </Form.Select>
-        <div className="d-flex gap-2">
-          <Form.Control type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} required />
-          <Form.Control type="date" value={form.due_date} onChange={(e) => setForm((p) => ({ ...p, due_date: e.target.value }))} required />
-          <Form.Control type="number" step="0.01" placeholder="Impuesto %" value={form.tax_rate} onChange={(e) => setForm((p) => ({ ...p, tax_rate: e.target.value }))} />
+    <div className="app-page">
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div>
+          <div className="app-eyebrow">Finanzas</div>
+          <h1 className="h3 mb-1">{isEdit ? "Editar factura" : "Nueva factura"}</h1>
+          <p className="text-muted mb-0">Prepara documentos de cobro con items, fechas y estado de recaudo desde una vista limpia.</p>
         </div>
-        <Form.Select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}>
-          <option value="draft">Borrador</option>
-          <option value="sent">Enviada</option>
-          <option value="paid">Pagada</option>
-          <option value="partially_paid">Parcial</option>
-          <option value="overdue">Vencida</option>
-          <option value="cancelled">Cancelada</option>
-          <option value="void">Anulada</option>
-        </Form.Select>
-        <InvoiceItemsTable items={form.items} onChange={(items) => setForm((p) => ({ ...p, items }))} />
-        <Form.Control as="textarea" rows={3} value={form.notes} placeholder="Notas" onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
-        <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
-      </Form>
+      </div>
+      <div className="app-surface app-surface-padded">
+        <Form onSubmit={submit} className="d-grid gap-3">
+          <Form.Select value={form.contact} onChange={(e) => setForm((p) => ({ ...p, contact: e.target.value }))} required>
+            <option value="">Contacto</option>
+            {contacts.map((c) => (
+              <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
+            ))}
+          </Form.Select>
+          <Form.Select value={form.company} onChange={(e) => setForm((p) => ({ ...p, company: e.target.value }))}>
+            <option value="">Empresa (opcional)</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </Form.Select>
+          <div className="d-flex gap-2">
+            <Form.Control type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} required />
+            <Form.Control type="date" value={form.due_date} onChange={(e) => setForm((p) => ({ ...p, due_date: e.target.value }))} required />
+            <Form.Control type="number" step="0.01" placeholder="Impuesto %" value={form.tax_rate} onChange={(e) => setForm((p) => ({ ...p, tax_rate: e.target.value }))} />
+          </div>
+          <Form.Select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}>
+            <option value="draft">Borrador</option>
+            <option value="sent">Enviada</option>
+            <option value="paid">Pagada</option>
+            <option value="partially_paid">Parcial</option>
+            <option value="overdue">Vencida</option>
+            <option value="cancelled">Cancelada</option>
+            <option value="void">Anulada</option>
+          </Form.Select>
+          <InvoiceItemsTable items={form.items} onChange={(items) => setForm((p) => ({ ...p, items }))} />
+          <Form.Control as="textarea" rows={3} value={form.notes} placeholder="Notas" onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
+          <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
+        </Form>
+      </div>
     </div>
   );
 };

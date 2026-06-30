@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Col, Form, Row, Spinner } from "react-bootstrap";
+import { Alert, Button, Col, Form, Row, Spinner } from "react-bootstrap";
 
 import { fetchUsers } from "../../../../api/users.js";
 import AssignmentStrategyForm from "../components/AssignmentStrategyForm.jsx";
@@ -32,13 +32,24 @@ const LeadEngineConfigPage = () => {
 
   return (
     <div className="app-page">
-      <h1 className="h4 mb-3">Automatización de Leads</h1>
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div>
+          <div className="app-eyebrow">Lead Engine</div>
+          <h1 className="h3 mb-1">Automatización de leads</h1>
+          <p className="text-muted mb-0">Define creación automática, asignación y tiempos de respuesta del embudo.</p>
+        </div>
+      </div>
       {status && <Alert variant="success" className="py-2">{status}</Alert>}
-      <Row className="g-3">
+      <Row className="g-4">
         <Col md={8}>
-          <Card>
-            <Card.Body>
-              <Form onSubmit={onSubmit}>
+          <section className="app-surface app-surface-padded">
+            <div className="app-surface-header">
+              <div>
+                <div className="app-eyebrow">Parámetros</div>
+                <h2 className="h6 mb-0">Configuración principal</h2>
+              </div>
+            </div>
+            <Form onSubmit={onSubmit}>
                 <Form.Check
                   type="switch"
                   label="Crear contacto automáticamente"
@@ -103,12 +114,19 @@ const LeadEngineConfigPage = () => {
                 </Row>
 
                 <Button type="submit" className="mt-3">Guardar</Button>
-              </Form>
-            </Card.Body>
-          </Card>
+            </Form>
+          </section>
         </Col>
         <Col md={4}>
-          <LeadFlowPreview config={form} />
+          <section className="app-surface app-surface-padded h-100">
+            <div className="app-surface-header">
+              <div>
+                <div className="app-eyebrow">Vista previa</div>
+                <h2 className="h6 mb-0">Flujo resultante</h2>
+              </div>
+            </div>
+            <LeadFlowPreview config={form} />
+          </section>
         </Col>
       </Row>
     </div>

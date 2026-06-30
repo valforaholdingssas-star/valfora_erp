@@ -219,18 +219,21 @@ const UsersManagementPage = () => {
 
   return (
     <div className="app-page">
-      <div className="d-flex justify-content-between align-items-center mb-4 app-page-headline flex-wrap gap-2">
+      <div className="app-page-headline app-hero-headline mb-4">
         <div>
-          <h1 className="h4 mb-1">Usuarios y permisos</h1>
+          <div className="app-eyebrow">Configuración</div>
+          <h1 className="h3 mb-1">Usuarios y permisos</h1>
           <p className="text-muted mb-0">Administra acceso por rol y activación de cuentas del equipo.</p>
         </div>
-        <Button size="sm" onClick={openCreate} disabled={!canEditUsers}>
-          Nuevo usuario
-        </Button>
+        <div className="app-action-cluster">
+          <Button size="sm" onClick={openCreate} disabled={!canEditUsers}>
+            Nuevo usuario
+          </Button>
+        </div>
       </div>
 
       <Form
-        className="row g-2 align-items-end mb-3 app-section-card p-3 m-0"
+        className="row g-3 align-items-end mb-4 app-surface app-surface-padded m-0"
         onSubmit={(e) => {
           e.preventDefault();
           void loadUsers();
@@ -276,8 +279,16 @@ const UsersManagementPage = () => {
         <div className="text-center py-4"><Spinner animation="border" /></div>
       ) : (
         <>
-          <div className="app-section-card p-2">
-            <Table responsive hover size="sm" className="shadow-sm mb-0">
+          <section className="app-surface app-surface-padded mb-4">
+            <div className="app-surface-header">
+              <div>
+                <div className="app-eyebrow">Equipo</div>
+                <h2 className="h6 mb-0">Usuarios</h2>
+              </div>
+              <Badge className="app-badge-soft">{result.count ?? result.results?.length ?? 0}</Badge>
+            </div>
+            <div className="app-table-shell">
+              <Table responsive hover size="sm" className="mb-0 app-table-clean">
               <thead>
                 <tr>
                   <th>Email</th>
@@ -326,26 +337,28 @@ const UsersManagementPage = () => {
                 )}
               </tbody>
             </Table>
-          </div>
-          <p className="text-muted small mb-4">
-            Total: {result.count ?? result.results?.length ?? 0} usuarios
-          </p>
+            </div>
+          </section>
         </>
       )}
 
-      <Card className="app-card">
-        <Card.Header className="d-flex justify-content-between align-items-center">
-          <strong>Permisos por rol (módulos)</strong>
-          <Button size="sm" onClick={() => void saveMatrix()} disabled={matrixSaving || matrixLoading || !canEditUsers}>
-            {matrixSaving ? "Guardando..." : "Guardar permisos"}
-          </Button>
-        </Card.Header>
+      <Card className="app-card app-section-card">
         <Card.Body>
+          <div className="app-surface-header">
+            <div>
+              <div className="app-eyebrow">Gobierno</div>
+              <h2 className="h6 mb-0">Permisos por rol</h2>
+            </div>
+            <Button size="sm" onClick={() => void saveMatrix()} disabled={matrixSaving || matrixLoading || !canEditUsers}>
+              {matrixSaving ? "Guardando..." : "Guardar permisos"}
+            </Button>
+          </div>
           {matrixError && <Alert variant="danger" className="mb-3">{matrixError}</Alert>}
           {matrixLoading ? (
             <Spinner animation="border" />
           ) : (
-            <Table responsive bordered size="sm" className="mb-0 align-middle">
+            <div className="app-table-shell">
+              <Table responsive size="sm" className="mb-0 align-middle app-table-clean">
               <thead>
                 <tr>
                   <th>Módulo</th>
@@ -392,6 +405,7 @@ const UsersManagementPage = () => {
                 ))}
               </tbody>
             </Table>
+            </div>
           )}
           <p className="text-muted small mb-0 mt-3">
             Cambios aplican a visualización y edición por módulo. Rol actual:{" "}

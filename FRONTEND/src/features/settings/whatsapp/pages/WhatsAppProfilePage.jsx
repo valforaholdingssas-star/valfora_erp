@@ -23,10 +23,22 @@ const WhatsAppProfilePage = () => {
 
   return (
     <div className="app-page">
-      <h1 className="h4 mb-3">WhatsApp · Perfil de negocio</h1>
-      {saved && <Alert variant="success" className="py-2">Perfil actualizado.</Alert>}
-      <Card>
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div>
+          <div className="app-eyebrow">WhatsApp</div>
+          <h1 className="h3 mb-1">Perfil de negocio</h1>
+          <p className="text-muted mb-0">Mantén sincronizada la identidad visible de la cuenta en Meta y en el canal operativo.</p>
+        </div>
+      </div>
+      {saved && <Alert variant="success" className="py-2 app-surface-subtle">Perfil actualizado.</Alert>}
+      <Card className="app-surface app-surface-padded">
         <Card.Body>
+          <div className="app-surface-header">
+            <div>
+              <div className="app-eyebrow">Identidad</div>
+              <h2 className="h6 mb-0">Información pública del negocio</h2>
+            </div>
+          </div>
           <Form onSubmit={async (e) => {
             e.preventDefault();
             await updateWhatsAppProfile({

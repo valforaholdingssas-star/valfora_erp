@@ -557,19 +557,22 @@ const LinkedInHubPage = ({ focus = "all" }) => {
 
   return (
     <div className="app-page">
-      <div className="d-flex justify-content-between align-items-center mb-4 app-page-headline flex-wrap gap-2">
+      <div className="app-page-headline app-hero-headline mb-4">
         <div>
-          <h1 className="h4 mb-1">LinkedIn Outreach</h1>
+          <div className="app-eyebrow">LinkedIn</div>
+          <h1 className="h3 mb-1">Outreach comercial</h1>
           <p className="text-muted mb-0">Prospección, embudo e invitaciones conectadas a Unipile.</p>
         </div>
-        <Button
-          size="sm"
-          variant="outline-secondary"
-          onClick={() => void loadAll(true)}
-          disabled={refreshing || loading}
-        >
-          {refreshing ? "Actualizando..." : "Recargar"}
-        </Button>
+        <div className="app-action-cluster">
+          <Button
+            size="sm"
+            variant="outline-secondary"
+            onClick={() => void loadAll(true)}
+            disabled={refreshing || loading}
+          >
+            {refreshing ? "Actualizando..." : "Recargar"}
+          </Button>
+        </div>
       </div>
 
       {error && <Alert variant="danger">{error}</Alert>}
@@ -581,47 +584,32 @@ const LinkedInHubPage = ({ focus = "all" }) => {
         </div>
       ) : (
         <>
-          <Row className="g-3 mb-4">
-            <Col lg={3} sm={6}>
-              <Card className="app-card app-kpi-card h-100">
-                <Card.Body>
-                  <p className="text-uppercase app-kpi-label mb-1">Estado cuenta</p>
-                  <div className="app-kpi mb-2">{account.connected ? "Conectada" : "Sin conectar"}</div>
-                  <p className="mb-0 text-muted small">{account.account?.linkedin_name || "Configura tu cuenta LinkedIn"}</p>
-                </Card.Body>
-              </Card>
-            </Col>
-            <Col lg={3} sm={6}>
-              <Card className="app-card app-kpi-card h-100">
-                <Card.Body>
-                  <p className="text-uppercase app-kpi-label mb-1">Invitaciones (7 días)</p>
-                  <div className="app-kpi">{dashboard.invitations_week || 0}</div>
-                </Card.Body>
-              </Card>
-            </Col>
-            <Col lg={3} sm={6}>
-              <Card className="app-card app-kpi-card h-100">
-                <Card.Body>
-                  <p className="text-uppercase app-kpi-label mb-1">Sin respuesta</p>
-                  <div className="app-kpi">{dashboard.stale_prospects || 0}</div>
-                </Card.Body>
-              </Card>
-            </Col>
-            <Col lg={3} sm={6}>
-              <Card className="app-card app-kpi-card h-100">
-                <Card.Body>
-                  <p className="text-uppercase app-kpi-label mb-1">Búsquedas activas</p>
-                  <div className="app-kpi">{dashboard.active_saved_searches || 0}</div>
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
+          <div className="app-kpi-grid mb-4">
+            <div className="app-kpi-tile">
+              <span className="app-kpi-label">Estado cuenta</span>
+              <strong className="app-kpi-value">{account.connected ? "Conectada" : "Sin conectar"}</strong>
+              <span className="text-muted small">{account.account?.linkedin_name || "Configura tu cuenta LinkedIn"}</span>
+            </div>
+            <div className="app-kpi-tile">
+              <span className="app-kpi-label">Invitaciones (7 días)</span>
+              <strong className="app-kpi-value">{dashboard.invitations_week || 0}</strong>
+            </div>
+            <div className="app-kpi-tile">
+              <span className="app-kpi-label">Sin respuesta</span>
+              <strong className="app-kpi-value">{dashboard.stale_prospects || 0}</strong>
+            </div>
+            <div className="app-kpi-tile">
+              <span className="app-kpi-label">Búsquedas activas</span>
+              <strong className="app-kpi-value">{dashboard.active_saved_searches || 0}</strong>
+            </div>
+          </div>
 
           {showBlock("account") && (
           <Card className="app-card app-section-card mb-4">
             <Card.Body>
-              <div className="d-flex justify-content-between align-items-start mb-3 gap-2 flex-wrap">
+              <div className="app-surface-header">
                 <div>
+                  <div className="app-eyebrow">Cuenta</div>
                   <h2 className="h6 mb-1">Conexión LinkedIn</h2>
                   <p className="text-muted small mb-0">Conecta una cuenta para habilitar búsquedas, invitaciones y mensajes.</p>
                 </div>
@@ -657,11 +645,16 @@ const LinkedInHubPage = ({ focus = "all" }) => {
           {showBlock("dashboard") && (
           <Card className="app-card app-section-card mb-4">
             <Card.Body>
-              <h2 className="h6 mb-3">Embudo LinkedIn</h2>
+              <div className="app-surface-header">
+                <div>
+                  <div className="app-eyebrow">Pipeline</div>
+                  <h2 className="h6 mb-0">Embudo LinkedIn</h2>
+                </div>
+              </div>
               <Row className="g-2">
                 {STAGE_OPTIONS.map((stage) => (
                   <Col key={stage.value} md={4} xl={3}>
-                    <div className="border rounded-3 p-2 h-100">
+                    <div className="app-surface-subtile-border rounded-3 p-3 h-100">
                       <div className="small text-uppercase text-muted">{stage.label}</div>
                       <div className="h5 mb-0">{funnelCounters[stage.value] || 0}</div>
                     </div>
@@ -677,8 +670,11 @@ const LinkedInHubPage = ({ focus = "all" }) => {
             <Col xl={6}>
               <Card className="app-card app-section-card h-100">
                 <Card.Body>
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h2 className="h6 mb-0">Búsquedas guardadas</h2>
+                  <div className="app-surface-header">
+                    <div>
+                      <div className="app-eyebrow">Automatización</div>
+                      <h2 className="h6 mb-0">Búsquedas guardadas</h2>
+                    </div>
                   </div>
                   <Form onSubmit={handleCreateSearch} className="mb-3">
                     <Row className="g-2">
@@ -746,7 +742,8 @@ const LinkedInHubPage = ({ focus = "all" }) => {
                       </Col>
                     </Row>
                   </Form>
-                  <Table responsive hover size="sm" className="mb-0">
+                  <div className="app-table-shell">
+                    <Table responsive hover size="sm" className="mb-0 app-table-clean">
                     <thead>
                       <tr>
                         <th>Nombre</th>
@@ -789,6 +786,7 @@ const LinkedInHubPage = ({ focus = "all" }) => {
                       ))}
                     </tbody>
                   </Table>
+                  </div>
                 </Card.Body>
               </Card>
             </Col>
@@ -796,7 +794,12 @@ const LinkedInHubPage = ({ focus = "all" }) => {
             <Col xl={6}>
               <Card className="app-card app-section-card h-100">
                 <Card.Body>
-                  <h2 className="h6 mb-3">Plantillas</h2>
+                  <div className="app-surface-header">
+                    <div>
+                      <div className="app-eyebrow">Mensajería</div>
+                      <h2 className="h6 mb-0">Plantillas</h2>
+                    </div>
+                  </div>
                   <Row className="g-3">
                     <Col md={6}>
                       <Form onSubmit={handleCreateInvitationTemplate}>
@@ -879,11 +882,14 @@ const LinkedInHubPage = ({ focus = "all" }) => {
           {showBlock("inbox") && (
           <Card className="app-card app-section-card mb-4">
             <Card.Body>
-              <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                <h2 className="h6 mb-0">Inbox LinkedIn</h2>
+              <div className="app-surface-header">
+                <div>
+                  <div className="app-eyebrow">Conversaciones</div>
+                  <h2 className="h6 mb-0">Inbox LinkedIn</h2>
+                </div>
                 <div className="d-flex align-items-center gap-2 small">
                   <span className="text-muted">No leídos:</span>
-                  <Badge bg={linkedinUnreadCount > 0 ? "danger" : "secondary"}>
+                  <Badge className={linkedinUnreadCount > 0 ? "app-badge-soft-warning" : "app-badge-soft"}>
                     {linkedinUnreadCount}
                   </Badge>
                 </div>
@@ -968,7 +974,12 @@ const LinkedInHubPage = ({ focus = "all" }) => {
           {showBlock("prospects") && (
           <Card className="app-card app-section-card mb-4">
             <Card.Body>
-              <h2 className="h6 mb-3">Agregar prospecto manual</h2>
+              <div className="app-surface-header">
+                <div>
+                  <div className="app-eyebrow">Captura</div>
+                  <h2 className="h6 mb-0">Agregar prospecto manual</h2>
+                </div>
+              </div>
               <Form onSubmit={handleCreateProspect}>
                 <Row className="g-2">
                   <Col md={3}>
@@ -1028,8 +1039,11 @@ const LinkedInHubPage = ({ focus = "all" }) => {
           {showBlock("prospects") && (
           <Card className="app-card app-section-card">
             <Card.Body>
-              <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                <h2 className="h6 mb-0">Prospectos</h2>
+              <div className="app-surface-header flex-wrap">
+                <div>
+                  <div className="app-eyebrow">Base comercial</div>
+                  <h2 className="h6 mb-0">Prospectos</h2>
+                </div>
                 <Form className="d-flex gap-2 flex-wrap">
                   <Form.Control
                     size="sm"
@@ -1056,7 +1070,8 @@ const LinkedInHubPage = ({ focus = "all" }) => {
                   </Button>
                 </Form>
               </div>
-              <Table responsive hover size="sm" className="mb-0">
+              <div className="app-table-shell">
+                <Table responsive hover size="sm" className="mb-0 app-table-clean">
                 <thead>
                   <tr>
                     <th>Prospecto</th>
@@ -1225,6 +1240,7 @@ const LinkedInHubPage = ({ focus = "all" }) => {
                   ))}
                 </tbody>
               </Table>
+              </div>
             </Card.Body>
           </Card>
           )}

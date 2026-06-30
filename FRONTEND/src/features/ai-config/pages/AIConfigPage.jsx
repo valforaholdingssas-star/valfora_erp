@@ -535,22 +535,34 @@ const AIConfigPage = () => {
       <div className="mb-3">
         <Link to="/">← Inicio</Link>
       </div>
-      <div className="app-page-headline mb-3">
-        <h1 className="h4 mb-1">Configuración de IA (chat)</h1>
-        <p className="text-muted mb-0">
-          Configura runtime sin reinicio, administra agentes y contexto por agente, y valida respuestas en sandbox.
-        </p>
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div>
+          <div className="app-eyebrow">Automatización</div>
+          <h1 className="h3 mb-1">Configuración de IA</h1>
+          <p className="text-muted mb-0">
+            Configura runtime sin reinicio, administra agentes y contexto por agente, y valida respuestas en sandbox.
+          </p>
+        </div>
+        <div className="app-inline-stat">
+          <span className="app-inline-stat-label">Agentes activos</span>
+          <strong>{items.length}</strong>
+        </div>
       </div>
       {error && <Alert variant="danger">{error}</Alert>}
       {loading ? (
         <Spinner animation="border" />
       ) : (
         <>
-          <div className="border rounded p-3 bg-body-tertiary mb-3 app-section-card ai-runtime-panel">
-            <h2 className="h6 mb-2">Runtime OpenAI (sin reinicio)</h2>
-            <p className="small text-muted mb-2">
-              Si guardas una API key aquí, el backend la usa en caliente inmediatamente.
-            </p>
+          <section className="app-surface app-surface-padded mb-4 ai-runtime-panel">
+            <div className="app-surface-header">
+              <div>
+                <div className="app-eyebrow">Runtime</div>
+                <h2 className="h6 mb-1">OpenAI y conectores</h2>
+                <p className="small text-muted mb-0">
+                  Si guardas una API key aquí, el backend la usa en caliente inmediatamente.
+                </p>
+              </div>
+            </div>
             <Form onSubmit={handleSaveRuntime}>
               <Form.Group className="mb-2">
                 <Form.Label>API Key OpenAI</Form.Label>
@@ -813,11 +825,11 @@ const AIConfigPage = () => {
               </div>
               {runtimeError && <Alert variant="warning" className="mt-2 mb-0 small">{runtimeError}</Alert>}
             </Form>
-          </div>
+          </section>
 
           <Row className="g-3 mb-4">
             <Col lg={4}>
-              <Card className="h-100 app-section-card ai-agents-panel">
+              <Card className="h-100 app-section-card ai-agents-panel app-surface-subtle">
                 <Card.Body>
                   <div className="d-flex align-items-center justify-content-between mb-2">
                     <h2 className="h6 mb-0">Agentes IA</h2>
@@ -859,7 +871,7 @@ const AIConfigPage = () => {
                   </Card.Body>
                 </Card>
               ) : (
-                <Card className="app-section-card ai-agent-editor">
+                <Card className="app-section-card ai-agent-editor app-surface-subtle">
                   <Card.Body>
                     <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                       <h2 className="h6 mb-0">Editor del agente</h2>
@@ -1003,7 +1015,7 @@ const AIConfigPage = () => {
                           }
                         />
                       </Form.Group>
-                      <div className="border rounded p-2 mb-2 bg-body-tertiary ai-prompt-preview-block">
+                      <div className="app-note-block ai-prompt-preview-block mb-2">
                         <div className="d-flex align-items-center justify-content-between">
                           <div className="small fw-semibold mb-0">Prompt efectivo (sí se usa al responder)</div>
                           <Button
@@ -1079,12 +1091,17 @@ const AIConfigPage = () => {
             </Col>
           </Row>
 
-          <div className="border rounded p-3 bg-body-tertiary mb-3 app-section-card ai-knowledge-panel">
-            <h2 className="h6 mb-2">Contexto IA (RAG optimizado)</h2>
-            <p className="small text-muted mb-2">
-              Carga documentos para el agente seleccionado. La IA no envía el documento completo al modelo: recupera
-              solo fragmentos relevantes (top-K), reduciendo tokens.
-            </p>
+          <section className="app-surface app-surface-padded mb-3 ai-knowledge-panel">
+            <div className="app-surface-header">
+              <div>
+                <div className="app-eyebrow">Conocimiento</div>
+                <h2 className="h6 mb-1">Contexto IA (RAG optimizado)</h2>
+                <p className="small text-muted mb-0">
+                  Carga documentos para el agente seleccionado. La IA no envía el documento completo al modelo:
+                  recupera solo fragmentos relevantes (top-K), reduciendo tokens.
+                </p>
+              </div>
+            </div>
             <Form onSubmit={handleUploadKnowledgeDocument}>
               <Form.Group className="mb-2">
                 <Form.Label>Archivo</Form.Label>
@@ -1217,7 +1234,7 @@ const AIConfigPage = () => {
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
           {selectedId && (
             <div className="border rounded p-3 bg-body-secondary app-section-card ai-sandbox-panel">

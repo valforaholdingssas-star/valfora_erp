@@ -25,12 +25,24 @@ const PipelineAutomationPage = () => {
 
   return (
     <div className="app-page">
-      <h1 className="h4 mb-3">Automatización del Pipeline</h1>
-      {status && <Alert variant="success" className="py-2">{status}</Alert>}
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div>
+          <div className="app-eyebrow">Lead Engine</div>
+          <h1 className="h3 mb-1">Automatización del pipeline</h1>
+          <p className="text-muted mb-0">Define cuándo el sistema mueve negocios, marca stale y cierra oportunidades sin respuesta.</p>
+        </div>
+      </div>
+      {status && <Alert variant="success" className="py-2 app-surface-subtle">{status}</Alert>}
       <Row className="g-3">
         <Col md={8}>
-          <Card>
+          <Card className="app-surface app-surface-padded">
             <Card.Body>
+              <div className="app-surface-header">
+                <div>
+                  <div className="app-eyebrow">Reglas</div>
+                  <h2 className="h6 mb-0">Activadores automáticos</h2>
+                </div>
+              </div>
               <Form onSubmit={onSubmit}>
                 <Form.Check type="switch" label="Auto mover en primera respuesta" checked={Boolean(form.auto_move_on_first_response)} onChange={(e) => setForm((p) => ({ ...p, auto_move_on_first_response: e.target.checked }))} className="mb-2" />
                 <Form.Check type="switch" label="Auto mover en reunión/llamada" checked={Boolean(form.auto_move_on_meeting)} onChange={(e) => setForm((p) => ({ ...p, auto_move_on_meeting: e.target.checked }))} className="mb-2" />
@@ -49,13 +61,21 @@ const PipelineAutomationPage = () => {
                   </Col>
                 </Row>
 
-                <Button type="submit" className="mt-3">Guardar</Button>
+                <Button type="submit" className="mt-3">Guardar configuración</Button>
               </Form>
             </Card.Body>
           </Card>
         </Col>
         <Col md={4}>
-          <PipelineAutomationPreview config={form} />
+          <div className="app-surface app-surface-padded h-100">
+            <div className="app-surface-header">
+              <div>
+                <div className="app-eyebrow">Vista previa</div>
+                <h2 className="h6 mb-0">Comportamiento esperado</h2>
+              </div>
+            </div>
+            <PipelineAutomationPreview config={form} />
+          </div>
         </Col>
       </Row>
     </div>

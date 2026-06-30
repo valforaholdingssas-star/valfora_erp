@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Form, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Form, Table } from "react-bootstrap";
 
 import {
   createWhatsAppAccount,
@@ -127,18 +127,38 @@ const WhatsAppAccountsPage = () => {
 
   return (
     <div className="app-page">
-      <h1 className="h4 mb-3">WhatsApp · Cuentas WABA</h1>
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div>
+          <div className="app-eyebrow">WhatsApp</div>
+          <h1 className="h3 mb-1">Cuentas WABA</h1>
+          <p className="text-muted mb-0">Centraliza la conexión, verificación y administración de cuentas empresariales.</p>
+        </div>
+        <div className="app-inline-stat">
+          <span className="app-inline-stat-label">Cuentas registradas</span>
+          <strong>{accounts.length}</strong>
+        </div>
+      </div>
       {error && <Alert variant="danger" className="py-2">{error}</Alert>}
       {success && <Alert variant="success" className="py-2">{success}</Alert>}
-      <Card className="mb-3">
+      <Card className="mb-4 app-section-card">
         <Card.Body>
-          <h2 className="h6">Webhook público</h2>
+          <div className="app-surface-header">
+            <div>
+              <div className="app-eyebrow">Infraestructura</div>
+              <h2 className="h6 mb-0">Webhook público</h2>
+            </div>
+          </div>
           <WebhookUrlDisplay url={webhookUrl} />
         </Card.Body>
       </Card>
-      <Card className="mb-3">
+      <Card className="mb-4 app-section-card">
         <Card.Body>
-          <h2 className="h6">{editingId ? "Editar cuenta" : "Nueva cuenta"}</h2>
+          <div className="app-surface-header">
+            <div>
+              <div className="app-eyebrow">Credenciales</div>
+              <h2 className="h6 mb-0">{editingId ? "Editar cuenta" : "Nueva cuenta"}</h2>
+            </div>
+          </div>
           <Form onSubmit={onSubmit} className="row g-2">
             <div className="col-md-4"><Form.Control placeholder="Nombre" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required /></div>
             <div className="col-md-4"><Form.Control placeholder="WABA ID" value={form.waba_id} onChange={(e) => setForm((p) => ({ ...p, waba_id: e.target.value }))} required /></div>
@@ -159,10 +179,17 @@ const WhatsAppAccountsPage = () => {
           </Form>
         </Card.Body>
       </Card>
-      <Card>
+      <Card className="app-section-card">
         <Card.Body>
-          <h2 className="h6">Cuentas registradas</h2>
-          <Table size="sm" responsive>
+          <div className="app-surface-header">
+            <div>
+              <div className="app-eyebrow">Directorio</div>
+              <h2 className="h6 mb-0">Cuentas registradas</h2>
+            </div>
+            <Badge className="app-badge-soft">{accounts.length}</Badge>
+          </div>
+          <div className="app-table-shell">
+            <Table size="sm" responsive className="mb-0 app-table-clean">
             <thead><tr><th>Nombre</th><th>WABA</th><th>Versión</th><th>Conexión</th><th>Acciones</th></tr></thead>
             <tbody>
               {accounts.map((a) => (
@@ -183,6 +210,7 @@ const WhatsAppAccountsPage = () => {
               ))}
             </tbody>
           </Table>
+          </div>
         </Card.Body>
       </Card>
     </div>

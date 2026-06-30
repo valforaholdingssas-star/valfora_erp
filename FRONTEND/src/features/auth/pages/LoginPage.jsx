@@ -49,11 +49,11 @@ const LoginPage = () => {
             />
             <span className="valfora-login-brand-name">Valfora ERP</span>
           </div>
-          <div className="valfora-login-icon">
-            <i className="bi bi-box-arrow-in-right" />
+          <div className="valfora-login-headline">
+            <div className="valfora-login-eyebrow">Workspace</div>
+            <h1 className="valfora-login-title">Inicia sesión</h1>
+            <p className="valfora-login-subtitle">Plataforma de gestión financiera y contable.</p>
           </div>
-          <h1 className="valfora-login-title">Inicia sesión</h1>
-          <p className="valfora-login-subtitle">Plataforma de gestión financiera y contable.</p>
 
           <div className="valfora-login-form-card">
             {error && (

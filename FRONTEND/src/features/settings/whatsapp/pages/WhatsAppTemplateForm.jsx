@@ -73,11 +73,23 @@ const WhatsAppTemplateForm = () => {
 
   return (
     <div className="app-page">
-      <h1 className="h4 mb-3">{editing ? "Editar" : "Nuevo"} template</h1>
-      <Row>
+      <div className="app-page-headline app-hero-headline mb-4">
+        <div>
+          <div className="app-eyebrow">WhatsApp</div>
+          <h1 className="h3 mb-1">{editing ? "Editar template" : "Nuevo template"}</h1>
+          <p className="text-muted mb-0">Configura contenido, variables y estructura antes de enviarlo a aprobación.</p>
+        </div>
+      </div>
+      <Row className="g-3">
         <Col lg={7}>
-          <Card>
+          <Card className="app-surface app-surface-padded">
             <Card.Body>
+              <div className="app-surface-header">
+                <div>
+                  <div className="app-eyebrow">Editor</div>
+                  <h2 className="h6 mb-0">Contenido del template</h2>
+                </div>
+              </div>
               <Form onSubmit={onSubmit}>
                 <Form.Select className="mb-2" value={form.account} onChange={(e) => setForm((p) => ({ ...p, account: e.target.value }))} required>
                   {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -100,7 +112,15 @@ const WhatsAppTemplateForm = () => {
           </Card>
         </Col>
         <Col lg={5}>
-          <TemplatePreview header={preview.header} body={preview.body} footer={preview.footer} />
+          <div className="app-surface app-surface-padded h-100">
+            <div className="app-surface-header">
+              <div>
+                <div className="app-eyebrow">Vista previa</div>
+                <h2 className="h6 mb-0">Render del mensaje</h2>
+              </div>
+            </div>
+            <TemplatePreview header={preview.header} body={preview.body} footer={preview.footer} />
+          </div>
         </Col>
       </Row>
     </div>
