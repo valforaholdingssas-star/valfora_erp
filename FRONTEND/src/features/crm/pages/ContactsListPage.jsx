@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, Form, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 
@@ -9,7 +9,6 @@ import {
   fetchUsers,
 } from "../../../api/crm.js";
 import { useAuth } from "../../../contexts/AuthContext.jsx";
-import ContactDaysBadge from "../components/ContactDaysBadge.jsx";
 
 const STAGES = [
   ["", "Todas las etapas"],
@@ -17,9 +16,19 @@ const STAGES = [
   ["contacted", "Contactado"],
   ["qualified", "Calificado"],
   ["proposal", "Propuesta"],
-  ["negotiation", "Negociación"],
+  ["negotiation", "Negociacion"],
   ["won", "Ganado"],
   ["lost", "Perdido"],
+];
+
+const SOURCES = [
+  ["", "Todas las fuentes"],
+  ["other", "Other"],
+  ["website", "Website"],
+  ["whatsapp", "WhatsApp"],
+  ["linkedin", "LinkedIn"],
+  ["referral", "Referral"],
+  ["social_media", "Social media"],
 ];
 
 const stageBadgeClass = (stageValue) => {
@@ -34,11 +43,54 @@ const stageBadgeClass = (stageValue) => {
   return "stage-chip stage-chip-neutral";
 };
 
+const formatSource = (value) => {
+  const text = String(value || "other").replaceAll("_", " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
+
+const getInitials = (firstName, lastName) =>
+  `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase() || "CT";
+
+const getUrgencyMeta = (days) => {
+  if (days === null || days === undefined) {
+    return {
+      key: "none",
+      label: "Sin contacto",
+      className: "crm-urgency-chip crm-urgency-chip-neutral",
+      icon: "bi-clock",
+    };
+  }
+  if (days >= 8) {
+    return {
+      key: "high",
+      label: `${days}d sin contacto`,
+      className: "crm-urgency-chip crm-urgency-chip-high",
+      icon: "bi-exclamation-triangle",
+    };
+  }
+  if (days >= 3) {
+    return {
+      key: "medium",
+      label: `${days}d sin contacto`,
+      className: "crm-urgency-chip crm-urgency-chip-medium",
+      icon: "bi-hourglass-split",
+    };
+  }
+  return {
+    key: "low",
+    label: "Al dia",
+    className: "crm-urgency-chip crm-urgency-chip-low",
+    icon: "bi-check-circle",
+  };
+};
+
 const ContactsListPage = () => {
   const { user } = useAuth();
   const [result, setResult] = useState({ results: [], count: 0 });
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("");
+  const [source, setSource] = useState("");
+  const [urgency, setUrgency] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(() => new Set());
@@ -51,9 +103,11 @@ const ContactsListPage = () => {
 
   const load = () => {
     setLoading(true);
+    setError("");
     const params = { page_size: 50 };
     if (search) params.search = search;
     if (stage) params.lifecycle_stage = stage;
+    if (source) params.source = source;
     fetchContacts(params)
       .then((data) => setResult(data))
       .catch(() => setError("Error al cargar contactos."))
@@ -68,10 +122,16 @@ const ContactsListPage = () => {
   useEffect(() => {
     if (canManageUsers) {
       fetchUsers({ page_size: 100 })
-        .then((d) => setUsers(d.results || []))
+        .then((data) => setUsers(data.results || []))
         .catch(() => {});
     }
   }, [canManageUsers]);
+
+  const displayedContacts = useMemo(() => {
+    const contacts = result.results || [];
+    if (!urgency) return contacts;
+    return contacts.filter((contact) => getUrgencyMeta(contact.days_since_last_contact).key === urgency);
+  }, [result.results, urgency]);
 
   const handleFilter = (e) => {
     e.preventDefault();
@@ -80,17 +140,19 @@ const ContactsListPage = () => {
 
   const toggleRow = (id) => {
     setSelected((prev) => {
-      const n = new Set(prev);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
   };
 
   const toggleAll = () => {
-    const rows = result.results || [];
-    if (selected.size === rows.length) setSelected(new Set());
-    else setSelected(new Set(rows.map((c) => c.id)));
+    if (selected.size === displayedContacts.length) {
+      setSelected(new Set());
+      return;
+    }
+    setSelected(new Set(displayedContacts.map((contact) => contact.id)));
   };
 
   const runBulkAssign = async () => {
@@ -131,168 +193,207 @@ const ContactsListPage = () => {
   };
 
   return (
-    <div className="app-page">
-      <div className="d-flex justify-content-between align-items-center mb-4 app-page-headline flex-wrap gap-2">
+    <div className="crm-page-shell">
+      <section className="crm-page-header">
         <div>
-          <h1 className="h4 mb-1">Contactos</h1>
-          <p className="text-muted mb-0">Gestiona pipeline comercial, responsables y seguimiento por urgencia.</p>
+          <div className="crm-breadcrumb">
+            <span>CRM</span>
+            <i className="bi bi-chevron-right" />
+            <span>Contactos</span>
+          </div>
+          <h1>Contactos</h1>
+          <p>Gestiona pipeline comercial, responsables y seguimiento por urgencia.</p>
         </div>
-        <Button as={Link} to="/crm/contacts/new" variant="primary" size="sm">
-          Nuevo contacto
-        </Button>
-      </div>
-      <Form className="row g-2 mb-3 app-section-card p-3 m-0" onSubmit={handleFilter}>
-        <div className="col-md-5">
+        <div className="crm-page-actions">
+          <Button variant="light" className="crm-secondary-button">
+            <i className="bi bi-download" /> Exportar
+          </Button>
+          <Button as={Link} to="/crm/contacts/new" variant="primary">
+            + Nuevo contacto
+          </Button>
+        </div>
+      </section>
+
+      <Form className="crm-filter-bar crm-filter-bar-contacts" onSubmit={handleFilter}>
+        <div className="crm-filter-search">
+          <i className="bi bi-search" />
           <Form.Control
-            placeholder="Buscar email o nombre"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar nombre o email..."
           />
         </div>
-        <div className="col-md-3">
-          <Form.Select value={stage} onChange={(e) => setStage(e.target.value)}>
-            {STAGES.map(([v, label]) => (
-              <option key={v || "all"} value={v}>
-                {label}
-              </option>
-            ))}
-          </Form.Select>
-        </div>
-        <div className="col-md-2">
-          <Button type="submit" variant="outline-secondary" size="sm">
-            Filtrar
-          </Button>
+        <Form.Select value={stage} onChange={(e) => setStage(e.target.value)}>
+          {STAGES.map(([value, label]) => (
+            <option key={value || "all"} value={value}>
+              {label}
+            </option>
+          ))}
+        </Form.Select>
+        <Form.Select value={source} onChange={(e) => setSource(e.target.value)}>
+          {SOURCES.map(([value, label]) => (
+            <option key={value || "all"} value={value}>
+              {label}
+            </option>
+          ))}
+        </Form.Select>
+        <Form.Select value={urgency} onChange={(e) => setUrgency(e.target.value)}>
+          <option value="">Toda urgencia</option>
+          <option value="low">Al dia</option>
+          <option value="medium">Media</option>
+          <option value="high">Alta</option>
+          <option value="none">Sin contacto</option>
+        </Form.Select>
+        <Button type="submit" variant="dark" className="crm-dark-button">
+          <i className="bi bi-sliders" /> Filtrar
+        </Button>
+        <div className="crm-filter-total">
+          <span>{displayedContacts.length}</span> contactos
         </div>
       </Form>
 
-      {!loading && result.results?.length > 0 && (
-        <div className="d-flex flex-wrap align-items-end gap-2 mb-3 p-3 bg-body-secondary rounded border app-section-card">
-          <span className="small text-muted me-2">
-            {selected.size} seleccionado(s)
-          </span>
-          {canManageUsers ? (
-            <Form.Group className="mb-0">
-              <Form.Label className="small mb-0">Asignar a</Form.Label>
-              <Form.Select
-                size="sm"
-                value={bulkAssign}
-                onChange={(e) => setBulkAssign(e.target.value)}
-                style={{ minWidth: "200px" }}
-              >
+      {!loading && displayedContacts.length > 0 ? (
+        <section className="crm-bulk-bar">
+          <div className="crm-bulk-count">
+            <Form.Check
+              checked={displayedContacts.length > 0 && selected.size === displayedContacts.length}
+              onChange={toggleAll}
+            />
+            <span>
+              <strong>{selected.size}</strong> seleccionados
+            </span>
+          </div>
+
+          <div className="crm-bulk-separator" />
+
+          <div className="crm-bulk-group">
+            <span>Asignar a</span>
+            {canManageUsers ? (
+              <Form.Select size="sm" value={bulkAssign} onChange={(e) => setBulkAssign(e.target.value)}>
                 <option value="">Sin asignar</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.email}
+                {users.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.full_name || option.email || option.username}
                   </option>
                 ))}
               </Form.Select>
-            </Form.Group>
-          ) : (
-            <span className="small">Asignar selección a ti</span>
-          )}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline-primary"
-            disabled={bulkWorking || !selected.size}
-            onClick={() => void runBulkAssign()}
-          >
-            Aplicar asignación
-          </Button>
-          <Form.Group className="mb-0">
-            <Form.Label className="small mb-0">Nueva etapa</Form.Label>
-            <Form.Select
-              size="sm"
-              value={bulkStage}
-              onChange={(e) => setBulkStage(e.target.value)}
-              style={{ minWidth: "160px" }}
-            >
+            ) : (
+              <div className="crm-bulk-pill">Asignar a ti</div>
+            )}
+            <Button variant="outline-primary" size="sm" disabled={bulkWorking || !selected.size} onClick={() => void runBulkAssign()}>
+              Aplicar
+            </Button>
+          </div>
+
+          <div className="crm-bulk-separator" />
+
+          <div className="crm-bulk-group">
+            <span>Nueva etapa</span>
+            <Form.Select size="sm" value={bulkStage} onChange={(e) => setBulkStage(e.target.value)}>
               <option value="">—</option>
-              {STAGES.filter(([v]) => v).map(([v, label]) => (
-                <option key={v} value={v}>
+              {STAGES.filter(([value]) => value).map(([value, label]) => (
+                <option key={value} value={value}>
                   {label}
                 </option>
               ))}
             </Form.Select>
-          </Form.Group>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline-secondary"
-            disabled={bulkWorking || !selected.size || !bulkStage}
-            onClick={() => void runBulkStage()}
-          >
-            Cambiar etapa
-          </Button>
-        </div>
-      )}
+            <Button
+              variant="outline-secondary"
+              size="sm"
+              disabled={bulkWorking || !selected.size || !bulkStage}
+              onClick={() => void runBulkStage()}
+            >
+              Cambiar etapa
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
-      {error && <p className="text-danger">{error}</p>}
+      {error ? <div className="crm-empty-state text-danger">{error}</div> : null}
+
       {loading ? (
-        <div className="text-center py-4"><Spinner animation="border" /></div>
-      ) : (
-        <div className="app-section-card p-2">
-          <Table responsive hover size="sm" className="shadow-sm mb-0">
-            <thead>
-              <tr>
-                <th style={{ width: 40 }}>
-                  <Form.Check
-                    aria-label="Seleccionar todos"
-                    checked={
-                      result.results?.length > 0 && selected.size === result.results.length
-                    }
-                    onChange={toggleAll}
-                  />
-                </th>
-                <th>Nombre</th>
-                <th>Email</th>
-                <th>Fuente</th>
-                <th>Etapa</th>
-                <th>Urgencia</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.results?.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <Form.Check
-                      aria-label={`Seleccionar ${c.email}`}
-                      checked={selected.has(c.id)}
-                      onChange={() => toggleRow(c.id)}
-                    />
-                  </td>
-                  <td>
-                    <Link to={`/crm/contacts/${c.id}`}>
-                      {c.first_name} {c.last_name}
-                    </Link>
-                  </td>
-                  <td>{c.email}</td>
-                  <td className="text-capitalize">{(c.source || "other").replace("_", " ")}</td>
-                  <td>
-                    <span className={`${stageBadgeClass(c.lifecycle_stage)} text-capitalize`}>
-                      {c.lifecycle_stage?.replace("_", " ") || "sin etapa"}
-                    </span>
-                  </td>
-                  <td>
-                    <ContactDaysBadge days={c.days_since_last_contact} />
-                  </td>
-                </tr>
-              ))}
-              {!result.results?.length && (
-                <tr>
-                  <td colSpan={6} className="text-muted text-center py-4">
-                    No hay contactos con los filtros actuales.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </Table>
+        <div className="crm-empty-state">
+          <Spinner animation="border" />
         </div>
-      )}
-      {!loading && (
-        <p className="text-muted small">
-          Total: {result.count ?? result.results?.length ?? 0} contactos
-        </p>
+      ) : (
+        <section className="crm-table-panel">
+          <div className="crm-data-table-wrap">
+            <Table responsive className="crm-data-table crm-contacts-table mb-0">
+              <thead>
+                <tr>
+                  <th style={{ width: 48 }}>
+                    <Form.Check
+                      checked={displayedContacts.length > 0 && selected.size === displayedContacts.length}
+                      onChange={toggleAll}
+                    />
+                  </th>
+                  <th>Nombre</th>
+                  <th>Email</th>
+                  <th>Fuente</th>
+                  <th>Etapa</th>
+                  <th>Urgencia</th>
+                  <th className="text-end">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedContacts.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center text-muted py-4">
+                      No hay contactos con los filtros actuales.
+                    </td>
+                  </tr>
+                ) : (
+                  displayedContacts.map((contact) => {
+                    const urgencyMeta = getUrgencyMeta(contact.days_since_last_contact);
+                    return (
+                      <tr key={contact.id} className={selected.has(contact.id) ? "crm-selected-row" : ""}>
+                        <td>
+                          <Form.Check checked={selected.has(contact.id)} onChange={() => toggleRow(contact.id)} />
+                        </td>
+                        <td>
+                          <div className="crm-contact-cell">
+                            <span className="crm-contact-avatar">{getInitials(contact.first_name, contact.last_name)}</span>
+                            <div>
+                              <Link to={`/crm/contacts/${contact.id}`} className="crm-row-title">
+                                {contact.first_name} {contact.last_name}
+                              </Link>
+                              <small>{contact.company_name || "—"}</small>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="crm-mono-text">{contact.email || "—"}</span>
+                        </td>
+                        <td>{formatSource(contact.source)}</td>
+                        <td>
+                          <span className={`${stageBadgeClass(contact.lifecycle_stage)} text-capitalize`}>
+                            {String(contact.lifecycle_stage || "sin etapa").replaceAll("_", " ")}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={urgencyMeta.className}>
+                            <i className={`bi ${urgencyMeta.icon}`} />
+                            {urgencyMeta.label}
+                          </span>
+                        </td>
+                        <td className="text-end">
+                          <div className="crm-row-actions">
+                            <Button as={Link} to={`/crm/contacts/${contact.id}`} variant="light" className="crm-icon-button">
+                              <i className="bi bi-eye" />
+                            </Button>
+                            <Button as={Link} to={`/crm/contacts/${contact.id}/edit`} variant="light" className="crm-icon-button">
+                              <i className="bi bi-pencil" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </Table>
+          </div>
+        </section>
       )}
     </div>
   );

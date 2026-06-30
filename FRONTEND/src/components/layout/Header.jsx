@@ -13,6 +13,8 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
   const { theme, toggleTheme, density, toggleDensity } = useTheme();
   const { t } = useI18n();
 
+  const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() || user?.email || "Usuario";
+
   return (
     <Navbar bg="body" expand="lg" className="app-header border-bottom">
       <Container fluid>
@@ -32,7 +34,7 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
             <span>Valfora Holdings ERP</span>
           </Navbar.Brand>
         </div>
-        <div className="ms-auto d-flex align-items-center gap-2 gap-md-3">
+        <div className="ms-auto d-flex align-items-center gap-2 gap-md-3 app-header-actions">
           <Button
             variant="light"
             size="sm"
@@ -124,9 +126,10 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
             </Dropdown>
           )}
           {user && (
-            <span className="text-muted small d-none d-lg-inline">
-              {user.first_name || user.email} · {user.role}
-            </span>
+            <div className="app-header-user d-none d-lg-flex">
+              <div className="app-header-user-name">{displayName}</div>
+              <div className="app-header-user-role">{user.role}</div>
+            </div>
           )}
           <Button variant="light" size="sm" type="button" onClick={() => logout()} className="app-header-pill-btn">
             <i className="bi bi-box-arrow-right me-1" />

@@ -7,7 +7,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import { Alert, Button, Card, Form, Modal, Table } from "react-bootstrap";
 import { arrayMove } from "@dnd-kit/sortable";
 import { Link } from "react-router-dom";
 
@@ -40,6 +40,7 @@ const DealsPipelinePage = () => {
   const [users, setUsers] = useState({ results: [] });
   const [companyFilter, setCompanyFilter] = useState("");
   const [assignedToFilter, setAssignedToFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createForm, setCreateForm] = useState({
@@ -315,84 +316,145 @@ const DealsPipelinePage = () => {
   };
 
   const allDeals = STAGES.flatMap((s) => byStage[s.id] || []);
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const matchesSearch = (deal) => {
+    if (!normalizedQuery) return true;
+    return [
+      deal.title,
+      deal.contact_name,
+      deal.company_name,
+      deal.assigned_to_name,
+      deal.currency,
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(normalizedQuery));
+  };
+  const visibleByStage = STAGES.reduce((acc, stage) => {
+    acc[stage.id] = (byStage[stage.id] || []).filter(matchesSearch);
+    return acc;
+  }, {});
+  const visibleDeals = STAGES.flatMap((stage) => visibleByStage[stage.id] || []);
+  const totalPipelineValue = visibleDeals.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
 
   if (loading) {
     return (
-      <div className="text-center py-5">
-        <Spinner animation="border" />
+      <div className="crm-pipeline-page">
+        <div className="crm-pipeline-skeleton crm-pipeline-skeleton-header" />
+        <div className="crm-pipeline-skeleton crm-pipeline-skeleton-toolbar" />
+        <div className="crm-pipeline-board">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="crm-pipeline-skeleton crm-pipeline-skeleton-column" />
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="app-page">
-      <div className="app-page-header mb-3 app-page-headline d-flex justify-content-between align-items-end flex-wrap gap-2">
-        <div>
-          <h1 className="h4 mb-1">Pipeline de deals</h1>
-          <p className="text-muted mb-0">Arrastra oportunidades entre etapas y registra actividades en contexto.</p>
+    <div className="crm-pipeline-page">
+      <div className="crm-pipeline-breadcrumb">
+        <Link to="/crm" className="crm-pipeline-breadcrumb-link">CRM</Link>
+        <i className="bi bi-chevron-right" />
+        <span>Pipeline de deals</span>
+      </div>
+
+      <div className="crm-pipeline-header">
+        <div className="crm-pipeline-header-copy">
+          <h1>Pipeline de deals</h1>
+          <p>Arrastra oportunidades entre etapas, gestiona seguimiento comercial y opera el embudo sin salir del flujo.</p>
         </div>
-        <div className="d-flex align-items-center gap-2">
-          <div className="btn-group btn-group-sm" role="group" aria-label="Vista pipeline">
-            <Button
-              variant={viewMode === "canvas" ? "primary" : "outline-primary"}
+        <div className="crm-pipeline-header-actions">
+          <div className="crm-view-switch" role="group" aria-label="Vista pipeline">
+            <button
+              type="button"
+              className={viewMode === "canvas" ? "is-active" : ""}
               onClick={() => setViewMode("canvas")}
             >
+              <i className="bi bi-kanban" />
               Canvas
-            </Button>
-            <Button
-              variant={viewMode === "table" ? "primary" : "outline-primary"}
+            </button>
+            <button
+              type="button"
+              className={viewMode === "table" ? "is-active" : ""}
               onClick={() => setViewMode("table")}
             >
+              <i className="bi bi-table" />
               Tabla
-            </Button>
+            </button>
           </div>
-          <Button size="sm" onClick={openCreateModal}>
-            <i className="bi bi-plus-lg me-1" />
+          <button type="button" className="crm-header-btn crm-header-btn-primary" onClick={openCreateModal}>
+            <i className="bi bi-plus-lg" />
             Nuevo deal
-          </Button>
-          <Button variant="outline-secondary" size="sm" onClick={load}>
-            <i className="bi bi-arrow-repeat me-1" />
+          </button>
+          <button type="button" className="crm-header-btn" onClick={load}>
+            <i className="bi bi-arrow-repeat" />
             Recargar
-          </Button>
+          </button>
         </div>
       </div>
-      <div className="app-section-card p-2 mb-3 d-flex align-items-center gap-2 flex-wrap">
-        <div className="d-flex align-items-center gap-2">
-          <span className="small text-muted">Empresa:</span>
-          <Form.Select
-            size="sm"
-            value={companyFilter}
-            onChange={(e) => setCompanyFilter(e.target.value)}
-            style={{ maxWidth: 320 }}
-          >
-            <option value="">Todas</option>
-            {(companies.results || []).map((co) => (
-              <option key={co.id} value={co.id}>{co.name}</option>
-            ))}
-          </Form.Select>
+
+      <div className="crm-pipeline-toolbar">
+        <div className="crm-toolbar-search">
+          <i className="bi bi-search" />
+          <input
+            type="text"
+            placeholder="Buscar deal, contacto, empresa o asignado"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
-        <div className="d-flex align-items-center gap-2">
-          <span className="small text-muted">Asignado:</span>
-          <Form.Select
-            size="sm"
-            value={assignedToFilter}
-            onChange={(e) => setAssignedToFilter(e.target.value)}
-            style={{ maxWidth: 320 }}
-          >
-            <option value="">Todos</option>
-            {(users.results || []).map((user) => (
-              <option key={user.id} value={user.id}>
-                {resolveUserDisplayName(user)}
-              </option>
-            ))}
-          </Form.Select>
+
+        <div className="crm-toolbar-filters">
+          <div className="crm-toolbar-filter">
+            <span>Empresa</span>
+            <Form.Select
+              size="sm"
+              value={companyFilter}
+              onChange={(e) => setCompanyFilter(e.target.value)}
+            >
+              <option value="">Todas</option>
+              {(companies.results || []).map((co) => (
+                <option key={co.id} value={co.id}>{co.name}</option>
+              ))}
+            </Form.Select>
+          </div>
+
+          <div className="crm-toolbar-filter">
+            <span>Asignado</span>
+            <Form.Select
+              size="sm"
+              value={assignedToFilter}
+              onChange={(e) => setAssignedToFilter(e.target.value)}
+            >
+              <option value="">Todos</option>
+              {(users.results || []).map((user) => (
+                <option key={user.id} value={user.id}>
+                  {resolveUserDisplayName(user)}
+                </option>
+              ))}
+            </Form.Select>
+          </div>
+        </div>
+
+        <div className="crm-toolbar-summary">
+          <div className="crm-toolbar-summary-block">
+            <strong>{visibleDeals.length}</strong>
+            <span>oportunidades</span>
+          </div>
+          <div className="crm-toolbar-summary-divider" />
+          <div className="crm-toolbar-summary-block">
+            <strong>{formatDealValue(totalPipelineValue)}</strong>
+            <span>valor pipeline</span>
+          </div>
         </div>
       </div>
+
       {error && (
-        <Alert variant="danger" className="py-2 small">
+        <Alert variant="danger" className="py-2 small mb-3">
           {error}
         </Alert>
       )}
+
       {viewMode === "canvas" ? (
         <DndContext
           sensors={sensors}
@@ -401,109 +463,122 @@ const DealsPipelinePage = () => {
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          <div className="pipeline-board">
-            {STAGES.map((stage) => (
-              <PipelineColumn
-                key={stage.id}
-                stage={stage}
-                deals={byStage[stage.id] || []}
-                onCreateActivity={openActivityModal}
-                onCreateDeal={openCreateModalForStage}
-              />
-            ))}
+          <div className="crm-pipeline-board-shell">
+            <div className="crm-pipeline-board">
+              {STAGES.map((stage) => (
+                <PipelineColumn
+                  key={stage.id}
+                  stage={stage}
+                  deals={visibleByStage[stage.id] || []}
+                  stageTotal={formatDealValue((visibleByStage[stage.id] || []).reduce((sum, deal) => sum + Number(deal.value || 0), 0))}
+                  onCreateActivity={openActivityModal}
+                  onCreateDeal={openCreateModalForStage}
+                />
+              ))}
+            </div>
           </div>
           <DragOverlay>
             {activeDeal ? (
-              <Card className="shadow pipeline-card" style={{ width: "300px" }}>
-                <Card.Body className="py-2 px-2">
-                  <div className="small fw-medium">
+              <Card className="shadow-sm crm-pipeline-drag-card">
+                <Card.Body>
+                  <div className="crm-pipeline-card-topline">
+                    <span className="pipeline-chip pipeline-chip-neutral">Moviendo</span>
+                    <span className="pipeline-chip pipeline-chip-company">{activeDeal.company_name || "Sin empresa"}</span>
+                  </div>
+                  <div className="crm-pipeline-drag-title">
                     {activeDeal.title || activeDeal.contact_name || `Deal ${activeDeal.id.slice(0, 8)}`}
                   </div>
-                  <div className="text-muted small">
+                  <div className="crm-pipeline-drag-meta">
                     {formatDealValue(activeDeal.value)} {activeDeal.currency}
                   </div>
-                  <div className="text-muted small">{activeDeal.contact_name}</div>
+                  <div className="crm-pipeline-drag-contact">{activeDeal.contact_name}</div>
                 </Card.Body>
               </Card>
             ) : null}
           </DragOverlay>
         </DndContext>
       ) : (
-        <div className="app-section-card p-2">
-          <Table responsive hover size="sm" className="mb-0">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Deal</th>
-                <th>Contacto</th>
-                <th>Empresa</th>
-                <th>Asignado</th>
-                <th>Valor</th>
-                <th>Etapa</th>
-                <th style={{ width: 220 }}>Mover a</th>
-                <th style={{ width: 280 }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allDeals.map((deal, index) => (
-                <tr key={deal.id}>
-                  <td>{formatDealDisplayNumber(deal.id, index)}</td>
-                  <td>{deal.title}</td>
-                  <td>{deal.contact_name || "—"}</td>
-                  <td>{deal.company_name || "—"}</td>
-                  <td>{deal.assigned_to_name || "Sin asignar"}</td>
-                  <td>{formatDealValue(deal.value)} {deal.currency}</td>
-                  <td>{deal.stage}</td>
-                  <td>
-                    <Form.Select
-                      size="sm"
-                      value={deal.stage}
-                      disabled={movingDealId === deal.id}
-                      onChange={async (e) => {
-                        const toStage = e.target.value;
-                        if (toStage === deal.stage) return;
-                        const snapshot = structuredClone(byStage);
-                        try {
-                          setMovingDealId(deal.id);
-                          await moveDealStage(deal.id, {
-                            to_stage: toStage,
-                            notes: "Cambio manual desde tabla",
-                          });
-                          applyLocalStage(deal.id, toStage);
-                          setError("");
-                        } catch (err) {
-                          setByStage(snapshot);
-                          setError(extractApiError(err, "No se pudo mover el deal."));
-                        } finally {
-                          setMovingDealId(null);
-                        }
-                      }}
-                    >
-                      {MOVE_STAGE_OPTIONS.map((s) => (
-                        <option key={s.id} value={s.id}>{s.title}</option>
-                      ))}
-                    </Form.Select>
-                  </td>
-                  <td className="d-flex gap-2">
-                    <Button as={Link} to={`/crm/deals/${deal.id}`} size="sm" variant="outline-primary">
-                      Editar
-                    </Button>
-                    <Button as={Link} to={`/chat/deal/${deal.id}`} size="sm" variant="outline-success">
-                      Chat
-                    </Button>
-                    <Button size="sm" variant="outline-secondary" onClick={() => openActivityModal(deal)}>
-                      Actividad
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-              {!allDeals.length ? (
+        <div className="crm-pipeline-table-shell">
+          <div className="crm-pipeline-table-wrap">
+            <Table responsive className="crm-pipeline-table mb-0">
+              <thead>
                 <tr>
-                  <td colSpan={9} className="text-muted">No hay deals para mostrar.</td>
+                  <th>#</th>
+                  <th>Deal</th>
+                  <th>Contacto</th>
+                  <th>Empresa</th>
+                  <th>Asignado</th>
+                  <th>Valor</th>
+                  <th>Etapa</th>
+                  <th>Mover a</th>
+                  <th>Acciones</th>
                 </tr>
-              ) : null}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {visibleDeals.map((deal, index) => (
+                  <tr key={deal.id}>
+                    <td><span className="crm-table-pill">{formatDealDisplayNumber(deal.id, index)}</span></td>
+                    <td>
+                      <div className="crm-table-title">{deal.title || "Sin título"}</div>
+                    </td>
+                    <td>{deal.contact_name || "—"}</td>
+                    <td>{deal.company_name || "Sin empresa"}</td>
+                    <td>{deal.assigned_to_name || "Sin asignar"}</td>
+                    <td>{formatDealValue(deal.value)} {deal.currency}</td>
+                    <td><span className="crm-table-stage">{STAGES.find((s) => s.id === deal.stage)?.title || deal.stage}</span></td>
+                    <td>
+                      <Form.Select
+                        size="sm"
+                        value={deal.stage}
+                        disabled={movingDealId === deal.id}
+                        onChange={async (e) => {
+                          const toStage = e.target.value;
+                          if (toStage === deal.stage) return;
+                          const snapshot = structuredClone(byStage);
+                          try {
+                            setMovingDealId(deal.id);
+                            await moveDealStage(deal.id, {
+                              to_stage: toStage,
+                              notes: "Cambio manual desde tabla",
+                            });
+                            applyLocalStage(deal.id, toStage);
+                            setError("");
+                          } catch (err) {
+                            setByStage(snapshot);
+                            setError(extractApiError(err, "No se pudo mover el deal."));
+                          } finally {
+                            setMovingDealId(null);
+                          }
+                        }}
+                      >
+                        {MOVE_STAGE_OPTIONS.map((s) => (
+                          <option key={s.id} value={s.id}>{s.title}</option>
+                        ))}
+                      </Form.Select>
+                    </td>
+                    <td>
+                      <div className="crm-table-actions">
+                        <Button as={Link} to={`/crm/deals/${deal.id}`} size="sm" variant="outline-primary">
+                          Editar
+                        </Button>
+                        <Button as={Link} to={`/chat/deal/${deal.id}`} size="sm" variant="outline-success">
+                          Chat
+                        </Button>
+                        <Button size="sm" variant="outline-secondary" onClick={() => openActivityModal(deal)}>
+                          Actividad
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!visibleDeals.length ? (
+                  <tr>
+                    <td colSpan={9} className="text-muted text-center py-5">No hay deals para mostrar con los filtros actuales.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </Table>
+          </div>
         </div>
       )}
       <Modal show={showCreateModal} onHide={closeCreateModal} centered>

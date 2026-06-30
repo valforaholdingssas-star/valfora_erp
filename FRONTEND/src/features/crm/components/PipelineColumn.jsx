@@ -4,7 +4,7 @@ import { useDroppable } from "@dnd-kit/core";
 
 import DealCard from "./DealCard.jsx";
 
-const PipelineColumn = ({ stage, deals, onCreateActivity, onCreateDeal }) => {
+const PipelineColumn = ({ stage, deals, stageTotal, onCreateActivity, onCreateDeal }) => {
   const { setNodeRef, isOver } = useDroppable({
     id: stage.id,
     data: { type: "column", stageId: stage.id },
@@ -13,36 +13,51 @@ const PipelineColumn = ({ stage, deals, onCreateActivity, onCreateDeal }) => {
   return (
     <div
       ref={setNodeRef}
-      className={`pipeline-stage pipeline-stage--colored ${isOver ? "is-over" : ""}`}
+      className={`crm-stage-column ${isOver ? "is-over" : ""}`}
       style={{ "--stage-accent": stage.accent, "--stage-tint": stage.tint }}
     >
-      <div className="d-flex justify-content-between align-items-center mb-2 px-1">
-        <div className="fw-semibold small">{stage.title}</div>
-        <div className="d-flex align-items-center gap-2">
+      <div className="crm-stage-column-accent" />
+      <div className="crm-stage-column-header">
+        <div className="crm-stage-column-heading">
+          <div className="crm-stage-column-title-row">
+            <div className="crm-stage-column-title">{stage.title}</div>
+            <span className="crm-stage-column-count" style={{ backgroundColor: stage.tint, color: stage.accent }}>
+              {deals.length}
+            </span>
+          </div>
+          <div className="crm-stage-column-total">{stageTotal} pipeline</div>
+        </div>
+        <div className="crm-stage-column-actions">
           <button
             type="button"
-            className="btn btn-sm btn-link text-decoration-none p-0"
-            style={{ color: stage.accent }}
+            className="crm-stage-add"
             onClick={() => onCreateDeal?.(stage.id)}
             title={`Crear deal en ${stage.title}`}
             aria-label={`Crear deal en ${stage.title}`}
           >
-            <i className="bi bi-plus-circle-fill" />
+            <i className="bi bi-plus-lg" />
           </button>
-          <span className="badge" style={{ backgroundColor: stage.accent }}>{deals.length}</span>
         </div>
       </div>
-      <SortableContext items={deals.map((d) => d.id)} strategy={verticalListSortingStrategy}>
-        {deals.map((deal, index) => (
-          <DealCard
-            key={deal.id}
-            deal={deal}
-            stageAccent={stage.accent}
-            onCreateActivity={onCreateActivity}
-            orderIndex={index}
-          />
-        ))}
-      </SortableContext>
+      <div className="crm-stage-column-body">
+        <SortableContext items={deals.map((d) => d.id)} strategy={verticalListSortingStrategy}>
+          {deals.map((deal, index) => (
+            <DealCard
+              key={deal.id}
+              deal={deal}
+              stageAccent={stage.accent}
+              onCreateActivity={onCreateActivity}
+              orderIndex={index}
+            />
+          ))}
+        </SortableContext>
+        {!deals.length ? (
+          <div className="crm-stage-empty">
+            <i className="bi bi-inbox" />
+            <span>Sin oportunidades en esta etapa.</span>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 };
@@ -55,6 +70,7 @@ PipelineColumn.propTypes = {
     tint: PropTypes.string.isRequired,
   }).isRequired,
   deals: PropTypes.arrayOf(PropTypes.object).isRequired,
+  stageTotal: PropTypes.string.isRequired,
   onCreateActivity: PropTypes.func,
   onCreateDeal: PropTypes.func,
 };

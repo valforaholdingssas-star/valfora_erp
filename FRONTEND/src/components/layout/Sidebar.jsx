@@ -6,13 +6,14 @@ import { NavLink, useLocation } from "react-router-dom";
 import { fetchWikiDocuments } from "../../api/wiki.js";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 import { useNotifications } from "../../contexts/NotificationContext.jsx";
+import logoMark from "../../assets/valfora-logo-transparent.png";
 
 const linkClass = ({ isActive }) =>
   `nav-link app-nav-link d-flex align-items-center gap-2 px-2 ${isActive ? "active" : ""}`;
 
 const Sidebar = ({ collapsed }) => {
   const { pathname } = useLocation();
-  const { hasModuleAccess } = useAuth();
+  const { hasModuleAccess, user } = useAuth();
   const { chatUnreadCount, linkedinUnreadCount } = useNotifications();
   const [query, setQuery] = useState("");
   const [openGroups, setOpenGroups] = useState({});
@@ -182,11 +183,13 @@ const Sidebar = ({ collapsed }) => {
     setOpenGroups((prev) => {
       const next = { ...prev };
       sections.forEach((section) => {
-        if (next[section.key] === undefined) next[section.key] = false;
+        if (next[section.key] === undefined) {
+          next[section.key] = section.items.some((item) => pathname === item.to || pathname.startsWith(`${item.to}/`));
+        }
       });
       return next;
     });
-  }, [sections]);
+  }, [pathname, sections]);
 
   useEffect(() => {
     if (!query.trim()) return;
@@ -205,45 +208,62 @@ const Sidebar = ({ collapsed }) => {
 
   return (
     <aside
-      className={`app-sidebar border-end p-3 ${collapsed ? "is-collapsed" : ""}`}
+      className={`app-sidebar ${collapsed ? "is-collapsed" : ""}`}
       style={{ minHeight: "calc(100vh - 56px)" }}
     >
       {collapsed ? (
-        <Nav className="flex-column gap-1">
-          {sections.flatMap((section) =>
-            section.items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "/"}
-                className={linkClass}
-                title={item.label}
-              >
-                <i className={`bi ${item.icon}`} />
-                {item.to === "/chat" && chatUnreadCount > 0 && (
-                  <span className="badge rounded-pill bg-danger ms-auto">
-                    {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
-                  </span>
-                )}
-                {item.to === "/settings/linkedin" && linkedinUnreadCount > 0 && (
-                  <span className="badge rounded-pill bg-danger ms-auto">
-                    {linkedinUnreadCount > 99 ? "99+" : linkedinUnreadCount}
-                  </span>
-                )}
-              </NavLink>
-            )),
-          )}
-        </Nav>
+        <div className="app-sidebar-shell">
+          <div className="app-sidebar-brand app-sidebar-brand-collapsed">
+            <img src={logoMark} alt="Valfora" className="app-sidebar-brand-logo" />
+          </div>
+          <div className="app-sidebar-scroll">
+            <Nav className="flex-column gap-1">
+              {sections.flatMap((section) =>
+                section.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === "/"}
+                    className={linkClass}
+                    title={item.label}
+                  >
+                    <i className={`bi ${item.icon}`} />
+                    {item.to === "/chat" && chatUnreadCount > 0 && (
+                      <span className="badge rounded-pill bg-danger ms-auto">
+                        {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                      </span>
+                    )}
+                    {item.to === "/settings/linkedin" && linkedinUnreadCount > 0 && (
+                      <span className="badge rounded-pill bg-danger ms-auto">
+                        {linkedinUnreadCount > 99 ? "99+" : linkedinUnreadCount}
+                      </span>
+                    )}
+                  </NavLink>
+                )),
+              )}
+            </Nav>
+          </div>
+        </div>
       ) : (
         <div className="app-sidebar-shell">
+          <div className="app-sidebar-brand">
+            <img src={logoMark} alt="Valfora" className="app-sidebar-brand-logo" />
+            <div className="app-sidebar-brand-copy">
+              <div className="app-sidebar-brand-title">VALFORA</div>
+              <div className="app-sidebar-brand-subtitle">HOLDINGS</div>
+            </div>
+          </div>
           <div className="app-sidebar-search">
-            <Form.Control
-              size="sm"
-              value={query}
-              placeholder="Buscar opción..."
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Buscar opción del menú"
-            />
+            <div className="app-sidebar-search-shell">
+              <i className="bi bi-search" />
+              <Form.Control
+                size="sm"
+                value={query}
+                placeholder="Buscar opción..."
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Buscar opción del menú"
+              />
+            </div>
           </div>
           <div className="app-sidebar-scroll">
             {filteredSections.map((section) => {
@@ -285,6 +305,17 @@ const Sidebar = ({ collapsed }) => {
             {!filteredSections.length && (
               <p className="small text-muted px-2 mt-2 mb-0">No hay resultados para tu búsqueda.</p>
             )}
+          </div>
+          <div className="app-sidebar-user">
+            <div className="app-sidebar-user-avatar">
+              {(user?.first_name?.[0] || user?.email?.[0] || "V").toUpperCase()}
+            </div>
+            <div className="app-sidebar-user-copy">
+              <div className="app-sidebar-user-name">
+                {[user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() || user?.email || "Usuario"}
+              </div>
+              <div className="app-sidebar-user-role">{user?.role || "super_admin"}</div>
+            </div>
           </div>
         </div>
       )}

@@ -17,7 +17,7 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
   return (
     <Card
       ref={setNodeRef}
-      className={`mb-2 shadow-sm pipeline-card ${isDragging ? "is-dragging" : ""}`}
+      className={`crm-deal-card ${isDragging ? "is-dragging" : ""}`}
       style={{
         "--deal-stage-accent": stageAccent || "#3b82f6",
         transform: CSS.Transform.toString(transform),
@@ -26,8 +26,8 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
         opacity: isDragging ? 0.55 : 1,
       }}
     >
-      <Card.Body className="py-2 px-2">
-        <div className="d-flex flex-wrap align-items-center gap-1 mb-1">
+      <Card.Body className="crm-deal-card-body">
+        <div className="crm-deal-card-chips">
           <span className="pipeline-chip pipeline-chip-neutral">{formatDealDisplayNumber(deal.id, orderIndex)}</span>
           <span className={`pipeline-chip ${deal.company_name ? "pipeline-chip-company" : "pipeline-chip-company-empty"}`}>
             {companyLabel}
@@ -43,13 +43,13 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
             {assigneeLabel}
           </span>
         </div>
-        <div className="small fw-medium d-flex align-items-start justify-content-between gap-2 mb-1">
-          <span>{deal.title || deal.contact_name || `Deal ${deal.id.slice(0, 8)}`}</span>
-          <div className="d-flex align-items-center gap-1">
+        <div className="crm-deal-card-title-row">
+          <span className="crm-deal-card-title">{deal.title || deal.contact_name || `Deal ${deal.id.slice(0, 8)}`}</span>
+          <div className="crm-deal-card-title-actions">
             {deal.is_stale ? <Badge bg="secondary">stale</Badge> : null}
             <button
               type="button"
-              className="btn btn-sm btn-link text-muted p-0 pipeline-drag-handle"
+              className="pipeline-drag-handle crm-deal-drag-handle"
               title="Arrastrar"
               aria-label="Arrastrar deal"
               {...attributes}
@@ -59,27 +59,29 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
             </button>
           </div>
         </div>
-        <div className="text-muted small">
+        <div className="crm-deal-card-value">
           {formatDealValue(deal.value)} {deal.currency}
         </div>
-        <div className="text-muted small mb-2">{deal.contact_name}</div>
-        <div className="d-flex gap-2">
-          <Button as={Link} to={`/crm/deals/${deal.id}`} size="sm" variant="outline-primary">
-            Editar
-          </Button>
-          <Button as={Link} to={`/chat/deal/${deal.id}`} size="sm" variant="outline-success">
-            Chat
-          </Button>
-          <Button
-            size="sm"
-            variant="outline-secondary"
-            onClick={(e) => {
-              e.stopPropagation();
-              onCreateActivity?.(deal);
-            }}
-          >
-            Actividad
-          </Button>
+        <div className="crm-deal-card-contact">{deal.contact_name}</div>
+        <div className="crm-deal-card-footer">
+          <div className="crm-deal-card-actions">
+            <Button as={Link} to={`/crm/deals/${deal.id}`} size="sm" variant="outline-primary">
+              Editar
+            </Button>
+            <Button as={Link} to={`/chat/deal/${deal.id}`} size="sm" variant="outline-success">
+              Chat
+            </Button>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCreateActivity?.(deal);
+              }}
+            >
+              Actividad
+            </Button>
+          </div>
         </div>
       </Card.Body>
     </Card>
