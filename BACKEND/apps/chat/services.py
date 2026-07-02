@@ -17,6 +17,7 @@ from django.utils import timezone
 from apps.ai_config.runtime import resolve_global_ai_mode_enabled
 from apps.chat.models import Conversation, Message
 from apps.crm.models import Contact
+from apps.whatsapp.models import WhatsAppPhoneNumber
 
 logger = logging.getLogger(__name__)
 
@@ -168,10 +169,28 @@ def send_whatsapp_text_message(*, to_e164: str, body: str) -> dict[str, Any]:
     return data
 
 
-def get_whatsapp_media_metadata(media_id: str) -> dict[str, Any]:
-    """GET /{media-id} from Graph API (URL + mime type for download)."""
+def _resolve_whatsapp_api_credentials(
+    phone_number: WhatsAppPhoneNumber | None = None,
+) -> tuple[str, str]:
+    """Resolve Graph API base URL and bearer token for media operations."""
+    if phone_number and phone_number.account_id and phone_number.account.access_token:
+        api_url = f"https://graph.facebook.com/{phone_number.account.api_version}".rstrip("/")
+        token = str(phone_number.account.access_token or "").strip()
+        if token:
+            return api_url, token
+
     token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
     api_url = os.getenv("WHATSAPP_API_URL", "https://graph.facebook.com/v18.0").rstrip("/")
+    return api_url, token
+
+
+def get_whatsapp_media_metadata(
+    media_id: str,
+    *,
+    phone_number: WhatsAppPhoneNumber | None = None,
+) -> dict[str, Any]:
+    """GET /{media-id} from Graph API (URL + mime type for download)."""
+    api_url, token = _resolve_whatsapp_api_credentials(phone_number)
     if not token or not media_id:
         raise RuntimeError("WhatsApp token or media id missing.")
     url = f"{api_url}/{media_id}"
@@ -186,14 +205,18 @@ def get_whatsapp_media_metadata(media_id: str) -> dict[str, Any]:
     return data
 
 
-def download_whatsapp_media_binary(media_id: str) -> tuple[bytes, str]:
+def download_whatsapp_media_binary(
+    media_id: str,
+    *,
+    phone_number: WhatsAppPhoneNumber | None = None,
+) -> tuple[bytes, str]:
     """Download binary content for a WhatsApp media id."""
-    meta = get_whatsapp_media_metadata(media_id)
+    meta = get_whatsapp_media_metadata(media_id, phone_number=phone_number)
     download_url = meta.get("url") or ""
     mime = meta.get("mime_type", "application/octet-stream")
     if not download_url:
         raise RuntimeError("No download URL in media metadata")
-    token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
+    _, token = _resolve_whatsapp_api_credentials(phone_number)
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(download_url, headers=headers, timeout=120)
     if response.status_code >= 400:

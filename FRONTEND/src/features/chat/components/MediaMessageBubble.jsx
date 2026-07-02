@@ -14,11 +14,15 @@ const MediaMessageBubble = ({ message }) => {
   const attachmentUrl = ensureAbsoluteUrl(firstAttachment?.url || message.metadata?.link || null);
   const attachmentName = firstAttachment?.file_name || message.metadata?.attachment_name || "Adjunto";
   const attachmentType = firstAttachment?.file_type || "";
+  const mediaError = message.metadata?.media_download_error || null;
 
   if (!attachmentUrl) {
     return (
       <div>
-        <div className="small text-muted">Adjunto en procesamiento...</div>
+        <div className={`small ${mediaError ? "text-danger" : "text-muted"}`}>
+          {mediaError ? "No se pudo procesar este adjunto." : "Adjunto en procesamiento..."}
+        </div>
+        {mediaError ? <div className="small text-muted mt-1">Revisa la configuración de la línea WhatsApp o intenta reenviar el archivo.</div> : null}
         {message.content ? <div className="small mt-1">{message.content}</div> : null}
       </div>
     );

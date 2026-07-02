@@ -168,11 +168,12 @@ def generate_ai_reply_for_message(inbound_message_id: str) -> None:
 def fetch_whatsapp_media_for_message(message_id: str, media_id: str) -> None:
     """Download WhatsApp media from Graph API and attach to message."""
     try:
-        msg = Message.objects.get(pk=message_id)
+        msg = Message.objects.select_related("conversation__whatsapp_phone_number__account").get(pk=message_id)
     except Message.DoesNotExist:
         return
+    phone_number = getattr(msg.conversation, "whatsapp_phone_number", None)
     try:
-        data, mime = services.download_whatsapp_media_binary(media_id)
+        data, mime = services.download_whatsapp_media_binary(media_id, phone_number=phone_number)
     except Exception as exc:  # noqa: BLE001
         logger.exception("WhatsApp media download failed: %s", exc)
         msg.metadata = {**msg.metadata, "media_download_error": str(exc)}
