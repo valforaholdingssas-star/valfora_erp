@@ -8,6 +8,7 @@ from apps.chat.models import Conversation, Message
 from apps.crm.lead_engine import LeadEngine
 from apps.crm.models import Activity, Contact, Deal, DealStageHistory, LeadEngineConfig
 from apps.whatsapp.models import WhatsAppBusinessAccount, WhatsAppPhoneNumber
+from unittest.mock import patch
 
 
 @pytest.fixture
@@ -86,3 +87,26 @@ def test_lead_engine_is_idempotent_for_duplicate_whatsapp_message_id(wa_phone, a
 
     assert Message.objects.filter(whatsapp_message_id="wamid-dup-1").count() == 1
     assert first["message"].id == second["message"].id
+
+
+@pytest.mark.django_db
+@patch("apps.chat.tasks.fetch_whatsapp_media_for_message.delay")
+def test_lead_engine_enqueues_inbound_media_download(mock_media_delay, wa_phone, admin_user):
+    cfg = LeadEngineConfig.objects.create(
+        assignment_strategy="specific_user",
+        assignment_specific_user=admin_user,
+    )
+    engine = LeadEngine(cfg)
+
+    out = engine.process_inbound_whatsapp_message(
+        phone_number="+57 300 111 0000",
+        sender_name="Cliente Imagen",
+        message_content="[Imagen]",
+        message_type="image",
+        whatsapp_message_id="wamid-image-1",
+        whatsapp_phone_number=wa_phone,
+        metadata={"type": "image", "image": {"id": "media-xyz"}},
+    )
+
+    assert out["message"].message_type == "image"
+    mock_media_delay.assert_called_once_with(str(out["message"].id), "media-xyz")

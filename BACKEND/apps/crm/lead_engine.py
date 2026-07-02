@@ -52,6 +52,8 @@ class LeadEngine:
         """Process inbound WhatsApp payload and sync CRM + chat records atomically."""
 
         from apps.chat.models import Conversation, Message
+        from apps.chat.services import _whatsapp_media_id_from_raw
+        from apps.chat.tasks import fetch_whatsapp_media_for_message
 
         # Idempotency for duplicated webhook deliveries
         existing = Message.objects.filter(whatsapp_message_id=whatsapp_message_id).first()
@@ -135,6 +137,10 @@ class LeadEngine:
             status="delivered",
             metadata={"raw": metadata or {}, "from": normalize_phone(phone_number)},
         )
+        media_message_type = message_type if message_type in dict(Message.TYPE_CHOICES) else "text"
+        media_id = _whatsapp_media_id_from_raw(metadata or {}, media_message_type)
+        if media_id and media_message_type != "text":
+            fetch_whatsapp_media_for_message.delay(str(msg.id), media_id)
 
         activity = None
         if self.config.auto_create_follow_up and deal:
