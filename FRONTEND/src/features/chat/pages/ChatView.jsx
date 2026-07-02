@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Badge, Button, Form, Modal } from "react-bootstrap";
-import { Link, useParams } from "react-router-dom";
+import { Alert, Button, Form, Modal } from "react-bootstrap";
+import { useParams } from "react-router-dom";
 
 import { fetchAiConfigurations } from "../../../api/aiConfig.js";
 import {
@@ -18,7 +18,9 @@ import {
 } from "../../../api/chat.js";
 import { fetchDeal, moveDealStage, updateDeal } from "../../../api/crm.js";
 import { fetchUsers } from "../../../api/users.js";
+import { fetchWhatsAppPhoneNumbers } from "../../../api/whatsapp.js";
 import { useAuth } from "../../../contexts/AuthContext.jsx";
+import { useNotifications } from "../../../contexts/NotificationContext.jsx";
 import ChatComposer from "../components/ChatComposer.jsx";
 import ChatSidebar from "../components/ChatSidebar.jsx";
 import TemplateSelector from "../components/TemplateSelector.jsx";
@@ -155,6 +157,7 @@ const ChatView = () => {
   ]);
 
   const { user } = useAuth();
+  const { chatUnreadCount } = useNotifications();
   const { dealId } = useParams();
   const [conversations, setConversations] = useState({ results: [], count: 0 });
   const [activeId, setActiveId] = useState(null);
@@ -199,8 +202,11 @@ const ChatView = () => {
   const [chatFiltersModalOpen, setChatFiltersModalOpen] = useState(false);
   const [globalAiModeEnabled, setGlobalAiModeEnabled] = useState(false);
   const [globalAiModeLoading, setGlobalAiModeLoading] = useState(false);
+  const [whatsAppLines, setWhatsAppLines] = useState([]);
+  const [selectedWhatsAppLine, setSelectedWhatsAppLine] = useState("");
   const typingTimerRef = useRef(null);
   const typingStopRef = useRef(null);
+  const lastUnreadRefreshRef = useRef(null);
 
   const currentUserId = useMemo(() => (user?.id ? String(user.id) : null), [user?.id]);
   const canManageAiConfigs = user && ["admin", "super_admin"].includes(user.role);
@@ -255,12 +261,13 @@ const ChatView = () => {
       deal_opened_from: filters.dealOpenedFrom || undefined,
       deal_opened_to: filters.dealOpenedTo || undefined,
       responsible: filters.responsible || undefined,
+      whatsapp_phone_number: selectedWhatsAppLine || undefined,
     };
     fetchConversations(params)
       .then(setConversations)
       .catch(() => {})
       .finally(() => setLoadingList(false));
-  }, [searchQuery, filters, channelFilter]);
+  }, [searchQuery, filters, channelFilter, selectedWhatsAppLine]);
 
   const extractApiError = (error, fallback = "No fue posible completar la operación.") => {
     const payload = error?.response?.data?.data ?? error?.response?.data ?? {};
@@ -280,8 +287,25 @@ const ChatView = () => {
   }, [loadConversations]);
 
   useEffect(() => {
+    if (lastUnreadRefreshRef.current === null) {
+      lastUnreadRefreshRef.current = chatUnreadCount;
+      return;
+    }
+    if (chatUnreadCount !== lastUnreadRefreshRef.current) {
+      lastUnreadRefreshRef.current = chatUnreadCount;
+      loadConversations();
+    }
+  }, [chatUnreadCount, loadConversations]);
+
+  useEffect(() => {
     fetchUsers({ page_size: 200, is_active: true })
       .then((data) => setResponsibleOptions(data.results || []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchWhatsAppPhoneNumbers({ page_size: 200 })
+      .then((data) => setWhatsAppLines(data.results || []))
       .catch(() => {});
   }, []);
 
@@ -325,6 +349,12 @@ const ChatView = () => {
   useEffect(() => {
     setChannelFilter("whatsapp");
   }, [dealId]);
+
+  useEffect(() => {
+    if (channelFilter !== "whatsapp" && selectedWhatsAppLine) {
+      setSelectedWhatsAppLine("");
+    }
+  }, [channelFilter, selectedWhatsAppLine]);
 
   useEffect(() => {
     if (activeId) {
@@ -633,6 +663,14 @@ const ChatView = () => {
     () => (showOnlyOverdue ? sortedConversations.filter((c) => c.__sla?.isOverdue) : sortedConversations),
     [showOnlyOverdue, sortedConversations],
   );
+  const whatsappLineCounts = useMemo(() => {
+    const counts = {};
+    sortedConversations.forEach((conv) => {
+      const key = conv.whatsapp_phone_number || "__none__";
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    return counts;
+  }, [sortedConversations]);
   const activeConv = useMemo(
     () => (conversations.results || []).find((c) => c.id === activeId),
     [conversations.results, activeId],
@@ -893,12 +931,22 @@ const ChatView = () => {
     <div className="app-page app-chat-page">
       <div className="app-page-header app-page-headline app-chat-headline mb-3">
         <div>
+          <div className="app-chat-breadcrumb">General / Conversaciones</div>
           <h1 className="h4 mb-1">Conversaciones</h1>
-          <p className="text-muted mb-0">
-            Gestiona conversaciones en tiempo real, contexto de IA y seguimiento comercial desde un solo flujo.
-          </p>
+          <p className="text-muted mb-0">Gestión centralizada de WhatsApp, IA y seguimiento comercial.</p>
         </div>
         <div className="app-chat-headline-actions">
+          {canManageAiConfigs && (
+            <Form.Check
+              type="switch"
+              id="chat-global-ai-switch"
+              className="app-chat-global-ai-toggle"
+              label={globalAiModeLoading ? "Actualizando IA..." : "IA global"}
+              checked={Boolean(globalAiModeEnabled)}
+              disabled={globalAiModeLoading}
+              onChange={(e) => { void handleToggleGlobalAiMode(e.target.checked); }}
+            />
+          )}
           <button
             type="button"
             className="btn btn-outline-secondary btn-sm"
@@ -968,6 +1016,10 @@ const ChatView = () => {
             onQueryChange={setSearchQuery}
             channelFilter={channelFilter}
             onChannelFilterChange={setChannelFilter}
+            whatsAppLines={whatsAppLines}
+            selectedWhatsAppLine={selectedWhatsAppLine}
+            onSelectWhatsAppLine={setSelectedWhatsAppLine}
+            whatsAppLineCounts={whatsappLineCounts}
             className={mobileSection !== "conversations" ? "d-none d-lg-block" : ""}
           />
         )}
@@ -977,33 +1029,6 @@ const ChatView = () => {
           )}
           {activeId && (
             <>
-              <div className="app-chat-center-head">
-                <div className="app-chat-context-row">
-                  <div className="app-chat-context-chips">
-                    <span className="badge text-bg-light">
-                      <i className="bi bi-person me-1" />
-                      {activeConv?.contact_name || "Sin contacto"}
-                    </span>
-                    <span className="badge text-bg-light text-capitalize">
-                      <i className="bi bi-chat-dots me-1" />
-                      {activeConv?.channel || "chat"}
-                    </span>
-                    {activeConv?.deal_title && (
-                      <span className="badge text-bg-light">
-                        <i className="bi bi-briefcase me-1" />
-                        {activeConv.deal_title}
-                      </span>
-                    )}
-                  </div>
-                  <div className="d-flex align-items-center gap-2">
-                    {activeConv?.contact && (
-                      <Link className="small" to={`/crm/contacts/${activeConv.contact}`}>
-                        Ver contacto
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              </div>
               <div className="app-chat-center-body">
                 <ChatThread
                   loading={loadingMsg}
@@ -1057,7 +1082,7 @@ const ChatView = () => {
             </>
           )}
           <div className="app-chat-backlink">
-            <Link to="/crm/contacts">← Volver al CRM</Link>
+            <a href="/crm/contacts">← Volver al CRM</a>
           </div>
         </div>
       </div>
@@ -1071,6 +1096,19 @@ const ChatView = () => {
               <option value="">Todos</option>
             </Form.Select>
           </Form.Group>
+          {channelFilter === "whatsapp" && (
+            <Form.Group>
+              <Form.Label>Línea de WhatsApp</Form.Label>
+              <Form.Select value={selectedWhatsAppLine} onChange={(e) => setSelectedWhatsAppLine(e.target.value)}>
+                <option value="">Todas</option>
+                {whatsAppLines.map((line) => (
+                  <option key={line.id} value={line.id}>
+                    {line.line_name || line.internal_name || line.verified_name || line.display_phone_number}
+                  </option>
+                ))}
+              </Form.Select>
+            </Form.Group>
+          )}
           <Form.Group>
             <Form.Label>Etapa del deal</Form.Label>
             <Form.Select value={filters.dealStage} onChange={(e) => setFilters((p) => ({ ...p, dealStage: e.target.value }))}>

@@ -87,6 +87,7 @@ class WhatsAppPhoneNumber(BaseModel):
     phone_number_id = models.CharField(max_length=128, unique=True, db_index=True)
     display_phone_number = models.CharField(max_length=40)
     verified_name = models.CharField(max_length=255, blank=True)
+    internal_name = models.CharField(max_length=120, blank=True)
     quality_rating = models.CharField(max_length=30, default="UNKNOWN")
     messaging_limit = models.CharField(max_length=30, default="TIER_250")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")

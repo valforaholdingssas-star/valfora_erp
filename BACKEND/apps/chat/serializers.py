@@ -70,6 +70,8 @@ class ConversationSerializer(serializers.ModelSerializer):
     latest_deal_stage = serializers.SerializerMethodField()
     latest_deal_created_at = serializers.SerializerMethodField()
     latest_deal_assigned_to = serializers.SerializerMethodField()
+    whatsapp_line_name = serializers.SerializerMethodField()
+    whatsapp_line_display_phone = serializers.SerializerMethodField()
     ai_configuration = serializers.PrimaryKeyRelatedField(
         queryset=AIConfiguration.objects.filter(is_active=True),
         allow_null=True,
@@ -95,6 +97,8 @@ class ConversationSerializer(serializers.ModelSerializer):
             "human_handoff_at",
             "assigned_to",
             "whatsapp_phone_number",
+            "whatsapp_line_name",
+            "whatsapp_line_display_phone",
             "customer_service_window_expires",
             "last_inbound_message_at",
             "last_message_at",
@@ -161,6 +165,18 @@ class ConversationSerializer(serializers.ModelSerializer):
     def get_latest_deal_assigned_to(self, obj: Conversation):
         deal = self._latest_deal(obj)
         return str(deal.assigned_to_id) if deal and deal.assigned_to_id else None
+
+    def get_whatsapp_line_name(self, obj: Conversation):
+        phone = getattr(obj, "whatsapp_phone_number", None)
+        if not phone:
+            return None
+        return phone.internal_name or phone.verified_name or phone.display_phone_number
+
+    def get_whatsapp_line_display_phone(self, obj: Conversation):
+        phone = getattr(obj, "whatsapp_phone_number", None)
+        if not phone:
+            return None
+        return phone.display_phone_number
 
 
 class MessageCreateSerializer(serializers.Serializer):

@@ -29,6 +29,7 @@ class WhatsAppBusinessAccountSerializer(serializers.ModelSerializer):
 
 class WhatsAppPhoneNumberSerializer(serializers.ModelSerializer):
     account_name = serializers.CharField(source="account.name", read_only=True)
+    line_name = serializers.SerializerMethodField()
 
     class Meta:
         model = WhatsAppPhoneNumber
@@ -39,6 +40,8 @@ class WhatsAppPhoneNumberSerializer(serializers.ModelSerializer):
             "phone_number_id",
             "display_phone_number",
             "verified_name",
+            "internal_name",
+            "line_name",
             "quality_rating",
             "messaging_limit",
             "status",
@@ -49,6 +52,9 @@ class WhatsAppPhoneNumberSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = ("id", "created_at", "updated_at")
+
+    def get_line_name(self, obj: WhatsAppPhoneNumber) -> str:
+        return obj.internal_name or obj.verified_name or obj.display_phone_number
 
 
 class WhatsAppTemplateSerializer(serializers.ModelSerializer):

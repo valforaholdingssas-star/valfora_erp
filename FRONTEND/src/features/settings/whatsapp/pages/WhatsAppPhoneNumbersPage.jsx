@@ -13,9 +13,19 @@ const WhatsAppPhoneNumbersPage = () => {
   const [accounts, setAccounts] = useState([]);
   const [accountId, setAccountId] = useState("");
   const [rows, setRows] = useState([]);
+  const [lineNames, setLineNames] = useState({});
 
   const load = () => {
-    fetchWhatsAppPhoneNumbers({ page_size: 100 }).then((d) => setRows(d.results || []));
+    fetchWhatsAppPhoneNumbers({ page_size: 100 }).then((d) => {
+      const nextRows = d.results || [];
+      setRows(nextRows);
+      setLineNames(
+        nextRows.reduce((acc, row) => {
+          acc[row.id] = row.internal_name || "";
+          return acc;
+        }, {}),
+      );
+    });
   };
 
   useEffect(() => {
@@ -64,11 +74,25 @@ const WhatsAppPhoneNumbersPage = () => {
           </div>
           <div className="app-table-shell">
             <Table size="sm" responsive className="mb-0 app-table-clean">
-            <thead><tr><th>Número</th><th>Nombre</th><th>Calidad</th><th>Límite</th><th>Estado</th><th>Default</th></tr></thead>
+            <thead><tr><th>Número</th><th>Nombre interno</th><th>Nombre verificado</th><th>Calidad</th><th>Límite</th><th>Estado</th><th>Default</th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id}>
                   <td>{r.display_phone_number}</td>
+                  <td style={{ minWidth: 220 }}>
+                    <Form.Control
+                      size="sm"
+                      value={lineNames[r.id] ?? ""}
+                      placeholder="Ej. Ventas Medellín"
+                      onChange={(e) => setLineNames((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                      onBlur={async (e) => {
+                        const nextValue = e.target.value.trim();
+                        if ((r.internal_name || "") === nextValue) return;
+                        await updateWhatsAppPhoneNumber(r.id, { internal_name: nextValue });
+                        load();
+                      }}
+                    />
+                  </td>
                   <td>{r.verified_name || "—"}</td>
                   <td><QualityRatingBadge value={r.quality_rating} /></td>
                   <td>{r.messaging_limit}</td>

@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Badge, Spinner } from "react-bootstrap";
+import { Alert, Spinner } from "react-bootstrap";
 
 import MediaMessageBubble from "./MediaMessageBubble.jsx";
 import MessageStatusTicks from "./MessageStatusTicks.jsx";
@@ -82,32 +82,51 @@ const ChatThread = ({
   return (
     <>
       {activeConv && (
-        <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2 app-chat-topbar">
-          <div>
-            <strong>{activeConv.contact_name || "Chat"}</strong>
-            <span className="text-muted small ms-2 text-capitalize">{activeConv.channel}</span>
-            <span
-              className={`badge ms-2 ${
-                wsStatus === "connected"
-                  ? "text-bg-success"
+        <div className="app-chat-topbar">
+          <div className="app-chat-topbar-main">
+            <div className="app-chat-topbar-name-row">
+              <strong className="app-chat-topbar-name">{activeConv.contact_name || "Chat"}</strong>
+              <span className="app-chat-topbar-chip is-channel">{activeConv.channel}</span>
+              {activeConv.whatsapp_line_name && (
+                <span className="app-chat-topbar-chip is-channel">{activeConv.whatsapp_line_name}</span>
+              )}
+              <span
+                className={`app-chat-topbar-chip ${
+                  wsStatus === "connected"
+                    ? "is-online"
+                    : wsStatus === "reconnecting" || wsStatus === "connecting"
+                      ? "is-warn"
+                      : "is-offline"
+                }`}
+              >
+                {wsStatus === "connected"
+                  ? "En línea"
                   : wsStatus === "reconnecting" || wsStatus === "connecting"
-                    ? "text-bg-warning"
-                    : "text-bg-secondary"
-              }`}
-            >
-              {wsStatus === "connected"
-                ? "En línea"
-                : wsStatus === "reconnecting" || wsStatus === "connecting"
-                  ? "Reconectando..."
-                  : "Desconectado"}
-            </span>
-            {activeConv.channel === "whatsapp" && (
-              <span className="ms-2">
-                <ServiceWindowIndicator expiresAt={activeConv.customer_service_window_expires} />
+                    ? "Reconectando..."
+                    : "Desconectado"}
               </span>
+              {activeConv.channel === "whatsapp" && (
+                <span className="app-chat-service-window-wrap">
+                  <ServiceWindowIndicator expiresAt={activeConv.customer_service_window_expires} />
+                </span>
+              )}
+            </div>
+            {(activeConv.deal_title || activeConv.contact) && (
+              <div className="app-chat-topbar-subrow">
+                {activeConv.deal_title && (
+                  <span className="app-chat-topbar-subdeal">
+                    Deal: {activeConv.deal_title}
+                  </span>
+                )}
+                {activeConv.contact && (
+                  <a className="app-chat-topbar-link" href={`/crm/contacts/${activeConv.contact}`}>
+                    Ver contacto
+                  </a>
+                )}
+              </div>
             )}
           </div>
-          <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center gap-2 flex-shrink-0">
             <button
               id="toggle-ai"
               type="button"
@@ -118,12 +137,6 @@ const ChatThread = ({
             >
               <i className="bi bi-robot me-1" />
               Modo IA
-            </button>
-            <button type="button" className="btn btn-outline-secondary btn-sm" aria-label="Llamar">
-              <i className="bi bi-telephone" />
-            </button>
-            <button type="button" className="btn btn-outline-secondary btn-sm" aria-label="Video">
-              <i className="bi bi-camera-video" />
             </button>
           </div>
         </div>
@@ -164,9 +177,17 @@ const ChatThread = ({
             (messages || []).map((m) => (
               <div
                 key={m.id}
-                className={`mb-2 small ${m.sender_type === "user" ? "text-end" : ""}`}
+                className={`mb-3 small ${m.sender_type === "user" ? "text-end" : ""}`}
               >
-                <div className={`mt-1 app-chat-bubble ${m.sender_type === "user" ? "is-agent" : ""}`}>
+                <div
+                  className={`mt-1 app-chat-bubble ${
+                    m.sender_type === "user"
+                      ? "is-agent"
+                      : m.sender_type === "ai_bot"
+                        ? "is-ai"
+                        : "is-contact"
+                  }`}
+                >
                   <MediaMessageBubble message={m} />
                   {m.sender_type === "user" && (
                     <span className="d-inline-flex align-items-center">
@@ -175,14 +196,11 @@ const ChatThread = ({
                   )}
                 </div>
                 <div className={`app-chat-msg-meta ${m.sender_type === "user" ? "justify-content-end" : "justify-content-start"}`}>
-                  <span className="app-chat-msg-author">{senderLabel(m)}</span>
+                  <span className={`app-chat-msg-author-chip is-${m.sender_type === "ai_bot" ? "ai" : m.sender_type === "user" ? "agent" : "contact"}`}>
+                    {senderLabel(m)}
+                  </span>
                   {formatMessageHour(m.created_at) && (
-                    <span className="text-muted small me-1">{formatMessageHour(m.created_at)}</span>
-                  )}
-                  {m.is_ai_generated && (
-                    <Badge bg="info" className="me-1">
-                      IA
-                    </Badge>
+                    <span className="text-muted small me-1 app-chat-msg-time">{formatMessageHour(m.created_at)}</span>
                   )}
                   {statusWarning(m)}
                   {m.status === "failed" && String(m.id).startsWith("temp-") && (

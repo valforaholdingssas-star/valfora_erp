@@ -18,6 +18,10 @@ const ChatSidebar = ({
   onQueryChange,
   channelFilter,
   onChannelFilterChange,
+  whatsAppLines,
+  selectedWhatsAppLine,
+  onSelectWhatsAppLine,
+  whatsAppLineCounts,
   className = "",
 }) => {
   return (
@@ -25,18 +29,9 @@ const ChatSidebar = ({
       <div className="app-chat-sidebar-head">
         <div className="d-flex justify-content-between align-items-center px-2 mb-2">
           <div>
-            <h2 className="h6 mb-0">Bandeja</h2>
-            <div className="small text-muted">{conversations?.length || 0} conversaciones</div>
+            <div className="app-chat-sidebar-title">Bandeja</div>
+            <div className="app-chat-sidebar-subtitle">{conversations?.length || 0} conversaciones</div>
           </div>
-          <button
-            type="button"
-            className="btn btn-outline-secondary btn-sm"
-            aria-label="Nueva conversación"
-            title="Próximamente"
-            disabled
-          >
-            <i className="bi bi-plus-lg" />
-          </button>
         </div>
         <Form.Control
           size="sm"
@@ -61,6 +56,33 @@ const ChatSidebar = ({
             Todos
           </Button>
         </div>
+        {channelFilter === "whatsapp" && (whatsAppLines || []).length > 0 && (
+          <div className="d-flex flex-wrap gap-2 mb-2">
+            <Button
+              size="sm"
+              variant={selectedWhatsAppLine === "" ? "dark" : "outline-secondary"}
+              onClick={() => onSelectWhatsAppLine("")}
+            >
+              Todas
+              <span className="ms-1">({conversations?.length || 0})</span>
+            </Button>
+            {whatsAppLines.map((line) => {
+              const label = line.line_name || line.internal_name || line.verified_name || line.display_phone_number;
+              const count = whatsAppLineCounts?.[line.id] || 0;
+              return (
+                <Button
+                  key={line.id}
+                  size="sm"
+                  variant={selectedWhatsAppLine === line.id ? "dark" : "outline-secondary"}
+                  onClick={() => onSelectWhatsAppLine(line.id)}
+                >
+                  {label}
+                  <span className="ms-1">({count})</span>
+                </Button>
+              );
+            })}
+          </div>
+        )}
       </div>
       {loading ? (
         <div className="p-2">
@@ -78,42 +100,42 @@ const ChatSidebar = ({
             <button
               key={c.id}
               type="button"
-              className={`btn btn-sm text-start app-chat-sidebar-item ${
-                c.id === activeId ? "btn-primary" : "btn-light"
-              }`}
+              className={`btn btn-sm text-start app-chat-sidebar-item ${c.id === activeId ? "is-active" : ""}`}
               onClick={() => onSelect(c.id)}
             >
               <div className="d-flex align-items-start gap-2">
                 <div className="app-avatar">{initials(c.contact_name)}</div>
                 <div className="flex-grow-1 overflow-hidden">
-                  <div className="small fw-medium d-flex justify-content-between align-items-center gap-2">
-                    <span className="text-truncate">{c.contact_name}</span>
-                    {c.unread_count > 0 && <span className="badge bg-danger">{c.unread_count}</span>}
+                  <div className="app-chat-sidebar-item-top">
+                    <span className="app-chat-sidebar-item-name text-truncate">{c.contact_name}</span>
+                    {c.last_message_at && (
+                      <span className="app-chat-sidebar-item-time">
+                        {new Date(c.last_message_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    )}
                   </div>
-                  <div className="text-truncate small text-muted">{c.last_message_preview || "Sin mensajes"}</div>
+                  <div className="text-truncate small app-chat-sidebar-item-preview">{c.last_message_preview || "Sin mensajes"}</div>
                   {c.deal_title && (
-                    <div className="small text-muted text-truncate">
-                      Deal: {c.deal_title} {c.deal_stage ? `· ${c.deal_stage}` : ""}
+                    <div className="small text-muted text-truncate app-chat-sidebar-item-deal">
+                      Deal: {c.deal_title}
+                    </div>
+                  )}
+                  <div className="d-flex align-items-center gap-2 flex-wrap mt-1">
+                    {c.__sla && c.__sla.status !== "none" && (
+                      <span className={`app-chat-sla-chip is-${c.__sla.status}`}>
+                        SLA: {c.__sla.label}
+                      </span>
+                    )}
+                    {c.unread_count > 0 && <span className="app-chat-unread-badge">{c.unread_count}</span>}
+                  </div>
+                  {c.whatsapp_line_name && (
+                    <div className="small text-muted text-truncate app-chat-sidebar-item-line">
+                      Línea: {c.whatsapp_line_name}
                     </div>
                   )}
                   {c.human_handoff_requested && (
                     <Badge bg="warning" text="dark" className="mt-1">
                       Handoff
-                    </Badge>
-                  )}
-                  {c.__sla && c.__sla.status !== "none" && (
-                    <Badge
-                      bg={
-                        c.__sla.status === "critical"
-                          ? "danger"
-                          : c.__sla.status === "warn"
-                            ? "warning"
-                            : "success"
-                      }
-                      text={c.__sla.status === "warn" ? "dark" : "light"}
-                      className="mt-1 ms-1"
-                    >
-                      SLA: {c.__sla.label}
                     </Badge>
                   )}
                 </div>
@@ -135,6 +157,10 @@ ChatSidebar.propTypes = {
   onQueryChange: PropTypes.func.isRequired,
   channelFilter: PropTypes.string.isRequired,
   onChannelFilterChange: PropTypes.func.isRequired,
+  whatsAppLines: PropTypes.arrayOf(PropTypes.object),
+  selectedWhatsAppLine: PropTypes.string,
+  onSelectWhatsAppLine: PropTypes.func,
+  whatsAppLineCounts: PropTypes.object,
   className: PropTypes.string,
 };
 

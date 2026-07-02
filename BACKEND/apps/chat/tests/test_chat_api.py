@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 
 from apps.chat.models import Conversation, Message
 from apps.crm.models import Contact, Deal
+from apps.whatsapp.models import WhatsAppBusinessAccount, WhatsAppPhoneNumber
 
 
 def _j(resp):
@@ -212,3 +213,61 @@ def test_whatsapp_attachment_rejects_oversized_image(admin_user):
     )
     assert response.status_code == 400
     assert "5 MB" in json.dumps(_j(response), ensure_ascii=False)
+
+
+@pytest.mark.django_db
+def test_conversation_filters_by_whatsapp_phone_number(admin_user):
+    account = WhatsAppBusinessAccount.objects.create(
+        name="Main",
+        waba_id="waba-filter",
+        access_token="token-filter",
+        webhook_verify_token="verify-filter",
+    )
+    phone_a = WhatsAppPhoneNumber.objects.create(
+        account=account,
+        phone_number_id="pn-a",
+        display_phone_number="+57 300 000 0001",
+        internal_name="Línea A",
+        status="connected",
+        is_default=True,
+    )
+    phone_b = WhatsAppPhoneNumber.objects.create(
+        account=account,
+        phone_number_id="pn-b",
+        display_phone_number="+57 300 000 0002",
+        internal_name="Línea B",
+        status="connected",
+    )
+    contact_a = Contact.objects.create(
+        first_name="Linea",
+        last_name="Uno",
+        email="linea1@example.com",
+        whatsapp_number="573001111111",
+        created_by=admin_user,
+    )
+    contact_b = Contact.objects.create(
+        first_name="Linea",
+        last_name="Dos",
+        email="linea2@example.com",
+        whatsapp_number="573002222222",
+        created_by=admin_user,
+    )
+    deal_a = Deal.objects.create(title="Deal Línea A", contact=contact_a, source="whatsapp", assigned_to=admin_user)
+    deal_b = Deal.objects.create(title="Deal Línea B", contact=contact_b, source="whatsapp", assigned_to=admin_user)
+    conv_a, _ = Conversation.objects.get_or_create(contact=contact_a, deal=deal_a, channel="whatsapp", defaults={"whatsapp_phone_number": phone_a})
+    conv_b, _ = Conversation.objects.get_or_create(contact=contact_b, deal=deal_b, channel="whatsapp", defaults={"whatsapp_phone_number": phone_b})
+    conv_a.whatsapp_phone_number = phone_a
+    conv_a.save(update_fields=["whatsapp_phone_number", "updated_at"])
+    conv_b.whatsapp_phone_number = phone_b
+    conv_b.save(update_fields=["whatsapp_phone_number", "updated_at"])
+
+    client = APIClient()
+    client.force_authenticate(user=admin_user)
+    response = client.get("/api/v1/chat/conversations/", {"channel": "whatsapp", "whatsapp_phone_number": str(phone_a.id)})
+    assert response.status_code == 200
+    body = _j(response)["data"]
+    ids = {row["id"] for row in body["results"]}
+    assert str(conv_a.id) in ids
+    assert str(conv_b.id) not in ids
+    row = next(item for item in body["results"] if item["id"] == str(conv_a.id))
+    assert row["whatsapp_line_name"] == "Línea A"

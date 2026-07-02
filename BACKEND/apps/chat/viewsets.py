@@ -51,9 +51,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
         "deal",
         "assigned_to",
         "ai_configuration",
+        "whatsapp_phone_number",
     )
     permission_classes = [permissions.IsAuthenticated, IsChatUser]
-    filterset_fields = ("channel", "status", "contact", "assigned_to", "ai_configuration")
+    filterset_fields = ("channel", "status", "contact", "assigned_to", "ai_configuration", "whatsapp_phone_number")
     search_fields = ("contact__email", "contact__first_name", "contact__last_name")
     ordering_fields = ("last_message_at", "created_at")
 
@@ -84,6 +85,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 | Q(contact__assigned_to_id=responsible)
                 | Q(deal__assigned_to_id=responsible, deal__is_active=True)
             )
+
+        whatsapp_phone_number = params.get("whatsapp_phone_number")
+        if whatsapp_phone_number:
+            qs = qs.filter(whatsapp_phone_number_id=whatsapp_phone_number)
 
         text = params.get("search_text") or params.get("search")
         if text:
