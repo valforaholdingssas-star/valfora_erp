@@ -70,6 +70,43 @@ def test_toggle_ai(admin_user):
 
 
 @pytest.mark.django_db
+def test_global_ai_mode_updates_all_conversations_but_individual_toggle_can_override(admin_user):
+    contact_a = Contact.objects.create(
+        first_name="Global",
+        last_name="One",
+        email="global1@example.com",
+        created_by=admin_user,
+    )
+    contact_b = Contact.objects.create(
+        first_name="Global",
+        last_name="Two",
+        email="global2@example.com",
+        created_by=admin_user,
+    )
+    deal_a = Deal.objects.create(title="Global Deal A", contact=contact_a, assigned_to=admin_user)
+    deal_b = Deal.objects.create(title="Global Deal B", contact=contact_b, assigned_to=admin_user)
+    conv_a = Conversation.objects.get(deal=deal_a, channel="internal")
+    conv_b = Conversation.objects.get(deal=deal_b, channel="internal")
+
+    client = APIClient()
+    client.force_authenticate(user=admin_user)
+
+    global_on = client.post("/api/v1/chat/conversations/ai-mode-global/", {"enabled": True}, format="json")
+    assert global_on.status_code == 200
+    conv_a.refresh_from_db()
+    conv_b.refresh_from_db()
+    assert conv_a.ai_mode_enabled is True
+    assert conv_b.ai_mode_enabled is True
+
+    toggle_one = client.post(f"/api/v1/chat/conversations/{conv_a.id}/toggle-ai/", {}, format="json")
+    assert toggle_one.status_code == 200
+    conv_a.refresh_from_db()
+    conv_b.refresh_from_db()
+    assert conv_a.ai_mode_enabled is False
+    assert conv_b.ai_mode_enabled is True
+
+
+@pytest.mark.django_db
 def test_whatsapp_verify_token(monkeypatch):
     """Meta webhook verification handshake."""
     monkeypatch.setenv("WHATSAPP_VERIFY_TOKEN", "test-secret")

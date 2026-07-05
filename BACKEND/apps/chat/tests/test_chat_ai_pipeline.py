@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
+from apps.ai_config.models import AIRuntimeSettings
 from apps.ai_config.services import CompletionResult
 from apps.chat.models import Conversation, Message
 from apps.chat.tasks import generate_ai_reply_for_message
@@ -49,3 +50,54 @@ def test_ai_reply_creates_bot_message(mock_rag, mock_emb, mock_reserve, mock_mod
     bot = Message.objects.filter(conversation=conv, sender_type="ai_bot", is_ai_generated=True).first()
     assert bot is not None
     assert "Gracias" in bot.content
+
+
+@pytest.mark.django_db
+@patch("apps.rag.retrieval.retrieve_relevant_chunks", return_value=[])
+@patch("apps.rag.embeddings.embed_query", return_value=[0.0] * 1536)
+@patch("apps.chat.tasks.try_reserve_conversation_tokens", return_value=True)
+@patch("apps.chat.tasks.moderate_openai_text", return_value=(True, {}))
+@patch(
+    "apps.chat.tasks.generate_chat_completion",
+    return_value=CompletionResult(
+        text="Gracias por escribirnos.",
+        prompt_tokens=10,
+        completion_tokens=5,
+        total_tokens=15,
+    ),
+)
+def test_ai_reply_does_not_run_when_conversation_is_off_even_if_global_flag_is_on(
+    mock_rag,
+    mock_emb,
+    mock_reserve,
+    mock_mod,
+    mock_llm,
+    admin_user,
+):
+    contact = Contact.objects.create(
+        first_name="Lead",
+        last_name="Manual Off",
+        email="manualoff@example.com",
+        created_by=admin_user,
+    )
+    deal = Deal.objects.create(title="AI off deal", contact=contact, assigned_to=admin_user)
+    conv = Conversation.objects.get(deal=deal, channel="internal")
+    conv.assigned_to = admin_user
+    conv.ai_mode_enabled = False
+    conv.save(update_fields=["assigned_to", "ai_mode_enabled", "updated_at"])
+    AIRuntimeSettings.objects.update_or_create(
+        singleton_key="default",
+        defaults={"global_ai_mode_enabled": True},
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Hola, necesito información",
+        message_type="text",
+        status="delivered",
+    )
+
+    generate_ai_reply_for_message(str(inbound.id))
+
+    mock_llm.assert_not_called()
+    assert not Message.objects.filter(conversation=conv, sender_type="ai_bot", is_ai_generated=True).exists()
