@@ -103,9 +103,9 @@ const ChatSidebar = ({
               className={`btn btn-sm text-start app-chat-sidebar-item ${c.id === activeId ? "is-active" : ""}`}
               onClick={() => onSelect(c.id)}
             >
-              <div className="d-flex align-items-start gap-2">
+              <div className="app-chat-sidebar-item-shell">
                 <div className="app-avatar">{initials(c.contact_name)}</div>
-                <div className="flex-grow-1 overflow-hidden">
+                <div className="app-chat-sidebar-item-body">
                   <div className="app-chat-sidebar-item-top">
                     <span className="app-chat-sidebar-item-name">{c.contact_name}</span>
                     {c.last_message_at && (
@@ -120,20 +120,20 @@ const ChatSidebar = ({
                       Deal: {c.deal_title}
                     </div>
                   )}
-                  <div className="d-flex align-items-center gap-2 flex-wrap mt-1">
+                  {c.whatsapp_line_name && <div className="small text-muted app-chat-sidebar-item-line">Línea: {c.whatsapp_line_name}</div>}
+                  <div className="app-chat-sidebar-item-tags">
                     {c.__sla && c.__sla.status !== "none" && (
                       <span className={`app-chat-sla-chip is-${c.__sla.status}`}>
                         SLA: {c.__sla.label}
                       </span>
                     )}
                     {c.unread_count > 0 && <span className="app-chat-unread-badge">{c.unread_count}</span>}
+                    {c.human_handoff_requested && (
+                      <Badge bg="warning" text="dark" className="app-chat-handoff-badge">
+                        Handoff
+                      </Badge>
+                    )}
                   </div>
-                  {c.whatsapp_line_name && <div className="small text-muted app-chat-sidebar-item-line">Línea: {c.whatsapp_line_name}</div>}
-                  {c.human_handoff_requested && (
-                    <Badge bg="warning" text="dark" className="mt-1">
-                      Handoff
-                    </Badge>
-                  )}
                 </div>
               </div>
             </button>
