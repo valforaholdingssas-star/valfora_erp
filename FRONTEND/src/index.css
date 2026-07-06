@@ -1940,8 +1940,10 @@ a {
   width: 100%;
   max-width: none;
   min-height: calc(100vh - 128px);
+  height: calc(100vh - 128px);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-chat-headline {
@@ -1983,8 +1985,8 @@ a {
   display: grid;
   grid-template-columns: minmax(300px, 320px) minmax(0, 1fr);
   gap: 1rem;
-  min-height: 700px;
-  height: calc(100vh - 168px);
+  min-height: 0;
+  height: 100%;
   flex: 1;
   align-items: stretch;
 }
@@ -2003,6 +2005,7 @@ a {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .app-chat-sidebar {
@@ -2221,6 +2224,7 @@ a {
   background: linear-gradient(180deg, #f6f8fc 0%, #eef3fb 100%) !important;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
   padding: 1.25rem !important;
 }
 
@@ -2318,9 +2322,7 @@ a {
   border-top: 1px solid var(--vf-border);
   padding-top: 0.9rem;
   background: var(--vf-surface);
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
+  flex: 0 0 auto;
 }
 
 .app-chat-composer .btn,
@@ -2731,6 +2733,8 @@ a {
 
   .app-chat-page {
     min-height: auto;
+    height: auto;
+    overflow: visible;
   }
 
   .app-chat-layout {
