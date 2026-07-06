@@ -2353,7 +2353,8 @@ a {
   border: 1px solid var(--vf-border) !important;
   border-radius: 16px;
   padding: 0.8rem !important;
-  min-height: 96px;
+  min-height: 0;
+  width: 100%;
   background: #fff !important;
   color: var(--vf-text) !important;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
@@ -2420,32 +2421,49 @@ a {
 }
 
 .app-chat-sidebar-item-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.4rem;
-  margin-bottom: 0.15rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.45rem;
+  margin-bottom: 0.2rem;
 }
 
 .app-chat-sidebar-item-name {
   font-size: 0.84rem;
   font-weight: 700;
   color: var(--vf-text);
+  line-height: 1.25;
+  min-width: 0;
 }
 
 .app-chat-sidebar-item-time {
   font-size: 0.68rem;
   color: var(--vf-muted);
   font-family: var(--font-mono, ui-monospace, monospace);
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-align: right;
+  line-height: 1.2;
 }
 
 .app-chat-sidebar-item-preview {
   color: #425066 !important;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.35;
+  margin-bottom: 0.18rem;
 }
 
 .app-chat-sidebar-item-deal,
 .app-chat-sidebar-item-line {
   font-size: 0.7rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
 }
 
 .app-chat-sla-chip {
@@ -2457,6 +2475,7 @@ a {
   border: 1px solid transparent;
   font-size: 0.62rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .app-chat-sla-chip.is-ok {
@@ -2841,6 +2860,31 @@ a {
   .app-chat-sidebar-list {
     max-height: calc(100vh - 300px);
     padding-inline: 0.35rem;
+  }
+
+  .app-chat-sidebar-item {
+    padding: 0.7rem !important;
+    border-radius: 14px;
+  }
+
+  .app-avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 0.74rem;
+  }
+
+  .app-chat-sidebar-item-name {
+    font-size: 0.8rem;
+  }
+
+  .app-chat-sidebar-item-time {
+    font-size: 0.63rem;
+  }
+
+  .app-chat-sidebar-item-preview,
+  .app-chat-sidebar-item-deal,
+  .app-chat-sidebar-item-line {
+    font-size: 0.68rem;
   }
 
   .app-chat-panel {
