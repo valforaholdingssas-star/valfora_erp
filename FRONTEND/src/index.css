@@ -1940,6 +1940,8 @@ a {
   width: 100%;
   max-width: none;
   min-height: calc(100vh - 128px);
+  display: flex;
+  flex-direction: column;
 }
 
 .app-chat-headline {
@@ -1983,6 +1985,8 @@ a {
   gap: 1rem;
   min-height: 700px;
   height: calc(100vh - 168px);
+  flex: 1;
+  align-items: stretch;
 }
 
 .app-chat-layout.app-chat-layout-sidebar-collapsed {
@@ -1997,6 +2001,12 @@ a {
   box-shadow: 0 14px 40px rgba(15, 34, 80, 0.08);
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-chat-sidebar {
+  min-width: 0;
 }
 
 .app-chat-center {
@@ -2365,12 +2375,16 @@ a {
   border-bottom: 1px solid var(--vf-border);
   margin-bottom: 0.45rem;
   padding-bottom: 0.7rem;
+  flex: 0 0 auto;
 }
 
 .app-chat-sidebar-list {
   overflow-y: auto;
   min-height: 0;
+  flex: 1 1 auto;
   padding: 0 0.5rem 0.75rem;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .app-chat-filters-menu {
@@ -2723,6 +2737,7 @@ a {
     grid-template-columns: 1fr;
     min-height: auto;
     height: auto;
+    gap: 0.75rem;
   }
 
   .app-chat-layout.app-chat-layout-sidebar-collapsed {
@@ -2730,15 +2745,36 @@ a {
   }
 
   .app-chat-sidebar {
-    max-height: 50vh;
+    max-height: none;
   }
 
   .app-chat-sidebar-head {
     position: static;
   }
 
+  .app-chat-sidebar-list {
+    max-height: calc(100vh - 320px);
+  }
+
+  .app-chat-panel {
+    min-height: calc(100vh - 320px);
+  }
+
+  .app-chat-center {
+    padding: 0.8rem;
+  }
+
   .app-chat-thread-wrap {
     min-height: 38vh;
+  }
+
+  .app-chat-log {
+    min-height: 44vh;
+    padding: 0.9rem !important;
+  }
+
+  .app-chat-bubble {
+    max-width: 100%;
   }
 
   .app-chat-headline-actions {
@@ -2776,6 +2812,55 @@ a {
 @media (max-width: 640px) {
   .app-main-container {
     padding-inline: 0;
+  }
+
+  .app-chat-headline {
+    padding: 1rem;
+  }
+
+  .app-chat-headline-actions {
+    gap: 0.4rem;
+  }
+
+  .app-chat-headline-actions .btn,
+  .app-chat-headline-actions .form-check {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .app-chat-sidebar {
+    border-radius: 18px;
+  }
+
+  .app-chat-sidebar-list {
+    max-height: calc(100vh - 300px);
+    padding-inline: 0.35rem;
+  }
+
+  .app-chat-panel {
+    min-height: calc(100vh - 280px);
+    border-radius: 18px;
+  }
+
+  .app-chat-center {
+    padding: 0.7rem;
+    gap: 0.65rem;
+  }
+
+  .app-chat-topbar,
+  .app-chat-center-head {
+    padding: 0.8rem;
+    border-radius: 16px;
+  }
+
+  .app-chat-log {
+    min-height: 50vh;
+    padding: 0.75rem !important;
+    border-radius: 18px !important;
+  }
+
+  .app-chat-bubble {
+    padding: 0.62rem 0.72rem;
   }
 
   .valfora-login-shell {

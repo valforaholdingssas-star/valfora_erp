@@ -20,15 +20,20 @@ import { fetchLinkedInUnreadCount } from "../api/linkedin.js";
 import { useAuth } from "./AuthContext.jsx";
 
 const NotificationContext = createContext(null);
+const MAX_WS_RECONNECT_ATTEMPTS = 8;
+const MAX_WS_RECONNECT_DELAY_MS = 15000;
 
 export const NotificationProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
   const [items, setItems] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [chatEventVersion, setChatEventVersion] = useState(0);
   const [linkedinUnreadCount, setLinkedinUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const wsRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const reconnectAttemptRef = useRef(0);
   const audioEnabledRef = useRef(false);
   const didInitChatUnreadRef = useRef(false);
   const previousChatUnreadRef = useRef(0);
@@ -91,6 +96,10 @@ export const NotificationProvider = ({ children }) => {
     } catch {
       setLinkedinUnreadCount(0);
     }
+  }, []);
+
+  const bumpChatEventVersion = useCallback(() => {
+    setChatEventVersion((prev) => prev + 1);
   }, []);
 
   const load = useCallback(async () => {
@@ -163,42 +172,80 @@ export const NotificationProvider = ({ children }) => {
     if (!isAuthenticated || !user) return;
     const token = localStorage.getItem("seeds_access_token");
     if (!token) return;
+    let isUnmounted = false;
     const url = getUserNotifyWebSocketUrl(token);
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
-    ws.onmessage = (ev) => {
-      try {
-        const payload = JSON.parse(ev.data);
-        if (payload.event === "notification.created" && payload.notification) {
-          const n = payload.notification;
-          setItems((prev) => [n, ...prev.filter((x) => x.id !== n.id)].slice(0, 50));
-          if (!n.is_read) setUnreadCount((c) => c + 1);
-          if ((n.notification_type || "").toLowerCase() === "chat_message") {
-            playIncomingChatSound();
-            if (String(n.action_url || "").startsWith("/settings/linkedin")) {
-              setLinkedinUnreadCount((c) => c + 1);
-            } else {
-              refreshChatUnreadFromApi().catch(() => {});
-            }
-          }
-        } else if (payload.event === "linkedin.message.created" || payload.type === "linkedin_message") {
-          if (typeof payload.unread_count === "number") {
-            setLinkedinUnreadCount(payload.unread_count);
-          } else {
-            setLinkedinUnreadCount((c) => c + 1);
-          }
+
+    const handlePayload = (payload) => {
+      if (payload.event === "notification.created" && payload.notification) {
+        const n = payload.notification;
+        setItems((prev) => [n, ...prev.filter((x) => x.id !== n.id)].slice(0, 50));
+        if (!n.is_read) setUnreadCount((c) => c + 1);
+        if ((n.notification_type || "").toLowerCase() === "chat_message") {
           playIncomingChatSound();
-        } else if (payload.event === "conversation.updated") {
-          refreshChatUnreadFromApi().catch(() => {});
+          if (String(n.action_url || "").startsWith("/settings/linkedin")) {
+            setLinkedinUnreadCount((c) => c + 1);
+          } else {
+            refreshChatUnreadFromApi().catch(() => {});
+            bumpChatEventVersion();
+          }
         }
-      } catch {
-        /* ignore */
+      } else if (payload.event === "linkedin.message.created" || payload.type === "linkedin_message") {
+        if (typeof payload.unread_count === "number") {
+          setLinkedinUnreadCount(payload.unread_count);
+        } else {
+          setLinkedinUnreadCount((c) => c + 1);
+        }
+        playIncomingChatSound();
+      } else if (payload.event === "conversation.updated") {
+        refreshChatUnreadFromApi().catch(() => {});
+        bumpChatEventVersion();
       }
     };
-    return () => {
-      ws.close();
+
+    const connect = () => {
+      if (isUnmounted) return;
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+      ws.onopen = () => {
+        reconnectAttemptRef.current = 0;
+      };
+      ws.onmessage = (ev) => {
+        try {
+          handlePayload(JSON.parse(ev.data));
+        } catch {
+          /* ignore */
+        }
+      };
+      ws.onclose = () => {
+        if (isUnmounted) return;
+        if (reconnectAttemptRef.current >= MAX_WS_RECONNECT_ATTEMPTS) return;
+        reconnectAttemptRef.current += 1;
+        const delay = Math.min(1000 * 2 ** (reconnectAttemptRef.current - 1), MAX_WS_RECONNECT_DELAY_MS);
+        reconnectTimerRef.current = window.setTimeout(connect, delay);
+      };
+      ws.onerror = () => {
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
+        }
+      };
     };
-  }, [isAuthenticated, user, playIncomingChatSound, refreshChatUnreadFromApi]);
+
+    connect();
+    return () => {
+      isUnmounted = true;
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      reconnectAttemptRef.current = 0;
+    };
+  }, [isAuthenticated, user, playIncomingChatSound, refreshChatUnreadFromApi, bumpChatEventVersion]);
 
   const markRead = useCallback(
     async (id) => {
@@ -221,13 +268,14 @@ export const NotificationProvider = ({ children }) => {
       items,
       unreadCount,
       chatUnreadCount,
+      chatEventVersion,
       linkedinUnreadCount,
       loading,
       reload: load,
       markRead,
       markAllRead,
     }),
-    [items, unreadCount, chatUnreadCount, linkedinUnreadCount, loading, load, markRead, markAllRead],
+    [items, unreadCount, chatUnreadCount, chatEventVersion, linkedinUnreadCount, loading, load, markRead, markAllRead],
   );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;

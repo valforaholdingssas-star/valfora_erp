@@ -157,7 +157,7 @@ const ChatView = () => {
   ]);
 
   const { user } = useAuth();
-  const { chatUnreadCount } = useNotifications();
+  const { chatUnreadCount, chatEventVersion } = useNotifications();
   const { dealId } = useParams();
   const [conversations, setConversations] = useState({ results: [], count: 0 });
   const [activeId, setActiveId] = useState(null);
@@ -298,6 +298,11 @@ const ChatView = () => {
   }, [chatUnreadCount, loadConversations]);
 
   useEffect(() => {
+    if (!chatEventVersion) return;
+    loadConversations();
+  }, [chatEventVersion, loadConversations]);
+
+  useEffect(() => {
     fetchUsers({ page_size: 200, is_active: true })
       .then((data) => setResponsibleOptions(data.results || []))
       .catch(() => {});
@@ -362,12 +367,32 @@ const ChatView = () => {
     }
   }, [activeId, loadMessages]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      loadConversations();
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [loadConversations]);
+
   const handleWsMessageCreated = useCallback((incoming) => {
     setMessages((prev) => ({
       ...prev,
       results: mergeIncomingMessage(prev.results || [], incoming),
     }));
-  }, [mergeIncomingMessage]);
+    setConversations((prev) => ({
+      ...prev,
+      results: (prev.results || []).map((conv) =>
+        String(conv.id) === String(activeId)
+          ? {
+              ...conv,
+              last_message_at: incoming.created_at || conv.last_message_at,
+              last_message_preview: incoming.content || conv.last_message_preview,
+            }
+          : conv,
+      ),
+    }));
+    loadConversations();
+  }, [mergeIncomingMessage, activeId, loadConversations]);
 
   const handleWsMessageUpdated = useCallback((incoming) => {
     setMessages((prev) => ({
@@ -398,6 +423,15 @@ const ChatView = () => {
   const sendTypingWs = (typing) => {
     sendWsJson({ type: "typing", typing });
   };
+
+  useEffect(() => {
+    if (!activeId || wsStatus === "connected") return undefined;
+    const timer = window.setInterval(() => {
+      loadMessages(activeId);
+      loadConversations();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [activeId, wsStatus, loadMessages, loadConversations]);
 
   const handleInputChange = (e) => {
     const v = e.target.value;
