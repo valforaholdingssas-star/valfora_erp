@@ -107,16 +107,16 @@ const ChatSidebar = ({
                 <div className="app-avatar">{initials(c.contact_name)}</div>
                 <div className="flex-grow-1 overflow-hidden">
                   <div className="app-chat-sidebar-item-top">
-                    <span className="app-chat-sidebar-item-name text-truncate">{c.contact_name}</span>
+                    <span className="app-chat-sidebar-item-name">{c.contact_name}</span>
                     {c.last_message_at && (
                       <span className="app-chat-sidebar-item-time">
                         {new Date(c.last_message_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     )}
                   </div>
-                  <div className="text-truncate small app-chat-sidebar-item-preview">{c.last_message_preview || "Sin mensajes"}</div>
+                  <div className="small app-chat-sidebar-item-preview">{c.last_message_preview || "Sin mensajes"}</div>
                   {c.deal_title && (
-                    <div className="small text-muted text-truncate app-chat-sidebar-item-deal">
+                    <div className="small text-muted app-chat-sidebar-item-deal">
                       Deal: {c.deal_title}
                     </div>
                   )}
@@ -128,11 +128,7 @@ const ChatSidebar = ({
                     )}
                     {c.unread_count > 0 && <span className="app-chat-unread-badge">{c.unread_count}</span>}
                   </div>
-                  {c.whatsapp_line_name && (
-                    <div className="small text-muted text-truncate app-chat-sidebar-item-line">
-                      Línea: {c.whatsapp_line_name}
-                    </div>
-                  )}
+                  {c.whatsapp_line_name && <div className="small text-muted app-chat-sidebar-item-line">Línea: {c.whatsapp_line_name}</div>}
                   {c.human_handoff_requested && (
                     <Badge bg="warning" text="dark" className="mt-1">
                       Handoff
