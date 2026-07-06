@@ -1939,11 +1939,11 @@ a {
 .app-chat-page {
   width: 100%;
   max-width: none;
-  min-height: calc(100vh - 128px);
-  height: calc(100vh - 128px);
+  min-height: 0;
+  height: auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .app-chat-headline {
@@ -1985,8 +1985,9 @@ a {
   display: grid;
   grid-template-columns: minmax(300px, 320px) minmax(0, 1fr);
   gap: 1rem;
-  min-height: 0;
-  height: 100%;
+  min-height: calc(100vh - 240px);
+  height: calc(100vh - 240px);
+  max-height: calc(100vh - 240px);
   flex: 1;
   align-items: stretch;
 }
@@ -2384,6 +2385,7 @@ a {
   overflow-y: auto;
   min-height: 0;
   flex: 1 1 auto;
+  max-height: 100%;
   padding: 0 0.5rem 0.75rem;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
