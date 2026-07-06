@@ -7,6 +7,15 @@ import MessageStatusTicks from "./MessageStatusTicks.jsx";
 import NewMessageBadge from "./NewMessageBadge.jsx";
 import ServiceWindowIndicator from "./ServiceWindowIndicator.jsx";
 
+const isMediaMessage = (message) => {
+  if (!message) return false;
+  if (Array.isArray(message.attachments) && message.attachments.length > 0) return true;
+  const mediaTypes = new Set(["image", "audio", "video", "document"]);
+  if (mediaTypes.has(message.message_type)) return true;
+  if (message.metadata?.attachment_name || message.metadata?.link || message.metadata?.media_download_error) return true;
+  return false;
+};
+
 const formatMessageHour = (value) => {
   if (!value) return "";
   const date = new Date(value);
@@ -188,7 +197,7 @@ const ChatThread = ({
                         : "is-contact"
                   }`}
                 >
-                  <MediaMessageBubble message={m} />
+                  {isMediaMessage(m) ? <MediaMessageBubble message={m} /> : <span>{m.content}</span>}
                   {m.sender_type === "user" && (
                     <span className="d-inline-flex align-items-center">
                       <MessageStatusTicks status={m.status} />

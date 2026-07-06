@@ -2353,7 +2353,7 @@ a {
 .app-chat-sidebar-item {
   border: 1px solid var(--vf-border) !important;
   border-radius: 18px;
-  padding: 0.95rem !important;
+  padding: 0.8rem 0.95rem !important;
   min-height: 0;
   width: 100%;
   background: #fff !important;
@@ -2383,7 +2383,7 @@ a {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0;
 }
 
 .app-chat-sidebar-head {
@@ -2438,7 +2438,7 @@ a {
 
 .app-chat-sidebar-item-top {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
   margin-bottom: 0;
@@ -2448,13 +2448,13 @@ a {
   font-size: 0.96rem;
   font-weight: 700;
   color: var(--vf-text);
-  line-height: 1.3;
+  line-height: 1.2;
   min-width: 0;
   display: -webkit-box;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: normal;
-  -webkit-line-clamp: 2;
+  white-space: nowrap;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
 }
 
@@ -2465,67 +2465,7 @@ a {
   white-space: nowrap;
   flex-shrink: 0;
   text-align: right;
-  line-height: 1.3;
-  padding-top: 0.08rem;
-}
-
-.app-chat-sidebar-item-tags {
-  display: flex;
-  align-items: center;
-  gap: 0.42rem;
-  flex-wrap: wrap;
-  margin-top: 0.24rem;
-}
-
-.app-chat-sla-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.24rem;
-  padding: 0.18rem 0.58rem;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  font-size: 0.64rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.app-chat-sla-chip.is-ok {
-  background: rgba(25, 135, 84, 0.08);
-  border-color: rgba(25, 135, 84, 0.18);
-  color: #157347;
-}
-
-.app-chat-sla-chip.is-warn {
-  background: rgba(255, 193, 7, 0.12);
-  border-color: rgba(255, 193, 7, 0.28);
-  color: #9a6700;
-}
-
-.app-chat-sla-chip.is-critical {
-  background: rgba(220, 53, 69, 0.1);
-  border-color: rgba(220, 53, 69, 0.2);
-  color: #b42318;
-}
-
-.app-chat-unread-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.3rem;
-  height: 1.3rem;
-  padding: 0 0.35rem;
-  border-radius: 999px;
-  background: #dc3545;
-  color: #fff;
-  font-size: 0.68rem;
-  font-weight: 700;
-}
-
-.app-chat-handoff-badge {
-  border-radius: 999px;
-  font-size: 0.64rem;
-  font-weight: 700;
-  padding: 0.22rem 0.58rem;
+  line-height: 1.2;
 }
 
 .app-chat-new-msg-badge {
@@ -2881,7 +2821,7 @@ a {
   }
 
   .app-chat-sidebar-item {
-    padding: 0.78rem !important;
+    padding: 0.72rem 0.82rem !important;
     border-radius: 14px;
     min-height: 0;
   }
@@ -2899,7 +2839,7 @@ a {
 
   .app-chat-sidebar-item-name {
     font-size: 0.82rem;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 1;
   }
 
   .app-chat-sidebar-item-time {
@@ -2908,21 +2848,11 @@ a {
   }
 
   .app-chat-sidebar-item-top {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.12rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem;
     margin-bottom: 0;
-  }
-
-  .app-chat-sla-chip {
-    padding: 0.12rem 0.45rem;
-    font-size: 0.58rem;
-  }
-
-  .app-chat-unread-badge {
-    min-width: 1.05rem;
-    height: 1.05rem;
-    font-size: 0.6rem;
   }
 
   .app-chat-panel {

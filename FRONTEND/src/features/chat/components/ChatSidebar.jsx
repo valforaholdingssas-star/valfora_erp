@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { Badge, Button, Form, Spinner } from "react-bootstrap";
+import { Button, Form, Spinner } from "react-bootstrap";
 
 const initials = (name = "") =>
   name
@@ -112,19 +112,6 @@ const ChatSidebar = ({
                       <span className="app-chat-sidebar-item-time">
                         {new Date(c.last_message_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
                       </span>
-                    )}
-                  </div>
-                  <div className="app-chat-sidebar-item-tags">
-                    {c.__sla && c.__sla.status !== "none" && (
-                      <span className={`app-chat-sla-chip is-${c.__sla.status}`}>
-                        SLA: {c.__sla.label}
-                      </span>
-                    )}
-                    {c.unread_count > 0 && <span className="app-chat-unread-badge">{c.unread_count}</span>}
-                    {c.human_handoff_requested && (
-                      <Badge bg="warning" text="dark" className="app-chat-handoff-badge">
-                        Handoff
-                      </Badge>
                     )}
                   </div>
                 </div>

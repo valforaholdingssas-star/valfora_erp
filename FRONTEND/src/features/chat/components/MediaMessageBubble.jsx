@@ -15,6 +15,18 @@ const MediaMessageBubble = ({ message }) => {
   const attachmentName = firstAttachment?.file_name || message.metadata?.attachment_name || "Adjunto";
   const attachmentType = firstAttachment?.file_type || "";
   const mediaError = message.metadata?.media_download_error || null;
+  const mediaTypes = new Set(["image", "audio", "video", "document"]);
+  const looksLikeMediaMessage = Boolean(
+    firstAttachment ||
+    message.metadata?.attachment_name ||
+    message.metadata?.link ||
+    mediaError ||
+    mediaTypes.has(message.message_type),
+  );
+
+  if (!looksLikeMediaMessage) {
+    return <span>{message.content}</span>;
+  }
 
   if (!attachmentUrl) {
     return (
