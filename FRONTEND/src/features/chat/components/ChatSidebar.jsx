@@ -114,13 +114,6 @@ const ChatSidebar = ({
                       </span>
                     )}
                   </div>
-                  <div className="small app-chat-sidebar-item-preview">{c.last_message_preview || "Sin mensajes"}</div>
-                  {c.deal_title && (
-                    <div className="small text-muted app-chat-sidebar-item-deal">
-                      Deal: {c.deal_title}
-                    </div>
-                  )}
-                  {c.whatsapp_line_name && <div className="small text-muted app-chat-sidebar-item-line">Línea: {c.whatsapp_line_name}</div>}
                   <div className="app-chat-sidebar-item-tags">
                     {c.__sla && c.__sla.status !== "none" && (
                       <span className={`app-chat-sla-chip is-${c.__sla.status}`}>

@@ -2354,7 +2354,7 @@ a {
   border: 1px solid var(--vf-border) !important;
   border-radius: 18px;
   padding: 0.95rem !important;
-  min-height: 126px;
+  min-height: 0;
   width: 100%;
   background: #fff !important;
   color: var(--vf-text) !important;
@@ -2383,7 +2383,7 @@ a {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.18rem;
+  gap: 0.35rem;
 }
 
 .app-chat-sidebar-head {
@@ -2441,7 +2441,7 @@ a {
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.6rem;
-  margin-bottom: 0.16rem;
+  margin-bottom: 0;
 }
 
 .app-chat-sidebar-item-name {
@@ -2467,30 +2467,6 @@ a {
   text-align: right;
   line-height: 1.3;
   padding-top: 0.08rem;
-}
-
-.app-chat-sidebar-item-preview {
-  color: #425066 !important;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  white-space: normal !important;
-  text-overflow: initial;
-  line-height: 1.45;
-  margin-bottom: 0.08rem;
-  font-size: 0.84rem;
-}
-
-.app-chat-sidebar-item-deal,
-.app-chat-sidebar-item-line {
-  font-size: 0.74rem;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  white-space: normal !important;
-  line-height: 1.35;
 }
 
 .app-chat-sidebar-item-tags {
@@ -2923,6 +2899,7 @@ a {
 
   .app-chat-sidebar-item-name {
     font-size: 0.82rem;
+    -webkit-line-clamp: 2;
   }
 
   .app-chat-sidebar-item-time {
@@ -2930,28 +2907,11 @@ a {
     text-align: left;
   }
 
-  .app-chat-sidebar-item-preview,
-  .app-chat-sidebar-item-deal,
-  .app-chat-sidebar-item-line {
-    font-size: 0.68rem;
-  }
-
   .app-chat-sidebar-item-top {
     display: grid;
     grid-template-columns: 1fr;
     gap: 0.12rem;
-    margin-bottom: 0.28rem;
-  }
-
-  .app-chat-sidebar-item-preview {
-    -webkit-line-clamp: 2;
-    margin-bottom: 0.24rem;
-  }
-
-  .app-chat-sidebar-item-deal,
-  .app-chat-sidebar-item-line {
-    -webkit-line-clamp: 1;
-    color: var(--vf-muted) !important;
+    margin-bottom: 0;
   }
 
   .app-chat-sla-chip {
