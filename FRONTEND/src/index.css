@@ -1979,6 +1979,7 @@ a {
 .app-chat-mobile-tabs {
   display: flex;
   gap: 0.5rem;
+  flex: 0 0 auto;
 }
 
 .app-chat-layout {
@@ -2762,8 +2763,9 @@ a {
 
   .app-chat-layout {
     grid-template-columns: 1fr;
-    min-height: 100%;
-    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
     gap: 0.75rem;
   }
 
@@ -2829,6 +2831,7 @@ a {
     position: relative;
     z-index: 3;
     display: flex;
+    flex: 0 0 auto;
     overflow-x: auto;
     padding: 0.35rem;
     margin: 0 0 0.35rem;
