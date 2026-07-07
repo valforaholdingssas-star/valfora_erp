@@ -14,7 +14,7 @@ from django.utils import timezone
 from apps.chat.handoff import text_requests_human_handoff
 from apps.chat.models import Conversation, Message
 from apps.chat.serializers import MessageSerializer
-from apps.notifications.services import notify_inbound_chat_message
+from apps.notifications.services import broadcast_chat_conversation_update, notify_inbound_chat_message
 
 
 def _to_channel_safe(value):
@@ -68,19 +68,14 @@ def broadcast_new_chat_message(sender, instance: Message, created: bool, **kwarg
     if not created:
         return
 
-    conv = Conversation.objects.get(pk=instance.conversation_id)
-    if conv.assigned_to_id:
-        async_to_sync(layer.group_send)(
-            f"chat_user_{conv.assigned_to_id}",
-            {
-                "type": "chat.event",
-                "payload": {
-                    "event": "conversation.updated",
-                    "conversation_id": str(conv.id),
-                    "unread_count": conv.unread_count,
-                },
-            },
-        )
+    conv = Conversation.objects.select_related(
+        "contact",
+        "deal",
+        "assigned_to",
+        "ai_configuration",
+        "whatsapp_phone_number",
+    ).get(pk=instance.conversation_id)
+    broadcast_chat_conversation_update(conv)
 
     notify_inbound_chat_message(instance)
 

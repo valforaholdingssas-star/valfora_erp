@@ -158,7 +158,7 @@ const ChatView = () => {
   ]);
 
   const { user } = useAuth();
-  const { chatEventVersion } = useNotifications();
+  const { chatEventVersion, lastChatEvent } = useNotifications();
   const { dealId } = useParams();
   const [conversations, setConversations] = useState({ results: [], count: 0 });
   const [activeId, setActiveId] = useState(null);
@@ -228,6 +228,21 @@ const ChatView = () => {
     });
     return out;
   };
+
+  const upsertConversationRow = useCallback((incomingConversation) => {
+    if (!incomingConversation?.id) return;
+    setConversations((prev) => {
+      const currentRows = prev?.results || [];
+      const withoutIncoming = currentRows.filter((row) => String(row.id) !== String(incomingConversation.id));
+      const mergedExisting = currentRows.find((row) => String(row.id) === String(incomingConversation.id));
+      const nextRow = mergedExisting ? { ...mergedExisting, ...incomingConversation } : incomingConversation;
+      return {
+        ...prev,
+        count: Math.max(prev?.count || 0, withoutIncoming.length + 1),
+        results: [nextRow, ...withoutIncoming],
+      };
+    });
+  }, []);
 
   const mergeIncomingMessage = useCallback((prevMessages, incoming) => {
     const list = [...(prevMessages || [])];
@@ -336,6 +351,12 @@ const ChatView = () => {
   }, [chatEventVersion, loadConversations]);
 
   useEffect(() => {
+    const incomingConversation = lastChatEvent?.conversation;
+    if (!incomingConversation?.id) return;
+    upsertConversationRow(incomingConversation);
+  }, [lastChatEvent, upsertConversationRow]);
+
+  useEffect(() => {
     fetchUsers({ page_size: 200, is_active: true })
       .then((data) => setResponsibleOptions(data.results || []))
       .catch(() => {});
@@ -405,19 +426,13 @@ const ChatView = () => {
       ...prev,
       results: mergeIncomingMessage(prev.results || [], incoming),
     }));
-    setConversations((prev) => ({
-      ...prev,
-      results: (prev.results || []).map((conv) =>
-        String(conv.id) === String(activeId)
-          ? {
-              ...conv,
-              last_message_at: incoming.created_at || conv.last_message_at,
-              last_message_preview: incoming.content || conv.last_message_preview,
-            }
-          : conv,
-      ),
-    }));
-  }, [mergeIncomingMessage, activeId]);
+    if (!activeId) return;
+    upsertConversationRow({
+      id: activeId,
+      last_message_at: incoming.created_at || null,
+      last_message_preview: incoming.content || "",
+    });
+  }, [mergeIncomingMessage, activeId, upsertConversationRow]);
 
   const handleWsMessageUpdated = useCallback((incoming) => {
     setMessages((prev) => ({

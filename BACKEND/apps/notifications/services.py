@@ -6,13 +6,17 @@ from typing import TYPE_CHECKING
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 
+from apps.accounts.rbac import user_has_module_permission
 from apps.notifications.models import Notification
 from apps.notifications.serializers import NotificationSerializer
 
 if TYPE_CHECKING:
     from apps.chat.models import Message
+
+User = get_user_model()
 
 
 def _recipient_ids_for_inbound_message(conv) -> list:
@@ -24,6 +28,34 @@ def _recipient_ids_for_inbound_message(conv) -> list:
     if getattr(contact, "assigned_to_id", None) and contact.assigned_to_id not in ids:
         ids.add(contact.assigned_to_id)
     return list(ids)
+
+
+def _chat_viewer_ids() -> list:
+    """Active users allowed to see the chat inbox."""
+    ids: list = []
+    for user in User.objects.filter(is_active=True).only("id", "role", "is_active"):
+        if user_has_module_permission(user, "chat", "view"):
+            ids.append(user.id)
+    return ids
+
+
+def broadcast_chat_conversation_update(conv) -> None:
+    """Push a lightweight conversation refresh event to every chat viewer."""
+    layer = get_channel_layer()
+    if not layer:
+        return
+
+    from apps.chat.serializers import ConversationSerializer
+
+    payload = {
+        "event": "conversation.updated",
+        "conversation_id": str(conv.id),
+        "unread_count": conv.unread_count,
+        "conversation": ConversationSerializer(conv).data,
+    }
+    event = {"type": "chat.event", "payload": payload}
+    for uid in _chat_viewer_ids():
+        async_to_sync(layer.group_send)(f"chat_user_{uid}", event)
 
 
 def notify_inbound_chat_message(message: "Message") -> None:

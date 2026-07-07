@@ -29,6 +29,7 @@ export const NotificationProvider = ({ children }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [chatEventVersion, setChatEventVersion] = useState(0);
+  const [lastChatEvent, setLastChatEvent] = useState(null);
   const [linkedinUnreadCount, setLinkedinUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const wsRef = useRef(null);
@@ -197,6 +198,7 @@ export const NotificationProvider = ({ children }) => {
         }
         playIncomingChatSound();
       } else if (payload.event === "conversation.updated") {
+        setLastChatEvent(payload);
         refreshChatUnreadFromApi().catch(() => {});
         bumpChatEventVersion();
       }
@@ -269,13 +271,14 @@ export const NotificationProvider = ({ children }) => {
       unreadCount,
       chatUnreadCount,
       chatEventVersion,
+      lastChatEvent,
       linkedinUnreadCount,
       loading,
       reload: load,
       markRead,
       markAllRead,
     }),
-    [items, unreadCount, chatUnreadCount, chatEventVersion, linkedinUnreadCount, loading, load, markRead, markAllRead],
+    [items, unreadCount, chatUnreadCount, chatEventVersion, lastChatEvent, linkedinUnreadCount, loading, load, markRead, markAllRead],
   );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;
