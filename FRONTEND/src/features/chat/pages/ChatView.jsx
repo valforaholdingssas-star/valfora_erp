@@ -157,7 +157,7 @@ const ChatView = () => {
   ]);
 
   const { user } = useAuth();
-  const { chatUnreadCount, chatEventVersion } = useNotifications();
+  const { chatEventVersion } = useNotifications();
   const { dealId } = useParams();
   const [conversations, setConversations] = useState({ results: [], count: 0 });
   const [activeId, setActiveId] = useState(null);
@@ -204,9 +204,12 @@ const ChatView = () => {
   const [globalAiModeLoading, setGlobalAiModeLoading] = useState(false);
   const [whatsAppLines, setWhatsAppLines] = useState([]);
   const [selectedWhatsAppLine, setSelectedWhatsAppLine] = useState("");
+  const [isMobileViewport, setIsMobileViewport] = useState(() => (
+    typeof window !== "undefined" ? window.innerWidth < 992 : false
+  ));
   const typingTimerRef = useRef(null);
   const typingStopRef = useRef(null);
-  const lastUnreadRefreshRef = useRef(null);
+  const conversationsRequestRef = useRef(0);
 
   const currentUserId = useMemo(() => (user?.id ? String(user.id) : null), [user?.id]);
   const canManageAiConfigs = user && ["admin", "super_admin"].includes(user.role);
@@ -250,8 +253,10 @@ const ChatView = () => {
     return dedupeMessagesById(list);
   }, [currentUserId]);
 
-  const loadConversations = useCallback(() => {
-    setLoadingList(true);
+  const loadConversations = useCallback(({ silent = false } = {}) => {
+    const requestId = Date.now() + Math.random();
+    conversationsRequestRef.current = requestId;
+    if (!silent) setLoadingList(true);
     const params = {
       page_size: 50,
       channel: channelFilter || undefined,
@@ -264,9 +269,32 @@ const ChatView = () => {
       whatsapp_phone_number: selectedWhatsAppLine || undefined,
     };
     fetchConversations(params)
-      .then(setConversations)
+      .then((data) => {
+        if (conversationsRequestRef.current !== requestId) return;
+        setConversations((prev) => {
+          const prevRows = prev?.results || [];
+          const nextRows = data?.results || [];
+          const isSame =
+            prev?.count === data?.count &&
+            prevRows.length === nextRows.length &&
+            prevRows.every((row, index) => {
+              const next = nextRows[index];
+              return (
+                String(row.id) === String(next?.id) &&
+                String(row.last_message_at || "") === String(next?.last_message_at || "") &&
+                String(row.ai_mode_enabled || false) === String(next?.ai_mode_enabled || false) &&
+                String(row.unread_count || 0) === String(next?.unread_count || 0)
+              );
+            });
+          return isSame ? prev : data;
+        });
+      })
       .catch(() => {})
-      .finally(() => setLoadingList(false));
+      .finally(() => {
+        if (!silent && conversationsRequestRef.current === requestId) {
+          setLoadingList(false);
+        }
+      });
   }, [searchQuery, filters, channelFilter, selectedWhatsAppLine]);
 
   const extractApiError = (error, fallback = "No fue posible completar la operación.") => {
@@ -287,19 +315,23 @@ const ChatView = () => {
   }, [loadConversations]);
 
   useEffect(() => {
-    if (lastUnreadRefreshRef.current === null) {
-      lastUnreadRefreshRef.current = chatUnreadCount;
-      return;
+    if (typeof window === "undefined") return undefined;
+    const media = window.matchMedia("(max-width: 991.98px)");
+    const syncViewport = () => setIsMobileViewport(media.matches);
+    syncViewport();
+    media.addEventListener?.("change", syncViewport);
+    return () => media.removeEventListener?.("change", syncViewport);
+  }, []);
+
+  useEffect(() => {
+    if (isMobileViewport) {
+      setSidebarCollapsed(false);
     }
-    if (chatUnreadCount !== lastUnreadRefreshRef.current) {
-      lastUnreadRefreshRef.current = chatUnreadCount;
-      loadConversations();
-    }
-  }, [chatUnreadCount, loadConversations]);
+  }, [isMobileViewport]);
 
   useEffect(() => {
     if (!chatEventVersion) return;
-    loadConversations();
+    loadConversations({ silent: true });
   }, [chatEventVersion, loadConversations]);
 
   useEffect(() => {
@@ -345,7 +377,7 @@ const ChatView = () => {
       createOrOpenConversation({ deal: dealId, channel: "whatsapp" })
         .then((conv) => {
           setActiveId(conv.id);
-          loadConversations();
+          loadConversations({ silent: true });
         })
         .catch(() => {});
     }
@@ -367,13 +399,6 @@ const ChatView = () => {
     }
   }, [activeId, loadMessages]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      loadConversations();
-    }, 10000);
-    return () => window.clearInterval(timer);
-  }, [loadConversations]);
-
   const handleWsMessageCreated = useCallback((incoming) => {
     setMessages((prev) => ({
       ...prev,
@@ -391,8 +416,7 @@ const ChatView = () => {
           : conv,
       ),
     }));
-    loadConversations();
-  }, [mergeIncomingMessage, activeId, loadConversations]);
+  }, [mergeIncomingMessage, activeId]);
 
   const handleWsMessageUpdated = useCallback((incoming) => {
     setMessages((prev) => ({
@@ -428,10 +452,9 @@ const ChatView = () => {
     if (!activeId || wsStatus === "connected") return undefined;
     const timer = window.setInterval(() => {
       loadMessages(activeId);
-      loadConversations();
-    }, 5000);
+    }, 8000);
     return () => window.clearInterval(timer);
-  }, [activeId, wsStatus, loadMessages, loadConversations]);
+  }, [activeId, wsStatus, loadMessages]);
 
   const handleInputChange = (e) => {
     const v = e.target.value;
@@ -665,6 +688,9 @@ const ChatView = () => {
 
   const selectConv = (id) => {
     setActiveId(id);
+    if (isMobileViewport) {
+      setMobileSection("chat");
+    }
   };
 
   useEffect(() => {
@@ -728,10 +754,8 @@ const ChatView = () => {
   useEffect(() => {
     if (!activeId) {
       setMobileSection("conversations");
-    } else if (mobileSection === "conversations") {
-      setMobileSection("chat");
     }
-  }, [activeId, mobileSection]);
+  }, [activeId]);
 
   const handleAiConfigChange = async (e) => {
     const v = e.target.value;
@@ -969,7 +993,7 @@ const ChatView = () => {
           <h1 className="h4 mb-1">Conversaciones</h1>
           <p className="text-muted mb-0">Gestión centralizada de WhatsApp, IA y seguimiento comercial.</p>
         </div>
-        <div className="app-chat-headline-actions">
+      <div className="app-chat-headline-actions">
           {canManageAiConfigs && (
             <Form.Check
               type="switch"
@@ -983,7 +1007,7 @@ const ChatView = () => {
           )}
           <button
             type="button"
-            className="btn btn-outline-secondary btn-sm"
+            className="btn btn-outline-secondary btn-sm d-none d-lg-inline-flex"
             onClick={() => setSidebarCollapsed((prev) => !prev)}
             aria-label={sidebarCollapsed ? "Mostrar bandeja de chats" : "Ocultar bandeja de chats"}
           >
@@ -992,7 +1016,7 @@ const ChatView = () => {
           </button>
           <button
             type="button"
-            className="btn btn-outline-secondary btn-sm"
+            className="btn btn-outline-secondary btn-sm app-chat-action-btn"
             onClick={() => setChatFiltersModalOpen(true)}
             aria-label="Abrir filtros"
           >
@@ -1001,7 +1025,7 @@ const ChatView = () => {
           </button>
           <button
             type="button"
-            className="btn btn-outline-primary btn-sm"
+            className="btn btn-outline-primary btn-sm app-chat-action-btn"
             onClick={() => setChatInfoModalOpen(true)}
             disabled={!activeConv}
             aria-label="Abrir información de conversación"
@@ -1011,7 +1035,7 @@ const ChatView = () => {
           </button>
           <button
             type="button"
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary btn-sm app-chat-action-btn"
             onClick={() => setQuickDealModalOpen(true)}
             disabled={!activeConv}
             aria-label="Abrir edición rápida del deal"
@@ -1033,14 +1057,15 @@ const ChatView = () => {
           type="button"
           className={`btn btn-sm ${mobileSection === "chat" ? "btn-primary" : "btn-outline-secondary"}`}
           onClick={() => setMobileSection("chat")}
+          disabled={!activeId}
         >
           Chat
         </button>
       </div>
       <div
-        className={`app-chat-layout ${sidebarCollapsed ? "app-chat-layout-sidebar-collapsed" : ""}`}
+        className={`app-chat-layout ${(sidebarCollapsed && !isMobileViewport) ? "app-chat-layout-sidebar-collapsed" : ""}`}
       >
-        {!sidebarCollapsed && (
+        {(!sidebarCollapsed || isMobileViewport) && (
           <ChatSidebar
             loading={loadingList}
             conversations={filteredConversations}
@@ -1054,7 +1079,7 @@ const ChatView = () => {
             selectedWhatsAppLine={selectedWhatsAppLine}
             onSelectWhatsAppLine={setSelectedWhatsAppLine}
             whatsAppLineCounts={whatsappLineCounts}
-            className={mobileSection !== "conversations" ? "d-none d-lg-block" : ""}
+            className={mobileSection !== "conversations" ? "d-none d-lg-flex" : ""}
           />
         )}
         <div className={`app-chat-panel app-chat-center ${mobileSection !== "chat" ? "d-none d-lg-flex" : ""}`}>

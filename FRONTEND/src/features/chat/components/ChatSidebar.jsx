@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { Button, Form, Spinner } from "react-bootstrap";
+import { Badge, Button, Form, Spinner } from "react-bootstrap";
 
 const initials = (name = "") =>
   name
@@ -57,7 +57,7 @@ const ChatSidebar = ({
           </Button>
         </div>
         {channelFilter === "whatsapp" && (whatsAppLines || []).length > 0 && (
-          <div className="d-flex flex-wrap gap-2 mb-2">
+          <div className="d-flex flex-wrap gap-2 mb-1 app-chat-sidebar-line-switches">
             <Button
               size="sm"
               variant={selectedWhatsAppLine === "" ? "dark" : "outline-secondary"}
@@ -89,7 +89,7 @@ const ChatSidebar = ({
           <Spinner animation="border" size="sm" />
         </div>
       ) : (
-        <div className="d-flex flex-column gap-1 app-chat-sidebar-list">
+        <div className="d-flex flex-column gap-2 app-chat-sidebar-list">
           {(!conversations || conversations.length === 0) && (
             <div className="app-empty-state-mini">
               <i className="bi bi-chat-left-text" />
@@ -100,7 +100,7 @@ const ChatSidebar = ({
             <button
               key={c.id}
               type="button"
-              className={`btn btn-sm text-start app-chat-sidebar-item ${c.id === activeId ? "is-active" : ""}`}
+              className={`app-chat-sidebar-item ${c.id === activeId ? "is-active" : ""}`}
               onClick={() => onSelect(c.id)}
             >
               <div className="app-chat-sidebar-item-shell">
@@ -114,6 +114,16 @@ const ChatSidebar = ({
                       </span>
                     )}
                   </div>
+                  {c.__sla?.label && (
+                    <div className="app-chat-sidebar-item-meta">
+                      <Badge bg="light" text="success" pill className="app-chat-sidebar-sla">
+                        SLA: {c.__sla.label}
+                      </Badge>
+                      {c.whatsapp_line_name && (
+                        <span className="app-chat-sidebar-line-label">{c.whatsapp_line_name}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </button>
