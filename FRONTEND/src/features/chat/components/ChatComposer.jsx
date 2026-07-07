@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { Button, Dropdown, Form } from "react-bootstrap";
 
@@ -17,6 +17,22 @@ const ChatComposer = ({
   onInsertEmoji,
 }) => {
   const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [value]);
+
+  const handleKeyDown = (e) => {
+    if (e.key !== "Enter") return;
+    if (e.shiftKey) return;
+    e.preventDefault();
+    e.currentTarget.form?.requestSubmit();
+  };
+
   return (
     <Form onSubmit={onSubmit} className="app-chat-composer">
       <div className="d-flex gap-2 app-chat-composer-row">
@@ -67,11 +83,16 @@ const ChatComposer = ({
         {canFreeMessage ? (
           <>
             <Form.Control
+              as="textarea"
+              ref={textareaRef}
               value={value}
               onChange={onChange}
+              onKeyDown={handleKeyDown}
               placeholder="Escribe un mensaje…"
               aria-label="Mensaje"
               disabled={disabled}
+              rows={1}
+              className="app-chat-composer-textarea"
             />
             <Button type="submit" disabled={disabled} variant="primary">
               <i className="bi bi-send-fill me-1" />
@@ -95,7 +116,7 @@ const ChatComposer = ({
       )}
       {canFreeMessage && (
         <div className="small text-muted mt-1 d-flex flex-wrap justify-content-between gap-2">
-          <span>Escribe el mensaje y usa “Enviar”.</span>
+          <span>`Enter` envía. `Shift + Enter` agrega salto de línea.</span>
           <span>
           WhatsApp: imágenes JPG/PNG hasta 5 MB. Documentos permitidos (PDF, DOCX, XLSX, PPTX, TXT, CSV, ZIP) hasta 100 MB.
           </span>

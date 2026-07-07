@@ -2334,6 +2334,16 @@ a {
   border-radius: 16px;
 }
 
+.app-chat-composer-textarea {
+  min-height: 48px !important;
+  max-height: 220px;
+  resize: none;
+  overflow-y: auto;
+  line-height: 1.45;
+  padding-top: 0.8rem;
+  padding-bottom: 0.8rem;
+}
+
 .app-chat-meta {
   padding: 0.95rem;
   overflow-y: auto;
