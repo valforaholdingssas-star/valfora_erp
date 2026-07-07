@@ -2826,7 +2826,15 @@ a {
   }
 
   .app-chat-mobile-tabs {
+    position: relative;
+    z-index: 3;
+    display: flex;
     overflow-x: auto;
+    padding: 0.35rem;
+    margin: 0 0 0.35rem;
+    background: var(--vf-surface);
+    border: 1px solid var(--vf-border);
+    border-radius: 16px;
     padding-bottom: 0.2rem;
     scrollbar-width: none;
   }
@@ -2837,6 +2845,7 @@ a {
 
   .app-chat-mobile-tabs .btn {
     flex: 0 0 auto;
+    min-width: 132px;
   }
 
   .app-chat-kpi-row {
@@ -2877,6 +2886,17 @@ a {
 
   .app-chat-sidebar {
     border-radius: 18px;
+  }
+
+  .app-chat-mobile-tabs {
+    padding: 0.3rem;
+    margin-bottom: 0.45rem;
+    border-radius: 14px;
+  }
+
+  .app-chat-mobile-tabs .btn {
+    min-width: 138px;
+    min-height: 42px;
   }
 
   .app-chat-sidebar-list {
