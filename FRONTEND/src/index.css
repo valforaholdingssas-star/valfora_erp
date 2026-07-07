@@ -2359,6 +2359,10 @@ a {
   padding-bottom: 0.8rem;
 }
 
+.app-chat-composer-file-note {
+  line-height: 1.35;
+}
+
 .app-chat-meta {
   padding: 0.95rem;
   overflow-y: auto;
@@ -3115,6 +3119,61 @@ a {
     display: none;
   }
 
+  .app-chat-topbar {
+    padding: 0.72rem 0.78rem;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+
+  .app-chat-topbar-main {
+    min-width: 0;
+  }
+
+  .app-chat-topbar-name-row {
+    gap: 0.3rem;
+    margin-bottom: 0.22rem;
+  }
+
+  .app-chat-topbar-name {
+    font-size: 0.9rem;
+    line-height: 1.2;
+  }
+
+  .app-chat-topbar-chip {
+    padding: 0.18rem 0.5rem;
+    font-size: 0.66rem;
+  }
+
+  .app-chat-topbar-subrow {
+    gap: 0.3rem;
+  }
+
+  .app-chat-topbar-subdeal {
+    font-size: 0.7rem;
+    min-width: 0;
+    display: -webkit-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+  }
+
+  .app-chat-topbar-link {
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  .app-chat-topbar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .app-chat-topbar-actions .btn {
+    min-height: 38px;
+    padding: 0.38rem 0.72rem;
+    font-size: 0.82rem;
+  }
+
   .app-chat-sidebar {
     border-radius: 18px;
   }
@@ -3207,6 +3266,14 @@ a {
 
   .app-chat-composer .form-control {
     min-width: 0;
+  }
+
+  .app-chat-composer {
+    padding-top: 0.65rem;
+  }
+
+  .app-chat-composer-file-note {
+    display: none;
   }
 
   .valfora-login-shell {

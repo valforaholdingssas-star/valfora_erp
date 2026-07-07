@@ -135,7 +135,7 @@ const ChatThread = ({
               </div>
             )}
           </div>
-          <div className="d-flex align-items-center gap-2 flex-shrink-0">
+          <div className="d-flex align-items-center gap-2 flex-shrink-0 app-chat-topbar-actions">
             <button
               id="toggle-ai"
               type="button"
