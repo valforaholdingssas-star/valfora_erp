@@ -11,7 +11,7 @@ import logoMark from "../../assets/valfora-logo-transparent.png";
 const linkClass = ({ isActive }) =>
   `nav-link app-nav-link d-flex align-items-center gap-2 px-2 ${isActive ? "active" : ""}`;
 
-const Sidebar = ({ collapsed }) => {
+const Sidebar = ({ collapsed, isMobile = false, mobileOpen = false, onCloseMobile = () => {} }) => {
   const { pathname } = useLocation();
   const { hasModuleAccess, user } = useAuth();
   const { chatUnreadCount, linkedinUnreadCount } = useNotifications();
@@ -207,10 +207,19 @@ const Sidebar = ({ collapsed }) => {
   };
 
   return (
-    <aside
-      className={`app-sidebar ${collapsed ? "is-collapsed" : ""}`}
-      style={{ minHeight: "calc(100vh - 56px)" }}
-    >
+    <>
+      {isMobile && (
+        <button
+          type="button"
+          className={`app-sidebar-backdrop ${mobileOpen ? "is-visible" : ""}`}
+          aria-label="Cerrar menu"
+          onClick={onCloseMobile}
+        />
+      )}
+      <aside
+        className={`app-sidebar ${collapsed ? "is-collapsed" : ""} ${isMobile ? "is-mobile" : ""} ${mobileOpen ? "is-mobile-open" : ""}`}
+        style={{ minHeight: "calc(100vh - 56px)" }}
+      >
       {collapsed ? (
         <div className="app-sidebar-shell">
           <div className="app-sidebar-brand app-sidebar-brand-collapsed">
@@ -226,6 +235,9 @@ const Sidebar = ({ collapsed }) => {
                     end={item.to === "/"}
                     className={linkClass}
                     title={item.label}
+                    onClick={() => {
+                      if (isMobile) onCloseMobile();
+                    }}
                   >
                     <i className={`bi ${item.icon}`} />
                     {item.to === "/chat" && chatUnreadCount > 0 && (
@@ -282,7 +294,15 @@ const Sidebar = ({ collapsed }) => {
                   {expanded && (
                     <Nav className="flex-column gap-1 mb-2">
                       {section.items.map((item) => (
-                        <NavLink key={item.to} to={item.to} end={item.to === "/"} className={linkClass}>
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          end={item.to === "/"}
+                          className={linkClass}
+                          onClick={() => {
+                            if (isMobile) onCloseMobile();
+                          }}
+                        >
                           <i className={`bi ${item.icon}`} />
                           <span>{item.label}</span>
                           {item.to === "/chat" && chatUnreadCount > 0 && (
@@ -319,12 +339,16 @@ const Sidebar = ({ collapsed }) => {
           </div>
         </div>
       )}
-    </aside>
+      </aside>
+    </>
   );
 };
 
 Sidebar.propTypes = {
   collapsed: PropTypes.bool.isRequired,
+  isMobile: PropTypes.bool,
+  mobileOpen: PropTypes.bool,
+  onCloseMobile: PropTypes.func,
 };
 
 export default Sidebar;

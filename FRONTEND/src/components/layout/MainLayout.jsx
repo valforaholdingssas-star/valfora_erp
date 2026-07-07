@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { Container } from "react-bootstrap";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useAuth } from "../../contexts/AuthContext.jsx";
 import { useI18n } from "../../contexts/I18nContext.jsx";
@@ -55,6 +55,7 @@ const PipelineAutomationPage = lazy(() => import("../../features/settings/lead-e
 const LeadEngineDashboardPage = lazy(() => import("../../features/settings/lead-engine/pages/LeadEngineDashboardPage.jsx"));
 
 const MainLayout = () => {
+  const location = useLocation();
   const { t } = useI18n();
   const { hasModuleAccess } = useAuth();
   const canViewCRM = hasModuleAccess("crm", "view");
@@ -66,20 +67,42 @@ const MainLayout = () => {
   const canViewWhatsapp = hasModuleAccess("whatsapp", "view");
   const canViewAIConfig = hasModuleAccess("ai_config", "view");
   const canViewLinkedIn = hasModuleAccess("linkedin", "view");
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < 992;
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.innerWidth < 992;
   });
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     const onResize = () => {
-      if (window.innerWidth < 992) {
+      const isMobile = window.innerWidth < 992;
+      setIsMobileViewport(isMobile);
+      if (isMobile) {
         setSidebarCollapsed(true);
+        setMobileSidebarOpen(false);
       }
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    if (isMobileViewport) {
+      setMobileSidebarOpen(false);
+    }
+  }, [location.pathname, isMobileViewport]);
+
+  const handleToggleSidebar = () => {
+    if (isMobileViewport) {
+      setMobileSidebarOpen((prev) => !prev);
+      return;
+    }
+    setSidebarCollapsed((prev) => !prev);
+  };
 
   return (
     <div className="app-shell">
@@ -91,10 +114,15 @@ const MainLayout = () => {
       </a>
       <Header
         sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
+        onToggleSidebar={handleToggleSidebar}
       />
       <div className="app-body">
-        <Sidebar collapsed={sidebarCollapsed} />
+        <Sidebar
+          collapsed={isMobileViewport ? false : sidebarCollapsed}
+          isMobile={isMobileViewport}
+          mobileOpen={mobileSidebarOpen}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
+        />
         <main id="main-content" className="app-main" tabIndex={-1}>
           <Container fluid className="app-main-container">
             <Suspense fallback={<div className="app-route-loader">Cargando módulo…</div>}>

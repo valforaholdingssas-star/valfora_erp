@@ -197,7 +197,7 @@ const ChatThread = ({
                         : "is-contact"
                   }`}
                 >
-                  {isMediaMessage(m) ? <MediaMessageBubble message={m} /> : <span>{m.content}</span>}
+                  {isMediaMessage(m) ? <MediaMessageBubble message={m} /> : <span className="app-chat-bubble-text">{m.content}</span>}
                   {m.sender_type === "user" && (
                     <span className="d-inline-flex align-items-center">
                       <MessageStatusTicks status={m.status} />

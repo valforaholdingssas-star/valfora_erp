@@ -114,16 +114,31 @@ const ChatSidebar = ({
                       </span>
                     )}
                   </div>
-                  {c.__sla?.label && (
-                    <div className="app-chat-sidebar-item-meta">
+                  <div className="app-chat-sidebar-item-meta">
+                    {Number(c.unread_count || 0) > 0 && (
+                      <Badge pill className="app-chat-sidebar-flag app-chat-sidebar-flag-unread">
+                        No leido {Number(c.unread_count || 0)}
+                      </Badge>
+                    )}
+                    {c.__sla?.awaitingReply && (
+                      <Badge
+                        pill
+                        className={`app-chat-sidebar-flag ${
+                          c.__sla?.isOverdue ? "app-chat-sidebar-flag-reply-late" : "app-chat-sidebar-flag-reply"
+                        }`}
+                      >
+                        {c.__sla?.isOverdue ? "Sin responder" : "Pendiente"}
+                      </Badge>
+                    )}
+                    {c.__sla?.label && (
                       <Badge bg="light" text="success" pill className="app-chat-sidebar-sla">
                         SLA: {c.__sla.label}
                       </Badge>
-                      {c.whatsapp_line_name && (
-                        <span className="app-chat-sidebar-line-label">{c.whatsapp_line_name}</span>
-                      )}
-                    </div>
-                  )}
+                    )}
+                    {c.whatsapp_line_name && (
+                      <span className="app-chat-sidebar-line-label">{c.whatsapp_line_name}</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </button>

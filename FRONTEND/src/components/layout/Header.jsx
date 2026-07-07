@@ -31,7 +31,7 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
           </Button>
           <Navbar.Brand as={Link} to="/" className="fw-semibold mb-0 app-brand">
             <span className="app-brand-dot" />
-            <span>Valfora Holdings ERP</span>
+            <span className="app-brand-label">Valfora Holdings ERP</span>
           </Navbar.Brand>
         </div>
         <div className="ms-auto d-flex align-items-center gap-2 gap-md-3 app-header-actions">
@@ -45,7 +45,7 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
             className="app-header-pill-btn"
           >
             <i className={`bi ${density === "compact" ? "bi-arrows-angle-expand" : "bi-arrows-angle-contract"} me-1`} />
-            {density === "compact" ? "Cómodo" : "Compacto"}
+            <span className="app-header-pill-label">{density === "compact" ? "Cómodo" : "Compacto"}</span>
           </Button>
           <Button
             variant="light"
@@ -57,7 +57,7 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
             className="app-header-pill-btn"
           >
             <i className={`bi ${theme === "dark" ? "bi-sun-fill" : "bi-moon-stars-fill"} me-1`} />
-            {theme === "dark" ? "Claro" : "Oscuro"}
+            <span className="app-header-pill-label">{theme === "dark" ? "Claro" : "Oscuro"}</span>
           </Button>
           {user && (
             <Button
@@ -68,7 +68,7 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
               className="app-header-pill-btn"
             >
               <i className="bi bi-linkedin me-1" />
-              LinkedIn
+              <span className="app-header-pill-label">LinkedIn</span>
               {linkedinUnreadCount > 0 && (
                 <Badge bg="danger" className="ms-1">
                   {linkedinUnreadCount > 99 ? "99+" : linkedinUnreadCount}
@@ -80,7 +80,7 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
             <Dropdown align="end">
               <Dropdown.Toggle variant="light" size="sm" id="notif-dropdown" className="app-header-pill-btn">
                 <i className="bi bi-bell-fill me-1" />
-                Notificaciones
+                <span className="app-header-pill-label">Notificaciones</span>
                 {unreadCount > 0 && (
                   <Badge bg="danger" className="ms-1">
                     {unreadCount > 99 ? "99+" : unreadCount}
@@ -142,7 +142,7 @@ const Header = ({ sidebarCollapsed, onToggleSidebar }) => {
           )}
           <Button variant="light" size="sm" type="button" onClick={() => logout()} className="app-header-pill-btn">
             <i className="bi bi-box-arrow-right me-1" />
-            Salir
+            <span className="app-header-pill-label">Salir</span>
           </Button>
         </div>
       </Container>

@@ -116,25 +116,26 @@ const computePendingReplySla = (messages) => {
 const computeConversationSla = (conversation) => {
   const inboundRaw = conversation?.last_inbound_message_at;
   if (!inboundRaw) {
-    return { status: "none", minutes: 0, label: "Sin inbound", isOverdue: false };
+    return { status: "none", minutes: 0, label: "Sin inbound", isOverdue: false, awaitingReply: false };
   }
   const inboundAt = new Date(inboundRaw).getTime();
   if (Number.isNaN(inboundAt)) {
-    return { status: "none", minutes: 0, label: "Sin dato", isOverdue: false };
+    return { status: "none", minutes: 0, label: "Sin dato", isOverdue: false, awaitingReply: false };
   }
   const lastMessageAt = new Date(conversation?.last_message_at || 0).getTime();
   const hasReplyAfterInbound = Number.isFinite(lastMessageAt) && lastMessageAt > inboundAt;
+  const awaitingReply = !hasReplyAfterInbound;
   if (hasReplyAfterInbound) {
-    return { status: "ok", minutes: 0, label: "Al día", isOverdue: false };
+    return { status: "ok", minutes: 0, label: "Al día", isOverdue: false, awaitingReply: false };
   }
   const diffMin = Math.max(0, Math.floor((Date.now() - inboundAt) / 60000));
   if (diffMin <= 15) {
-    return { status: "ok", minutes: diffMin, label: "En ventana", isOverdue: false };
+    return { status: "ok", minutes: diffMin, label: "En ventana", isOverdue: false, awaitingReply };
   }
   if (diffMin <= 60) {
-    return { status: "warn", minutes: diffMin, label: "Atención", isOverdue: true };
+    return { status: "warn", minutes: diffMin, label: "Atención", isOverdue: true, awaitingReply };
   }
-  return { status: "critical", minutes: diffMin, label: "Crítico", isOverdue: true };
+  return { status: "critical", minutes: diffMin, label: "Crítico", isOverdue: true, awaitingReply };
 };
 
 const CHAT_OVERDUE_FILTER_STORAGE_KEY = "chat_sla_overdue_only";
@@ -988,12 +989,12 @@ const ChatView = () => {
   return (
     <div className="app-page app-chat-page">
       <div className="app-page-header app-page-headline app-chat-headline mb-3">
-        <div>
+        <div className="app-chat-headline-copy">
           <div className="app-chat-breadcrumb">General / Conversaciones</div>
           <h1 className="h4 mb-1">Conversaciones</h1>
-          <p className="text-muted mb-0">Gestión centralizada de WhatsApp, IA y seguimiento comercial.</p>
+          <p className="text-muted mb-0 app-chat-headline-subtitle">Gestión centralizada de WhatsApp, IA y seguimiento comercial.</p>
         </div>
-      <div className="app-chat-headline-actions">
+        <div className="app-chat-headline-actions">
           {canManageAiConfigs && (
             <Form.Check
               type="switch"
@@ -1021,7 +1022,7 @@ const ChatView = () => {
             aria-label="Abrir filtros"
           >
             <i className="bi bi-funnel" />
-            <span className="ms-1">Filtros</span>
+            <span className="ms-1 app-chat-action-label">Filtros</span>
           </button>
           <button
             type="button"
@@ -1031,7 +1032,7 @@ const ChatView = () => {
             aria-label="Abrir información de conversación"
           >
             <i className="bi bi-info-circle" />
-            <span className="ms-1">Información</span>
+            <span className="ms-1 app-chat-action-label">Información</span>
           </button>
           <button
             type="button"
@@ -1041,7 +1042,7 @@ const ChatView = () => {
             aria-label="Abrir edición rápida del deal"
           >
             <i className="bi bi-briefcase" />
-            <span className="ms-1">Deal rápido</span>
+            <span className="ms-1 app-chat-action-label">Deal rápido</span>
           </button>
         </div>
       </div>
