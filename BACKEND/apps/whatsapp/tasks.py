@@ -21,6 +21,17 @@ from apps.whatsapp.services.whatsapp_api_service import WhatsAppAPIError, WhatsA
 logger = logging.getLogger(__name__)
 
 
+def _set_message_failed(message: Message, *, error_code: str, detail: str, extra_metadata: dict | None = None) -> None:
+    message.status = "failed"
+    message.metadata = {
+        **(message.metadata or {}),
+        "error": error_code,
+        "detail": detail[:800],
+        **(extra_metadata or {}),
+    }
+    message.save(update_fields=["status", "metadata", "updated_at"])
+
+
 def _resolve_attachment_mime_type(
     *,
     file_path: str | None,
@@ -46,7 +57,6 @@ def process_whatsapp_webhook(payload: dict) -> None:
 
 @shared_task(
     bind=True,
-    autoretry_for=(RequestException, TimeoutError, RuntimeError),
     retry_backoff=True,
     retry_backoff_max=300,
     max_retries=3,
@@ -55,7 +65,6 @@ def process_whatsapp_webhook(payload: dict) -> None:
 def send_whatsapp_message(self, message_id: str) -> None:
     """Send a pending chat message through WhatsApp API."""
 
-    del self
     message = Message.objects.select_related(
         "conversation",
         "conversation__contact",
@@ -131,25 +140,28 @@ def send_whatsapp_message(self, message_id: str) -> None:
         else:
             response = service.send_text_message(to=to_number, body=message.content)
     except WhatsAppAPIError as exc:
-        detail = str(exc)[:800]
-        message.status = "failed"
-        message.metadata = {
-            **(message.metadata or {}),
-            "error": "WHATSAPP_API_ERROR",
-            "detail": detail,
-        }
-        message.save(update_fields=["status", "metadata", "updated_at"])
+        detail = str(exc)
+        _set_message_failed(message, error_code="WHATSAPP_API_ERROR", detail=detail)
         logger.warning("WhatsApp API rejected message %s: %s", message.id, detail)
         return
-    except Exception as exc:  # noqa: BLE001
-        detail = str(exc)[:800]
+    except (RequestException, TimeoutError, RuntimeError) as exc:
+        detail = str(exc)
+        if self.request.retries >= self.max_retries:
+            _set_message_failed(message, error_code="WHATSAPP_SEND_RETRY_EXHAUSTED", detail=detail)
+            logger.exception("WhatsApp send retries exhausted for message %s", message.id)
+            return
         message.metadata = {
             **(message.metadata or {}),
-            "error": "WHATSAPP_SEND_EXCEPTION",
-            "detail": detail,
+            "error": "WHATSAPP_SEND_RETRYING",
+            "detail": detail[:800],
         }
         message.save(update_fields=["metadata", "updated_at"])
-        raise
+        raise self.retry(exc=exc)
+    except Exception as exc:  # noqa: BLE001
+        detail = str(exc)
+        _set_message_failed(message, error_code="WHATSAPP_SEND_EXCEPTION", detail=detail)
+        logger.exception("Unexpected WhatsApp send exception for message %s", message.id)
+        return
 
     wa_id = ((response.get("messages") or [{}])[0]).get("id")
     message.status = "sent"
@@ -164,7 +176,6 @@ def send_whatsapp_message(self, message_id: str) -> None:
 
 @shared_task(
     bind=True,
-    autoretry_for=(RequestException, TimeoutError, RuntimeError),
     retry_backoff=True,
     retry_backoff_max=300,
     max_retries=3,
@@ -173,7 +184,6 @@ def send_whatsapp_message(self, message_id: str) -> None:
 def send_whatsapp_template(self, message_id: str, template_id: str, variables: list[str] | None = None) -> None:
     """Send approved WhatsApp template for a conversation message."""
 
-    del self
     message = Message.objects.select_related(
         "conversation",
         "conversation__contact",
@@ -203,29 +213,54 @@ def send_whatsapp_template(self, message_id: str, template_id: str, variables: l
             components=components,
         )
     except WhatsAppAPIError as exc:
-        detail = str(exc)[:800]
-        message.status = "failed"
-        message.metadata = {
-            **(message.metadata or {}),
-            "error": "WHATSAPP_TEMPLATE_API_ERROR",
-            "detail": detail,
-            "template_id": str(template.id),
-            "template_variables": variables or [],
-        }
-        message.save(update_fields=["status", "metadata", "updated_at"])
+        detail = str(exc)
+        _set_message_failed(
+            message,
+            error_code="WHATSAPP_TEMPLATE_API_ERROR",
+            detail=detail,
+            extra_metadata={
+                "template_id": str(template.id),
+                "template_variables": variables or [],
+            },
+        )
         logger.warning("WhatsApp template rejected for message %s: %s", message.id, detail)
         return
-    except Exception as exc:  # noqa: BLE001
-        detail = str(exc)[:800]
+    except (RequestException, TimeoutError, RuntimeError) as exc:
+        detail = str(exc)
+        if self.request.retries >= self.max_retries:
+            _set_message_failed(
+                message,
+                error_code="WHATSAPP_TEMPLATE_RETRY_EXHAUSTED",
+                detail=detail,
+                extra_metadata={
+                    "template_id": str(template.id),
+                    "template_variables": variables or [],
+                },
+            )
+            logger.exception("WhatsApp template retries exhausted for message %s", message.id)
+            return
         message.metadata = {
             **(message.metadata or {}),
-            "error": "WHATSAPP_TEMPLATE_SEND_EXCEPTION",
-            "detail": detail,
+            "error": "WHATSAPP_TEMPLATE_RETRYING",
+            "detail": detail[:800],
             "template_id": str(template.id),
             "template_variables": variables or [],
         }
         message.save(update_fields=["metadata", "updated_at"])
-        raise
+        raise self.retry(exc=exc)
+    except Exception as exc:  # noqa: BLE001
+        detail = str(exc)
+        _set_message_failed(
+            message,
+            error_code="WHATSAPP_TEMPLATE_SEND_EXCEPTION",
+            detail=detail,
+            extra_metadata={
+                "template_id": str(template.id),
+                "template_variables": variables or [],
+            },
+        )
+        logger.exception("Unexpected WhatsApp template send exception for message %s", message.id)
+        return
     wa_id = ((response.get("messages") or [{}])[0]).get("id")
     message.status = "sent"
     message.whatsapp_message_id = wa_id or message.whatsapp_message_id
