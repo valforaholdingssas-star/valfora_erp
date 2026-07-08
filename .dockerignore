@@ -1,0 +1,27 @@
+.git
+.gitignore
+.DS_Store
+
+# Local env files should not be part of the image context
+.env
+.env.*
+
+# Frontend build artifacts and local dependencies
+FRONTEND/node_modules
+FRONTEND/dist
+FRONTEND/.vite
+FRONTEND/.vite-temp
+
+# Large design/reference assets not needed by the production build
+FRONTEND/Dastyle-v1.1
+FRONTEND/*.zip
+
+# Python local caches
+BACKEND/**/__pycache__
+BACKEND/**/*.pyc
+BACKEND/.pytest_cache
+
+# General local caches
+**/.pytest_cache
+**/__pycache__
+**/*.pyc
