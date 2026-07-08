@@ -15,6 +15,10 @@ from apps.chat.handoff import text_requests_human_handoff
 from apps.chat.models import Conversation, Message
 from apps.chat.serializers import MessageSerializer
 from apps.notifications.services import broadcast_chat_conversation_update, notify_inbound_chat_message
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 def _to_channel_safe(value):
@@ -63,7 +67,10 @@ def broadcast_new_chat_message(sender, instance: Message, created: bool, **kwarg
         "type": "chat.event",
         "payload": {"event": evt, "message": payload},
     }
-    async_to_sync(layer.group_send)(f"chat_conversation_{instance.conversation_id}", event)
+    try:
+        async_to_sync(layer.group_send)(f"chat_conversation_{instance.conversation_id}", event)
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed websocket push for conversation %s", instance.conversation_id)
 
     if not created:
         return
@@ -75,9 +82,15 @@ def broadcast_new_chat_message(sender, instance: Message, created: bool, **kwarg
         "ai_configuration",
         "whatsapp_phone_number",
     ).get(pk=instance.conversation_id)
-    broadcast_chat_conversation_update(conv)
+    try:
+        broadcast_chat_conversation_update(conv)
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to broadcast chat conversation update for %s", conv.id)
 
-    notify_inbound_chat_message(instance)
+    try:
+        notify_inbound_chat_message(instance)
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to push inbound chat notification for %s", instance.id)
 
 
 @receiver(post_save, sender=Message)

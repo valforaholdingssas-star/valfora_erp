@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+from datetime import date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -17,6 +21,36 @@ if TYPE_CHECKING:
     from apps.chat.models import Message
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
+
+
+def _to_channel_safe(value):
+    """Convert payload values to primitives safe for channels_redis/msgpack."""
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _to_channel_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_to_channel_safe(v) for v in value]
+    return value
+
+
+def _safe_group_send(group_name: str, payload: dict) -> None:
+    """Best-effort websocket push that never aborts business flow."""
+    layer = get_channel_layer()
+    if not layer:
+        return
+    try:
+        async_to_sync(layer.group_send)(
+            group_name,
+            {"type": "chat.event", "payload": _to_channel_safe(payload)},
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed websocket push to %s", group_name)
 
 
 def _recipient_ids_for_inbound_message(conv) -> list:
@@ -41,10 +75,6 @@ def _chat_viewer_ids() -> list:
 
 def broadcast_chat_conversation_update(conv) -> None:
     """Push a lightweight conversation refresh event to every chat viewer."""
-    layer = get_channel_layer()
-    if not layer:
-        return
-
     from apps.chat.serializers import ConversationSerializer
 
     payload = {
@@ -53,9 +83,8 @@ def broadcast_chat_conversation_update(conv) -> None:
         "unread_count": conv.unread_count,
         "conversation": ConversationSerializer(conv).data,
     }
-    event = {"type": "chat.event", "payload": payload}
     for uid in _chat_viewer_ids():
-        async_to_sync(layer.group_send)(f"chat_user_{uid}", event)
+        _safe_group_send(f"chat_user_{uid}", payload)
 
 
 def notify_inbound_chat_message(message: "Message") -> None:
@@ -86,7 +115,6 @@ def notify_inbound_chat_message(message: "Message") -> None:
     body = (message.content or "").strip()[:500]
     action_url = f"/chat/contact/{contact.id}"
 
-    layer = get_channel_layer()
     for uid in recipient_ids:
         n = Notification.objects.create(
             recipient_id=uid,
@@ -101,9 +129,7 @@ def notify_inbound_chat_message(message: "Message") -> None:
             "event": "notification.created",
             "notification": NotificationSerializer(n).data,
         }
-        event = {"type": "chat.event", "payload": payload}
-        if layer:
-            async_to_sync(layer.group_send)(f"chat_user_{uid}", event)
+        _safe_group_send(f"chat_user_{uid}", payload)
         cache.delete(f"platform_dashboard:{uid}")
 
 
@@ -140,44 +166,32 @@ def notify_inbound_linkedin_message(*, prospect, message_text: str = "") -> None
         last_message_at__isnull=False,
     ).count()
 
-    layer = get_channel_layer()
-    if layer:
-        preview = body[:100]
-        async_to_sync(layer.group_send)(
-            f"chat_user_{recipient_id}",
-            {
-                "type": "chat.event",
-                "payload": {
-                    "event": "notification.created",
-                    "notification": NotificationSerializer(n).data,
-                },
-            },
-        )
-        # Contract-compatible event payload requested by LinkedIn integration plan.
-        async_to_sync(layer.group_send)(
-            f"chat_user_{recipient_id}",
-            {
-                "type": "chat.event",
-                "payload": {
-                    "type": "linkedin_message",
-                    "prospect_id": str(prospect.id),
-                    "prospect_name": prospect.full_name,
-                    "message_preview": preview,
-                    "timestamp": n.created_at.isoformat(),
-                },
-            },
-        )
-        async_to_sync(layer.group_send)(
-            f"chat_user_{recipient_id}",
-            {
-                "type": "chat.event",
-                "payload": {
-                    "event": "linkedin.message.created",
-                    "prospect_id": str(prospect.id),
-                    "account_id": str(account.id),
-                    "unread_count": unread_count,
-                },
-            },
-        )
+    preview = body[:100]
+    _safe_group_send(
+        f"chat_user_{recipient_id}",
+        {
+            "event": "notification.created",
+            "notification": NotificationSerializer(n).data,
+        },
+    )
+    _safe_group_send(
+        f"chat_user_{recipient_id}",
+        {
+            "type": "linkedin_message",
+            "prospect_id": str(prospect.id),
+            "prospect_name": prospect.full_name,
+            "message_preview": preview,
+            "timestamp": n.created_at.isoformat(),
+        },
+    )
+    _safe_group_send(
+        f"chat_user_{recipient_id}",
+        {
+            "event": "linkedin.message.created",
+            "prospect_id": str(prospect.id),
+            "account_id": str(account.id),
+            "unread_count": unread_count,
+        },
+    )
 
     cache.delete(f"platform_dashboard:{recipient_id}")
