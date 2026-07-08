@@ -1,11 +1,16 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const lowMemoryBuild = process.env.VITE_LOW_MEMORY_BUILD === "1";
+
 export default defineConfig({
   plugins: [react()],
   build: {
     sourcemap: false,
     cssCodeSplit: true,
+    minify: lowMemoryBuild ? false : "esbuild",
+    cssMinify: lowMemoryBuild ? false : undefined,
+    reportCompressedSize: !lowMemoryBuild,
     rollupOptions: {
       output: {
         manualChunks(id) {
