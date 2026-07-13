@@ -10,6 +10,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.ai_config.runtime import resolve_global_ai_mode_enabled
 from apps.common.audit import write_audit_log
 from apps.crm.assignment_engine import AssignmentEngine
 from apps.crm.models import Activity, Contact, Deal, LeadEngineConfig
@@ -97,6 +98,7 @@ class LeadEngine:
                     "status": "active",
                     "assigned_to": contact.assigned_to,
                     "whatsapp_phone_number": whatsapp_phone_number,
+                    "ai_mode_enabled": resolve_global_ai_mode_enabled(),
                 },
             )
         else:
@@ -108,6 +110,7 @@ class LeadEngine:
                     "status": "active",
                     "assigned_to": contact.assigned_to,
                     "whatsapp_phone_number": whatsapp_phone_number,
+                    "ai_mode_enabled": resolve_global_ai_mode_enabled(),
                 },
             )
         conv.last_inbound_message_at = timezone.now()

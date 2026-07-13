@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from apps.ai_config.models import AIRuntimeSettings
 from apps.chat.models import Conversation, Message
 from apps.crm.lead_engine import LeadEngine
 from apps.crm.models import Activity, Contact, Deal, DealStageHistory, LeadEngineConfig
@@ -110,3 +111,30 @@ def test_lead_engine_enqueues_inbound_media_download(mock_media_delay, wa_phone,
 
     assert out["message"].message_type == "image"
     mock_media_delay.assert_called_once_with(str(out["message"].id), "media-xyz")
+
+
+@pytest.mark.django_db
+def test_lead_engine_new_whatsapp_conversation_inherits_global_ai_mode(wa_phone, admin_user):
+    AIRuntimeSettings.objects.update_or_create(
+        singleton_key="default",
+        defaults={"global_ai_mode_enabled": True},
+    )
+    cfg = LeadEngineConfig.objects.create(
+        assignment_strategy="specific_user",
+        assignment_specific_user=admin_user,
+    )
+    engine = LeadEngine(cfg)
+
+    out = engine.process_inbound_whatsapp_message(
+        phone_number="+57 300 222 3333",
+        sender_name="Cliente IA Global",
+        message_content="Hola, este es mi primer mensaje",
+        message_type="text",
+        whatsapp_message_id="wamid-global-ai-1",
+        whatsapp_phone_number=wa_phone,
+        metadata={},
+    )
+
+    conversation = out["conversation"]
+    conversation.refresh_from_db()
+    assert conversation.ai_mode_enabled is True
