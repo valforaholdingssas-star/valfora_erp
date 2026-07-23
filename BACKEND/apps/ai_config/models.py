@@ -59,9 +59,9 @@ class AIConfiguration(BaseModel):
         help_text="Instrucciones base para el asistente (idioma, tono, límites).",
     )
     objective = models.TextField(blank=True, help_text="Objetivo principal de la IA en las conversaciones.")
-    role = models.CharField(max_length=160, blank=True, help_text="Rol que debe asumir la IA.")
-    tone = models.CharField(max_length=120, blank=True, help_text="Tono de comunicación esperado.")
-    style = models.CharField(max_length=160, blank=True, help_text="Estilo de redacción deseado.")
+    role = models.TextField(blank=True, help_text="Rol que debe asumir la IA.")
+    tone = models.TextField(blank=True, help_text="Tono de comunicación esperado.")
+    style = models.TextField(blank=True, help_text="Estilo de redacción deseado.")
     temperature = models.FloatField(default=0.7)
     max_tokens = models.PositiveIntegerField(default=512)
     llm_model = models.CharField(max_length=80, default="gpt-4o-mini")

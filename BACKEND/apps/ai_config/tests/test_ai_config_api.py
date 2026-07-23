@@ -36,6 +36,30 @@ def test_ai_config_list_admin(admin_user):
 
 
 @pytest.mark.django_db
+def test_ai_config_patch_accepts_long_profile_fields(admin_user):
+    cfg = AIConfiguration.objects.filter(is_active=True).first()
+    assert cfg is not None
+    client = APIClient()
+    client.force_authenticate(user=admin_user)
+    payload = {
+        "role": "Consultor comercial senior. " * 20,
+        "tone": "Profesional, directo y orientado a cierre. " * 20,
+        "style": "Respuestas claras con pasos accionables y contexto útil. " * 20,
+        "system_prompt": "Usa contexto del negocio y responde siempre en español.",
+    }
+    res = client.patch(
+        f"/api/v1/ai-config/configurations/{cfg.id}/",
+        payload,
+        format="json",
+    )
+    assert res.status_code == 200
+    cfg.refresh_from_db()
+    assert cfg.role == payload["role"]
+    assert cfg.tone == payload["tone"]
+    assert cfg.style == payload["style"]
+
+
+@pytest.mark.django_db
 @patch("apps.ai_config.viewsets.generate_chat_completion")
 def test_ai_config_test_sandbox(mock_completion, admin_user):
     mock_completion.return_value = CompletionResult(
