@@ -11,6 +11,7 @@ from apps.crm.models import (
     DealStageHistory,
     Document,
     LeadEngineConfig,
+    PipelineStage,
     PipelineAutomationConfig,
 )
 
@@ -118,6 +119,7 @@ class DealSerializer(serializers.ModelSerializer):
             "assigned_to",
             "assigned_to_name",
             "description",
+            "business_notes",
             "lost_reason",
             "is_stale",
             "is_active",
@@ -293,6 +295,28 @@ class DealStageHistorySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class PipelineStageSerializer(serializers.ModelSerializer):
+    """Serializer for configurable CRM pipeline stages."""
+
+    class Meta:
+        model = PipelineStage
+        fields = (
+            "id",
+            "key",
+            "name",
+            "position",
+            "accent_color",
+            "tint_color",
+            "is_closed_stage",
+            "is_won_stage",
+            "is_lost_stage",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+
 class LeadEngineConfigSerializer(serializers.ModelSerializer):
     """Serializer for lead automation settings."""
 
@@ -336,6 +360,7 @@ class PipelineAutomationConfigSerializer(serializers.ModelSerializer):
             "auto_move_on_contract_signed",
             "stale_deal_days",
             "auto_close_lost_days",
+            "closed_chat_stage_key",
             "notify_on_stage_change",
             "log_auto_movements",
             "is_active",

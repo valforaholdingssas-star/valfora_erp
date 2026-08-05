@@ -120,19 +120,29 @@ class Contact(BaseModel):
         return max(0, delta.days)
 
 
+class PipelineStage(BaseModel):
+    """Configurable pipeline stage for CRM deals."""
+
+    key = models.SlugField(max_length=50, unique=True, db_index=True)
+    name = models.CharField(max_length=120)
+    position = models.PositiveIntegerField(default=0, db_index=True)
+    accent_color = models.CharField(max_length=20, default="#3b82f6")
+    tint_color = models.CharField(max_length=40, default="rgba(59, 130, 246, 0.14)")
+    is_closed_stage = models.BooleanField(default=False, db_index=True)
+    is_won_stage = models.BooleanField(default=False, db_index=True)
+    is_lost_stage = models.BooleanField(default=False, db_index=True)
+
+    class Meta:
+        verbose_name = "Pipeline stage"
+        verbose_name_plural = "Pipeline stages"
+        ordering = ["position", "created_at"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Deal(BaseModel):
     """Sales opportunity / deal."""
-
-    STAGE_CHOICES = (
-        ("new_lead", "New lead"),
-        ("contacted", "Contacted"),
-        ("qualified", "Qualified"),
-        ("qualification", "Qualification"),
-        ("proposal", "Proposal"),
-        ("negotiation", "Negotiation"),
-        ("closed_won", "Closed won"),
-        ("closed_lost", "Closed lost"),
-    )
     SOURCE_CHOICES = (
         ("whatsapp", "WhatsApp"),
         ("manual", "Manual"),
@@ -152,7 +162,7 @@ class Deal(BaseModel):
     )
     value = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     currency = models.CharField(max_length=3, default="USD")
-    stage = models.CharField(max_length=20, choices=STAGE_CHOICES, default="qualification", db_index=True)
+    stage = models.CharField(max_length=50, default="qualified", db_index=True)
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="other", db_index=True)
     probability = models.PositiveSmallIntegerField(default=0)
     expected_close_date = models.DateField(null=True, blank=True)
@@ -164,6 +174,7 @@ class Deal(BaseModel):
         related_name="crm_deals_assigned",
     )
     description = models.TextField(blank=True)
+    business_notes = models.TextField(blank=True)
     lost_reason = models.CharField(max_length=255, blank=True)
     is_stale = models.BooleanField(default=False, db_index=True)
 
@@ -293,7 +304,7 @@ class LeadEngineConfig(BaseModel):
 
     auto_create_contact = models.BooleanField(default=True)
     auto_create_deal = models.BooleanField(default=True)
-    default_deal_pipeline_stage = models.CharField(max_length=20, default="new_lead")
+    default_deal_pipeline_stage = models.CharField(max_length=50, default="new_lead")
     default_deal_title_template = models.CharField(max_length=255, default="Lead WhatsApp - {contact_name}")
     auto_create_follow_up = models.BooleanField(default=True)
     max_response_time_minutes = models.PositiveIntegerField(default=60)
@@ -342,6 +353,7 @@ class PipelineAutomationConfig(BaseModel):
     auto_move_on_contract_signed = models.BooleanField(default=True)
     stale_deal_days = models.PositiveIntegerField(default=14)
     auto_close_lost_days = models.PositiveIntegerField(default=45)
+    closed_chat_stage_key = models.CharField(max_length=50, default="realizar_llamada")
     notify_on_stage_change = models.BooleanField(default=True)
     log_auto_movements = models.BooleanField(default=True)
 
@@ -366,11 +378,14 @@ class DealStageHistory(BaseModel):
         ("contract_signed", "Contract signed"),
         ("stale_timeout", "Stale timeout"),
         ("lead_created", "Lead created"),
+        ("chat_window_closed", "Chat window closed"),
+        ("chat_closed_manual", "Chat closed manually"),
+        ("business_summary_refresh", "Business summary refresh"),
     )
 
     deal = models.ForeignKey(Deal, on_delete=models.CASCADE, related_name="stage_history")
-    from_stage = models.CharField(max_length=20, blank=True)
-    to_stage = models.CharField(max_length=20)
+    from_stage = models.CharField(max_length=50, blank=True)
+    to_stage = models.CharField(max_length=50)
     moved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

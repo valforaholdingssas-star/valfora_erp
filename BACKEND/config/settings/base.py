@@ -172,6 +172,10 @@ CACHES = {
 }
 
 CELERY_BEAT_SCHEDULE = {
+    "crm-advance-closed-whatsapp-conversations": {
+        "task": "crm.tasks.advance_closed_whatsapp_conversations",
+        "schedule": crontab(minute="*/10"),
+    },
     "linkedin-execute-saved-searches": {
         "task": "apps.linkedin.tasks.linkedin_execute_saved_searches",
         "schedule": crontab(minute=0, hour="*/4"),

@@ -10,12 +10,14 @@ from apps.crm.viewsets import (
     CRMDashboardView,
     DealViewSet,
     DocumentViewSet,
+    PipelineStageViewSet,
 )
 
 router = DefaultRouter()
 router.register("contacts", ContactViewSet, basename="crm-contact")
 router.register("companies", CompanyViewSet, basename="crm-company")
 router.register("deals", DealViewSet, basename="crm-deal")
+router.register("pipeline-stages", PipelineStageViewSet, basename="crm-pipeline-stage")
 router.register("activities", ActivityViewSet, basename="crm-activity")
 router.register("documents", DocumentViewSet, basename="crm-document")
 

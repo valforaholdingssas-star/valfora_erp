@@ -20,6 +20,7 @@ from apps.chat.serializers import (
     MessageSerializer,
     TemplateMessageSerializer,
 )
+from apps.crm.pipeline_automation import PipelineAutomationService
 from apps.whatsapp.models import WhatsAppTemplate
 from apps.whatsapp.tasks import send_whatsapp_message, send_whatsapp_template
 
@@ -61,6 +62,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset().filter(deal__isnull=False)
         params = self.request.query_params
+        status_filter = params.get("status")
+
+        if status_filter == "closed":
+            qs = qs.filter(status="archived")
+        elif status_filter == "open" or not params.get("include_closed"):
+            qs = qs.exclude(status="archived")
 
         stage = params.get("deal_stage")
         if stage:
@@ -121,9 +128,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
         deal = serializer.validated_data.get("deal")
         contact = serializer.validated_data["contact"]
         if not deal and contact:
+            closed_stage_keys = PipelineAutomationService.get_closed_stage_keys()
             deal = (
                 contact.deals.filter(is_active=True)
-                .exclude(stage__in=["closed_won", "closed_lost"])
+                .exclude(stage__in=closed_stage_keys)
                 .order_by("-updated_at", "-created_at")
                 .first()
             ) or contact.deals.filter(is_active=True).order_by("-updated_at", "-created_at").first()
@@ -143,6 +151,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
             "ai_configuration": ai_cfg,
             "deal": deal,
             "ai_mode_enabled": resolve_global_ai_mode_enabled(),
+            "closed_at": None,
         }
         if deal:
             conv, created = Conversation.objects.update_or_create(
@@ -173,6 +182,23 @@ class ConversationViewSet(viewsets.ModelViewSet):
             request=request,
         )
         return Response(out.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    def perform_update(self, serializer):
+        current_status = serializer.instance.status
+        next_status = serializer.validated_data.get("status", current_status)
+        closed_at = serializer.instance.closed_at
+        if next_status == "archived" and current_status != "archived":
+            closed_at = timezone.now()
+        elif current_status == "archived" and next_status != "archived":
+            closed_at = None
+        instance = serializer.save(closed_at=closed_at)
+        write_audit_log(
+            user=self.request.user,
+            action="update",
+            instance=instance,
+            changes={"status": next_status, "closed_at": instance.closed_at.isoformat() if instance.closed_at else None},
+            request=self.request,
+        )
 
     def perform_destroy(self, instance):
         instance.is_active = False

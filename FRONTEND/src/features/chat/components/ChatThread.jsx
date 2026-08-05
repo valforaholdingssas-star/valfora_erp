@@ -37,6 +37,8 @@ const ChatThread = ({
   onToggleAi,
   onClearHandoff,
   onRetry,
+  onOpenDealPanel,
+  onToggleConversationStatus,
   senderLabel,
   statusWarning,
 }) => {
@@ -136,6 +138,25 @@ const ChatThread = ({
             )}
           </div>
           <div className="d-flex align-items-center gap-2 flex-shrink-0 app-chat-topbar-actions">
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={onOpenDealPanel}
+              disabled={!activeConv?.deal && !activeConv?.latest_deal_id}
+            >
+              <i className="bi bi-briefcase me-1" />
+              Lead
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() => {
+                void onToggleConversationStatus();
+              }}
+            >
+              <i className={`bi ${activeConv?.status === "archived" ? "bi-arrow-counterclockwise" : "bi-archive"} me-1`} />
+              {activeConv?.status === "archived" ? "Reabrir" : "Cerrar"}
+            </button>
             <button
               id="toggle-ai"
               type="button"
@@ -254,6 +275,8 @@ ChatThread.propTypes = {
   onToggleAi: PropTypes.func.isRequired,
   onClearHandoff: PropTypes.func.isRequired,
   onRetry: PropTypes.func.isRequired,
+  onOpenDealPanel: PropTypes.func.isRequired,
+  onToggleConversationStatus: PropTypes.func.isRequired,
   senderLabel: PropTypes.func.isRequired,
   statusWarning: PropTypes.func.isRequired,
 };

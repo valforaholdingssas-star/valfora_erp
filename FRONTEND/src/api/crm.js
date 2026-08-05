@@ -44,6 +44,12 @@ export const deleteCompany = (id) => api.delete(`/crm/companies/${id}/`);
 
 export const fetchDeals = (params) => api.get("/crm/deals/", { params }).then(unwrap);
 export const fetchDeal = (id) => api.get(`/crm/deals/${id}/`).then(unwrap);
+export const fetchPipelineStages = (params) => api.get("/crm/pipeline-stages/", { params }).then(unwrap);
+export const createPipelineStage = (payload) => api.post("/crm/pipeline-stages/", payload).then(unwrap);
+export const updatePipelineStage = (id, payload) => api.patch(`/crm/pipeline-stages/${id}/`, payload).then(unwrap);
+export const deletePipelineStage = (id) => api.delete(`/crm/pipeline-stages/${id}/`).then(unwrap);
+export const reorderPipelineStages = (ordered_ids) =>
+  api.post("/crm/pipeline-stages/reorder/", { ordered_ids }).then(unwrap);
 
 export const createDeal = (payload) => api.post("/crm/deals/", payload).then(unwrap);
 

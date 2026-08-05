@@ -58,6 +58,7 @@ class Conversation(BaseModel):
     unread_count = models.PositiveIntegerField(default=0)
     customer_service_window_expires = models.DateTimeField(null=True, blank=True)
     last_inbound_message_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
     human_handoff_requested = models.BooleanField(default=False, db_index=True)
     human_handoff_at = models.DateTimeField(null=True, blank=True)
 

@@ -16,7 +16,7 @@ import {
   setGlobalAiMode,
   toggleAi,
 } from "../../../api/chat.js";
-import { fetchDeal, moveDealStage, updateDeal } from "../../../api/crm.js";
+import { fetchCompanies, fetchDeal, fetchPipelineStages, moveDealStage, updateDeal } from "../../../api/crm.js";
 import { fetchUsers } from "../../../api/users.js";
 import { fetchWhatsAppPhoneNumbers } from "../../../api/whatsapp.js";
 import { useAuth } from "../../../contexts/AuthContext.jsx";
@@ -138,6 +138,20 @@ const computeConversationSla = (conversation) => {
   return { status: "critical", minutes: diffMin, label: "Crítico", isOverdue: true, awaitingReply };
 };
 
+const computeRemainingWindowLabel = (conversation) => {
+  if (conversation?.channel !== "whatsapp") return "";
+  const expiresAt = conversation?.customer_service_window_expires;
+  if (!expiresAt) return "Sin ventana";
+  const expiry = new Date(expiresAt).getTime();
+  if (Number.isNaN(expiry)) return "Sin ventana";
+  const diffMin = Math.floor((expiry - Date.now()) / 60000);
+  if (diffMin <= 0) return "Ventana cerrada";
+  const hours = Math.floor(diffMin / 60);
+  const minutes = diffMin % 60;
+  if (hours <= 0) return `${minutes} min restantes`;
+  return `${hours} h ${minutes} min restantes`;
+};
+
 const CHAT_OVERDUE_FILTER_STORAGE_KEY = "chat_sla_overdue_only";
 
 const ChatView = () => {
@@ -205,6 +219,9 @@ const ChatView = () => {
   const [globalAiModeLoading, setGlobalAiModeLoading] = useState(false);
   const [whatsAppLines, setWhatsAppLines] = useState([]);
   const [selectedWhatsAppLine, setSelectedWhatsAppLine] = useState("");
+  const [conversationStatusFilter, setConversationStatusFilter] = useState("open");
+  const [companyOptions, setCompanyOptions] = useState([]);
+  const [pipelineStages, setPipelineStages] = useState([]);
   const [isMobileViewport, setIsMobileViewport] = useState(() => (
     typeof window !== "undefined" ? window.innerWidth < 992 : false
   ));
@@ -283,6 +300,7 @@ const ChatView = () => {
       deal_opened_to: filters.dealOpenedTo || undefined,
       responsible: filters.responsible || undefined,
       whatsapp_phone_number: selectedWhatsAppLine || undefined,
+      status: conversationStatusFilter || undefined,
     };
     fetchConversations(params)
       .then((data) => {
@@ -311,7 +329,7 @@ const ChatView = () => {
           setLoadingList(false);
         }
       });
-  }, [searchQuery, filters, channelFilter, selectedWhatsAppLine]);
+  }, [searchQuery, filters, channelFilter, selectedWhatsAppLine, conversationStatusFilter]);
 
   const extractApiError = (error, fallback = "No fue posible completar la operación.") => {
     const payload = error?.response?.data?.data ?? error?.response?.data ?? {};
@@ -365,6 +383,18 @@ const ChatView = () => {
   useEffect(() => {
     fetchWhatsAppPhoneNumbers({ page_size: 200 })
       .then((data) => setWhatsAppLines(data.results || []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchCompanies({ page_size: 200, is_active: true })
+      .then((data) => setCompanyOptions(data.results || []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchPipelineStages({ page_size: 100, ordering: "position" })
+      .then((data) => setPipelineStages(data.results || data || []))
       .catch(() => {});
   }, []);
 
@@ -720,6 +750,7 @@ const ChatView = () => {
       (conversations.results || []).map((conv) => ({
         ...conv,
         __sla: computeConversationSla(conv),
+        __remainingWindowLabel: computeRemainingWindowLabel(conv),
       })),
     [conversations.results],
   );
@@ -860,17 +891,19 @@ const ChatView = () => {
   );
 
   const dealStages = useMemo(
-    () => [
-      ["new_lead", "Nuevo lead"],
-      ["contacted", "Contactado"],
-      ["qualified", "Calificado"],
-      ["qualification", "Calificación (legacy)"],
-      ["proposal", "Propuesta"],
-      ["negotiation", "Negociación"],
-      ["closed_won", "Cerrado ganado"],
-      ["closed_lost", "Cerrado perdido"],
-    ],
-    [],
+    () =>
+      (pipelineStages || []).length
+        ? pipelineStages.map((stage) => [stage.key, stage.name])
+        : [
+            ["new_lead", "Nuevo lead"],
+            ["contacted", "Contactado"],
+            ["qualified", "Calificado"],
+            ["proposal", "Propuesta"],
+            ["negotiation", "Negociación"],
+            ["closed_won", "Cerrado ganado"],
+            ["closed_lost", "Cerrado perdido"],
+          ],
+    [pipelineStages],
   );
   const orderedStageKeys = useMemo(() => dealStages.map(([value]) => value), [dealStages]);
 
@@ -888,11 +921,14 @@ const ChatView = () => {
       .then((deal) => {
         setDealDetail(deal);
         setDealDraft({
+          title: deal.title || "",
           stage: deal.stage || "new_lead",
           value: deal.value ?? 0,
           probability: deal.probability ?? 0,
           expected_close_date: deal.expected_close_date || "",
           assigned_to: deal.assigned_to || "",
+          company: deal.company || "",
+          business_notes: deal.business_notes || "",
         });
       })
       .catch(() => {
@@ -916,20 +952,26 @@ const ChatView = () => {
     setDealSaveError("");
     try {
       const payload = {
+        title: dealDraft.title || dealDetail.title,
         stage: dealDraft.stage,
         value: Number(dealDraft.value || 0),
         probability: Number(dealDraft.probability || 0),
         expected_close_date: dealDraft.expected_close_date || null,
         assigned_to: dealDraft.assigned_to || null,
+        company: dealDraft.company || null,
+        business_notes: dealDraft.business_notes || "",
       };
       const updated = await updateDeal(dealDetail.id, payload);
       setDealDetail(updated);
       setDealDraft({
+        title: updated.title || "",
         stage: updated.stage || "new_lead",
         value: updated.value ?? 0,
         probability: updated.probability ?? 0,
         expected_close_date: updated.expected_close_date || "",
         assigned_to: updated.assigned_to || "",
+        company: updated.company || "",
+        business_notes: updated.business_notes || "",
       });
       setConversations((prev) => ({
         ...prev,
@@ -940,6 +982,7 @@ const ChatView = () => {
                   ...c,
                   latest_deal_stage: updated.stage,
                   latest_deal_assigned_to: updated.assigned_to,
+                  deal_title: updated.title,
                 }
               : c,
           ) ?? [],
@@ -971,6 +1014,9 @@ const ChatView = () => {
         probability: updated.probability ?? prev?.probability ?? 0,
         expected_close_date: updated.expected_close_date || prev?.expected_close_date || "",
         assigned_to: updated.assigned_to || prev?.assigned_to || "",
+        company: updated.company || prev?.company || "",
+        business_notes: updated.business_notes || prev?.business_notes || "",
+        title: updated.title || prev?.title || "",
       }));
       setConversations((prev) => ({
         ...prev,
@@ -989,6 +1035,29 @@ const ChatView = () => {
       setDealSaveError(extractApiError(error, "No se pudo mover a la siguiente etapa."));
     } finally {
       setSavingDeal(false);
+    }
+  };
+
+  const handleToggleConversationStatus = async () => {
+    if (!activeId || !activeConv) return;
+    const nextStatus = activeConv.status === "archived" ? "open" : "archived";
+    try {
+      const updated = await patchConversation(activeId, { status: nextStatus });
+      setConversations((prev) => ({
+        ...prev,
+        results: (prev.results || []).map((row) => (
+          String(row.id) === String(activeId) ? { ...row, ...updated } : row
+        )),
+      }));
+      if (conversationStatusFilter === "open" && nextStatus === "archived") {
+        setActiveId(null);
+      }
+      if (conversationStatusFilter === "closed" && nextStatus === "open") {
+        setActiveId(null);
+      }
+      loadConversations({ silent: true });
+    } catch (error) {
+      setComposerError(extractApiError(error, "No se pudo actualizar el estado de la conversación."));
     }
   };
 
@@ -1095,6 +1164,8 @@ const ChatView = () => {
             selectedWhatsAppLine={selectedWhatsAppLine}
             onSelectWhatsAppLine={setSelectedWhatsAppLine}
             whatsAppLineCounts={whatsappLineCounts}
+            conversationStatusFilter={conversationStatusFilter}
+            onConversationStatusFilterChange={setConversationStatusFilter}
             className={mobileSection !== "conversations" ? "d-none d-lg-flex" : ""}
           />
         )}
@@ -1116,6 +1187,8 @@ const ChatView = () => {
                   onToggleAi={handleToggleAi}
                   onClearHandoff={handleClearHandoff}
                   onRetry={handleRetry}
+                  onOpenDealPanel={() => setQuickDealModalOpen(true)}
+                  onToggleConversationStatus={handleToggleConversationStatus}
                   senderLabel={senderLabel}
                   statusWarning={statusWarning}
                 />
@@ -1184,6 +1257,13 @@ const ChatView = () => {
               </Form.Select>
             </Form.Group>
           )}
+          <Form.Group>
+            <Form.Label>Estado de conversación</Form.Label>
+            <Form.Select value={conversationStatusFilter} onChange={(e) => setConversationStatusFilter(e.target.value)}>
+              <option value="open">Abiertos</option>
+              <option value="closed">Cerrados</option>
+            </Form.Select>
+          </Form.Group>
           <Form.Group>
             <Form.Label>Etapa del deal</Form.Label>
             <Form.Select value={filters.dealStage} onChange={(e) => setFilters((p) => ({ ...p, dealStage: e.target.value }))}>
@@ -1280,17 +1360,38 @@ const ChatView = () => {
           {!loadingDeal && !dealDetail && <p className="small text-muted mb-0">Este chat no tiene deal asociado.</p>}
           {!loadingDeal && dealDetail && dealDraft && (
             <div className="d-flex flex-column gap-2">
-              <div className="fw-semibold">{dealDetail.title}</div>
+              <Form.Group>
+                <Form.Label>Título del lead</Form.Label>
+                <Form.Control value={dealDraft.title || ""} onChange={(e) => handleDealDraftChange("title", e.target.value)} />
+              </Form.Group>
               <Form.Group><Form.Label>Etapa</Form.Label><Form.Select value={dealDraft.stage} onChange={(e) => handleDealDraftChange("stage", e.target.value)}>{dealStages.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Form.Select></Form.Group>
               <Form.Group><Form.Label>Valor</Form.Label><Form.Control type="number" min="0" step="0.01" value={dealDraft.value} onChange={(e) => handleDealDraftChange("value", e.target.value)} /></Form.Group>
               <Form.Group><Form.Label>Probabilidad (%)</Form.Label><Form.Control type="number" min="0" max="100" value={dealDraft.probability} onChange={(e) => handleDealDraftChange("probability", e.target.value)} /></Form.Group>
               <Form.Group><Form.Label>Cierre estimado</Form.Label><Form.Control type="date" value={dealDraft.expected_close_date || ""} onChange={(e) => handleDealDraftChange("expected_close_date", e.target.value)} /></Form.Group>
+              <Form.Group>
+                <Form.Label>Empresa</Form.Label>
+                <Form.Select value={dealDraft.company || ""} onChange={(e) => handleDealDraftChange("company", e.target.value)}>
+                  <option value="">Sin empresa</option>
+                  {companyOptions.map((company) => (
+                    <option key={company.id} value={company.id}>{company.name}</option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
               <Form.Group>
                 <Form.Label>Responsable</Form.Label>
                 <Form.Select value={dealDraft.assigned_to || ""} onChange={(e) => handleDealDraftChange("assigned_to", e.target.value)}>
                   <option value="">Sin asignar</option>
                   {responsibleOptions.map((u) => <option key={u.id} value={u.id}>{[u.first_name, u.last_name].filter(Boolean).join(" ") || u.email}</option>)}
                 </Form.Select>
+              </Form.Group>
+              <Form.Group>
+                <Form.Label>Notas de negocio</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={5}
+                  value={dealDraft.business_notes || ""}
+                  onChange={(e) => handleDealDraftChange("business_notes", e.target.value)}
+                />
               </Form.Group>
               {dealSaveError && <Alert variant="warning" className="py-2 px-3 small mb-0 mt-1">{dealSaveError}</Alert>}
             </div>

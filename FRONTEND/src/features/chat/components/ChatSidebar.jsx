@@ -22,6 +22,8 @@ const ChatSidebar = ({
   selectedWhatsAppLine,
   onSelectWhatsAppLine,
   whatsAppLineCounts,
+  conversationStatusFilter,
+  onConversationStatusFilterChange,
   className = "",
 }) => {
   return (
@@ -54,6 +56,22 @@ const ChatSidebar = ({
             onClick={() => onChannelFilterChange("")}
           >
             Todos
+          </Button>
+        </div>
+        <div className="d-flex gap-2 mb-2">
+          <Button
+            size="sm"
+            variant={conversationStatusFilter === "open" ? "dark" : "outline-secondary"}
+            onClick={() => onConversationStatusFilterChange("open")}
+          >
+            Abiertos
+          </Button>
+          <Button
+            size="sm"
+            variant={conversationStatusFilter === "closed" ? "dark" : "outline-secondary"}
+            onClick={() => onConversationStatusFilterChange("closed")}
+          >
+            Cerrados
           </Button>
         </div>
         {channelFilter === "whatsapp" && (whatsAppLines || []).length > 0 && (
@@ -138,6 +156,9 @@ const ChatSidebar = ({
                     {c.whatsapp_line_name && (
                       <span className="app-chat-sidebar-line-label">{c.whatsapp_line_name}</span>
                     )}
+                    {c.__remainingWindowLabel && (
+                      <span className="app-chat-sidebar-line-label">{c.__remainingWindowLabel}</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -162,6 +183,8 @@ ChatSidebar.propTypes = {
   selectedWhatsAppLine: PropTypes.string,
   onSelectWhatsAppLine: PropTypes.func,
   whatsAppLineCounts: PropTypes.object,
+  conversationStatusFilter: PropTypes.string.isRequired,
+  onConversationStatusFilterChange: PropTypes.func.isRequired,
   className: PropTypes.string,
 };
 

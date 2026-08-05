@@ -14,6 +14,7 @@ from apps.ai_config.runtime import resolve_global_ai_mode_enabled
 from apps.common.audit import write_audit_log
 from apps.crm.assignment_engine import AssignmentEngine
 from apps.crm.models import Activity, Contact, Deal, LeadEngineConfig
+from apps.crm.pipeline_automation import PipelineAutomationService
 
 
 def normalize_phone(raw_phone: str) -> str:
@@ -65,7 +66,7 @@ class LeadEngine:
                 "is_new_contact": False,
                 "deal": conv.deal
                 or Deal.objects.filter(contact=conv.contact, is_active=True)
-                .exclude(stage__in=["closed_won", "closed_lost"])
+                .exclude(stage__in=PipelineAutomationService.get_closed_stage_keys())
                 .first(),
                 "is_new_deal": False,
                 "conversation": conv,
@@ -236,20 +237,31 @@ class LeadEngine:
     def find_or_create_deal(self, *, contact: Contact, source: str) -> tuple[Deal | None, bool]:
         """Find active deal or create one for contact depending on config."""
 
-        active = (
-            Deal.objects.filter(contact=contact, is_active=True)
-            .exclude(stage__in=["closed_won", "closed_lost"])
-            .order_by("-updated_at")
-            .first()
+        active_conversation_deal_ids = list(
+            contact.conversations.filter(
+                is_active=True,
+                channel="whatsapp",
+                status="active",
+                deal__isnull=False,
+                deal__is_active=True,
+            )
+            .exclude(deal__stage__in=PipelineAutomationService.get_closed_stage_keys())
+            .values_list("deal_id", flat=True)
+            .distinct()
         )
+        active = None
+        if active_conversation_deal_ids:
+            active = (
+                Deal.objects.filter(id__in=active_conversation_deal_ids, is_active=True)
+                .order_by("-updated_at", "-created_at")
+                .first()
+            )
         if active:
             return active, False
         if not self.config.auto_create_deal:
             return None, False
 
-        stage = self.config.default_deal_pipeline_stage
-        if stage == "qualification":
-            stage = "qualified"
+        stage = PipelineAutomationService.normalize_stage(self.config.default_deal_pipeline_stage)
         title = self.config.default_deal_title_template.format(
             contact_name=f"{contact.first_name} {contact.last_name}".strip(),
             phone=contact.whatsapp_number or contact.phone_number,

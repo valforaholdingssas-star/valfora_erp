@@ -101,6 +101,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             "whatsapp_line_display_phone",
             "customer_service_window_expires",
             "last_inbound_message_at",
+            "closed_at",
             "last_message_at",
             "unread_count",
             "last_message_preview",
@@ -118,6 +119,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             "human_handoff_requested",
             "human_handoff_at",
             "last_inbound_message_at",
+            "closed_at",
             "created_at",
             "updated_at",
         )
