@@ -150,6 +150,15 @@ const computeRemainingWindowLabel = (conversation) => {
   return `${hours}h ${minutes}m`;
 };
 
+const normalizeMessagesPayload = (payload) => {
+  if (Array.isArray(payload)) {
+    return { count: payload.length, results: payload };
+  }
+  const results = Array.isArray(payload?.results) ? payload.results : [];
+  const count = Number(payload?.count ?? results.length ?? 0);
+  return { count, results };
+};
+
 const fetchAllPages = async (fetcher, params = {}, pageSize = 100) => {
   let page = 1;
   let expectedCount = null;
@@ -482,7 +491,8 @@ const ChatView = () => {
     fetchMessages(convId, { page_size: 100 })
       .then((data) => {
         if (messagesRequestRef.current !== requestId) return;
-        setMessages({ ...data, results: data.results || [] });
+        const normalized = normalizeMessagesPayload(data);
+        setMessages(normalized);
       })
       .catch((error) => {
         if (messagesRequestRef.current !== requestId) return;
@@ -497,17 +507,36 @@ const ChatView = () => {
     markRead(convId).catch(() => {});
   }, []);
 
+  const activateConversation = useCallback((conversationId, { openChatOnMobile = true } = {}) => {
+    const nextId = conversationId ? String(conversationId) : null;
+    setComposerError("");
+    setMessageLoadError("");
+    if (!nextId) {
+      setActiveId(null);
+      loadMessages(null);
+      return;
+    }
+    if (String(activeId || "") !== nextId) {
+      setMessages({ results: [], count: 0 });
+    }
+    setActiveId(nextId);
+    loadMessages(nextId);
+    if (openChatOnMobile && isMobileViewport) {
+      setMobileSection("chat");
+    }
+  }, [activeId, isMobileViewport, loadMessages]);
+
   useEffect(() => {
     if (dealId && !activeId) {
       createOrOpenConversation({ deal: dealId, channel: "whatsapp" })
         .then((conv) => {
           upsertConversationRow(conv);
-          setActiveId(conv.id);
+          activateConversation(conv.id, { openChatOnMobile: false });
           loadConversations({ silent: true });
         })
         .catch(() => {});
     }
-  }, [dealId, activeId, loadConversations, loadMessages, upsertConversationRow]);
+  }, [dealId, activeId, activateConversation, loadConversations, upsertConversationRow]);
 
   useEffect(() => {
     setChannelFilter("whatsapp");
@@ -526,11 +555,9 @@ const ChatView = () => {
   }, [channelFilter, conversationStatusFilter]);
 
   useEffect(() => {
-    if (activeId) {
-      loadMessages(activeId);
-      return;
+    if (!activeId) {
+      loadMessages(null);
     }
-    loadMessages(null);
   }, [activeId, loadMessages]);
 
   const handleWsMessageCreated = useCallback((incoming) => {
@@ -814,15 +841,7 @@ const ChatView = () => {
   };
 
   const selectConv = (id) => {
-    setComposerError("");
-    setMessageLoadError("");
-    if (String(id) !== String(activeId)) {
-      setMessages({ results: [], count: 0 });
-    }
-    setActiveId(id);
-    if (isMobileViewport) {
-      setMobileSection("chat");
-    }
+    activateConversation(id);
   };
 
   const conversationsWithSla = useMemo(
@@ -875,9 +894,9 @@ const ChatView = () => {
     }
     const activeStillVisible = filteredConversations.some((row) => String(row.id) === String(activeId));
     if (!activeId || !activeStillVisible) {
-      setActiveId(filteredConversations[0].id);
+      activateConversation(filteredConversations[0].id, { openChatOnMobile: false });
     }
-  }, [filteredConversations, activeId, dealId]);
+  }, [filteredConversations, activeId, dealId, activateConversation]);
   const whatsappLineCounts = useMemo(() => {
     const counts = {};
     sortedConversations.forEach((conv) => {

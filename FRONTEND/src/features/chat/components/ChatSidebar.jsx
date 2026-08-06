@@ -21,22 +21,17 @@ const formatWindowTagLabel = (conversation) => {
 
 const buildSidebarMeta = (conversation) => {
   const parts = [];
+  const isClosed = conversation?.status === "archived" || conversation?.is_whatsapp_window_closed;
   parts.push({
     key: "status",
-    label:
-      conversation?.status === "archived" || conversation?.is_whatsapp_window_closed
-        ? "Cerrado"
-        : "Abierto",
-    tone:
-      conversation?.status === "archived" || conversation?.is_whatsapp_window_closed
-        ? "status-closed"
-        : "status-open",
+    label: isClosed ? "Cerrado" : "Abierto",
+    tone: isClosed ? "status-closed" : "status-open",
   });
   if (conversation?.whatsapp_line_name) {
     parts.push({
       key: "line",
       label: conversation.whatsapp_line_name,
-      tone: "line-text",
+      tone: "line",
     });
   }
   const windowLabel = formatWindowTagLabel(conversation);
@@ -44,7 +39,7 @@ const buildSidebarMeta = (conversation) => {
     parts.push({
       key: "window",
       label: windowLabel,
-      tone: conversation?.is_whatsapp_window_closed || conversation?.status === "archived" ? "window-closed" : "window",
+      tone: isClosed ? "window-closed" : "window",
     });
   }
   return parts;
@@ -191,7 +186,7 @@ const ChatSidebar = ({
                     {buildSidebarMeta(c).map((tag) => (
                       <span
                         key={`${c.id}-${tag.key}`}
-                        className={`app-chat-sidebar-item-meta-pill is-${tag.tone}`}
+                        className={`app-chat-sidebar-item-meta-token is-${tag.tone}`}
                       >
                         {tag.label}
                       </span>
