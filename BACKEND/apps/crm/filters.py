@@ -42,10 +42,26 @@ class DealFilter(django_filters.FilterSet):
     contact = django_filters.UUIDFilter(field_name="contact")
     source = django_filters.CharFilter(field_name="source")
     is_stale = django_filters.BooleanFilter(field_name="is_stale")
+    created_after = django_filters.DateFilter(field_name="created_at", lookup_expr="date__gte")
+    created_before = django_filters.DateFilter(field_name="created_at", lookup_expr="date__lte")
+    updated_after = django_filters.DateFilter(field_name="updated_at", lookup_expr="date__gte")
+    updated_before = django_filters.DateFilter(field_name="updated_at", lookup_expr="date__lte")
 
     class Meta:
         model = Deal
-        fields = ("stage", "assigned_to", "currency", "company", "contact", "source", "is_stale")
+        fields = (
+            "stage",
+            "assigned_to",
+            "currency",
+            "company",
+            "contact",
+            "source",
+            "is_stale",
+            "created_after",
+            "created_before",
+            "updated_after",
+            "updated_before",
+        )
 
 
 class ActivityFilter(django_filters.FilterSet):

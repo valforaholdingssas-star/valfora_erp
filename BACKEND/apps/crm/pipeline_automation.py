@@ -91,10 +91,21 @@ class PipelineAutomationService:
             return StageMoveResult(moved=False, reason=f"Invalid transition {current} -> {to_stage}")
 
         raw_from = deal.stage
+        update_fields = ["stage", "is_stale", "updated_at"]
         deal.stage = to_stage
         if stage_map[to_stage].is_closed_stage:
             deal.is_stale = False
-        deal.save(update_fields=["stage", "is_stale", "updated_at"])
+
+        follow_up_key = cls.get_follow_up_stage_key()
+        if to_stage == follow_up_key:
+            from apps.crm.call_desk import resolve_call_stage_assignee
+
+            assignee = resolve_call_stage_assignee()
+            if assignee and deal.assigned_to_id != assignee.id:
+                deal.assigned_to = assignee
+                update_fields.append("assigned_to")
+
+        deal.save(update_fields=update_fields)
 
         DealStageHistory.objects.create(
             deal=deal,
@@ -110,7 +121,8 @@ class PipelineAutomationService:
             instance=deal,
             changes={"from_stage": raw_from, "to_stage": to_stage, "trigger": trigger, "automated": moved_by is None},
         )
-        if to_stage == cls.get_follow_up_stage_key():
+        # Business summary is only for WhatsApp-origin deals entering the call stage.
+        if to_stage == follow_up_key and (deal.source or "").strip().lower() == "whatsapp":
             from apps.crm.tasks import generate_business_summary_for_deal
 
             generate_business_summary_for_deal.delay(str(deal.id))

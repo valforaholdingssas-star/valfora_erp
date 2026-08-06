@@ -8,6 +8,7 @@ from apps.crm.viewsets import (
     CompanyViewSet,
     ContactViewSet,
     CRMDashboardView,
+    DealCallViewSet,
     DealViewSet,
     DocumentViewSet,
     PipelineStageViewSet,
@@ -18,6 +19,7 @@ router.register("contacts", ContactViewSet, basename="crm-contact")
 router.register("companies", CompanyViewSet, basename="crm-company")
 router.register("pipeline-stages", PipelineStageViewSet, basename="crm-pipeline-stage")
 router.register("deals", DealViewSet, basename="crm-deal")
+router.register("deal-calls", DealCallViewSet, basename="crm-deal-call")
 router.register("activities", ActivityViewSet, basename="crm-activity")
 router.register("documents", DocumentViewSet, basename="crm-document")
 

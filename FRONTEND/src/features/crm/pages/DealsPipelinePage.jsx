@@ -12,6 +12,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { Link } from "react-router-dom";
 
 import {
+  bulkUpdateDeals,
   createActivity,
   createDeal,
   createPipelineStage,
@@ -24,8 +25,19 @@ import {
   updatePipelineStage,
 } from "../../../api/crm.js";
 import { fetchUsers } from "../../../api/users.js";
+import LogDealCallModal from "../components/LogDealCallModal.jsx";
 import PipelineColumn from "../components/PipelineColumn.jsx";
+import QuickEditDealModal from "../components/QuickEditDealModal.jsx";
 import { formatDealDisplayNumber, formatDealValue, resolveUserDisplayName } from "../utils/formatters.js";
+
+const DEAL_SOURCES = [
+  ["", "Todos los orígenes"],
+  ["whatsapp", "WhatsApp"],
+  ["manual", "Manual"],
+  ["website", "Website"],
+  ["referral", "Referido"],
+  ["other", "Otro"],
+];
 
 const toStageView = (stage, fallbackIndex = 0) => ({
   id: stage.key,
@@ -96,7 +108,22 @@ const DealsPipelinePage = () => {
   const [users, setUsers] = useState({ results: [] });
   const [companyFilter, setCompanyFilter] = useState("");
   const [assignedToFilter, setAssignedToFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [createdAfter, setCreatedAfter] = useState("");
+  const [createdBefore, setCreatedBefore] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [quickEditDeal, setQuickEditDeal] = useState(null);
+  const [logCallDeal, setLogCallDeal] = useState(null);
+  const [selectedDealIds, setSelectedDealIds] = useState([]);
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkError, setBulkError] = useState("");
+  const [bulkForm, setBulkForm] = useState({
+    assigned_to: "__unchanged__",
+    stage: "",
+    source: "",
+    probability: "",
+  });
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createForm, setCreateForm] = useState({
@@ -141,6 +168,9 @@ const DealsPipelinePage = () => {
     const params = {};
     if (companyFilter) params.company = companyFilter;
     if (assignedToFilter) params.assigned_to = assignedToFilter;
+    if (sourceFilter) params.source = sourceFilter;
+    if (createdAfter) params.created_after = createdAfter;
+    if (createdBefore) params.created_before = createdBefore;
     try {
       const [stagesData, dealsData, contactsData, companiesData, usersData] = await Promise.all([
         fetchAllPages(fetchPipelineStages, {}, 200),
@@ -175,6 +205,7 @@ const DealsPipelinePage = () => {
       setContacts(contactsData || { results: [] });
       setCompanies(companiesData || { results: [] });
       setUsers(usersData || { results: [] });
+      setSelectedDealIds([]);
       setCreateForm((prev) => ({ ...prev, stage: prev.stage || stageRows[0]?.id || "" }));
       setError("");
     } catch (err) {
@@ -182,7 +213,7 @@ const DealsPipelinePage = () => {
     } finally {
       setLoading(false);
     }
-  }, [assignedToFilter, companyFilter]);
+  }, [assignedToFilter, companyFilter, createdAfter, createdBefore, sourceFilter]);
 
   useEffect(() => {
     load();
@@ -294,6 +325,108 @@ const DealsPipelinePage = () => {
       due_date: "",
       description: "",
     });
+  };
+
+  const openQuickEdit = (deal) => {
+    setQuickEditDeal(deal);
+  };
+
+  const bumpDealCallsCount = (dealId) => {
+    setByStage((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((stageId) => {
+        next[stageId] = (next[stageId] || []).map((deal) =>
+          deal.id === dealId
+            ? { ...deal, calls_count: Number(deal.calls_count || 0) + 1 }
+            : deal,
+        );
+      });
+      return next;
+    });
+  };
+
+  const applyQuickEditLocally = (updated) => {
+    if (!updated?.id) {
+      load();
+      return;
+    }
+    setByStage((prev) => {
+      let fromStage = null;
+      Object.keys(prev).forEach((stageId) => {
+        if ((prev[stageId] || []).some((deal) => deal.id === updated.id)) {
+          fromStage = stageId;
+        }
+      });
+      if (!fromStage) return prev;
+      const toStage = updated.stage || fromStage;
+      const userMap = new Map((users.results || []).map((user) => [user.id, resolveUserDisplayName(user)]));
+      const companyMap = new Map((companies.results || []).map((company) => [company.id, company.name]));
+      const enriched = {
+        ...findDealById(updated.id, prev),
+        ...updated,
+        assigned_to_name: updated.assigned_to_name || userMap.get(updated.assigned_to) || "",
+        company_name: updated.company_name || companyMap.get(updated.company) || "",
+      };
+      if (fromStage === toStage) {
+        return {
+          ...prev,
+          [fromStage]: (prev[fromStage] || []).map((deal) => (deal.id === updated.id ? enriched : deal)),
+        };
+      }
+      const source = (prev[fromStage] || []).filter((deal) => deal.id !== updated.id);
+      const target = [{ ...enriched, stage: toStage }, ...(prev[toStage] || []).filter((deal) => deal.id !== updated.id)];
+      return { ...prev, [fromStage]: source, [toStage]: target };
+    });
+  };
+
+  const toggleSelectDeal = (dealId) => {
+    setSelectedDealIds((prev) =>
+      prev.includes(dealId) ? prev.filter((id) => id !== dealId) : [...prev, dealId],
+    );
+  };
+
+  const toggleSelectAllVisible = () => {
+    const visibleIds = visibleDeals.map((deal) => deal.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedDealIds.includes(id));
+    setSelectedDealIds(allSelected ? [] : visibleIds);
+  };
+
+  const openBulkEditModal = () => {
+    setBulkError("");
+    setBulkForm({ assigned_to: "__unchanged__", stage: "", source: "", probability: "" });
+    setShowBulkEditModal(true);
+  };
+
+  const submitBulkEdit = async (e) => {
+    e.preventDefault();
+    if (!selectedDealIds.length) {
+      setBulkError("Selecciona al menos un deal.");
+      return;
+    }
+    const payload = { ids: selectedDealIds };
+    if (bulkForm.assigned_to === "__none__") payload.assigned_to = null;
+    else if (bulkForm.assigned_to && bulkForm.assigned_to !== "__unchanged__") {
+      payload.assigned_to = bulkForm.assigned_to;
+    }
+    if (bulkForm.stage) payload.stage = bulkForm.stage;
+    if (bulkForm.source) payload.source = bulkForm.source;
+    if (bulkForm.probability !== "") payload.probability = Number(bulkForm.probability);
+    if (Object.keys(payload).length === 1) {
+      setBulkError("Indica al menos un campo para actualizar.");
+      return;
+    }
+    setBulkSaving(true);
+    setBulkError("");
+    try {
+      await bulkUpdateDeals(payload);
+      setShowBulkEditModal(false);
+      setSelectedDealIds([]);
+      await load();
+    } catch (err) {
+      setBulkError(extractApiError(err, "No se pudieron actualizar los deals seleccionados."));
+    } finally {
+      setBulkSaving(false);
+    }
   };
 
   const closeActivityModal = () => {
@@ -589,6 +722,32 @@ const DealsPipelinePage = () => {
               ))}
             </Form.Select>
           </div>
+          <div className="crm-toolbar-filter">
+            <span>Origen</span>
+            <Form.Select size="sm" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+              {DEAL_SOURCES.map(([value, label]) => (
+                <option key={value || "all"} value={value}>{label}</option>
+              ))}
+            </Form.Select>
+          </div>
+          <div className="crm-toolbar-filter">
+            <span>Desde</span>
+            <Form.Control
+              type="date"
+              size="sm"
+              value={createdAfter}
+              onChange={(e) => setCreatedAfter(e.target.value)}
+            />
+          </div>
+          <div className="crm-toolbar-filter">
+            <span>Hasta</span>
+            <Form.Control
+              type="date"
+              size="sm"
+              value={createdBefore}
+              onChange={(e) => setCreatedBefore(e.target.value)}
+            />
+          </div>
         </div>
         <div className="crm-toolbar-summary">
           <div className="crm-toolbar-summary-block">
@@ -623,6 +782,8 @@ const DealsPipelinePage = () => {
                   stageTotal={formatDealValue((visibleByStage[stage.id] || []).reduce((sum, deal) => sum + Number(deal.value || 0), 0))}
                   onCreateActivity={openActivityModal}
                   onCreateDeal={openCreateModalForStage}
+                  onQuickEdit={openQuickEdit}
+                  onLogCall={setLogCallDeal}
                 />
               ))}
             </div>
@@ -645,10 +806,29 @@ const DealsPipelinePage = () => {
         </DndContext>
       ) : (
         <div className="crm-pipeline-table-shell">
+          {selectedDealIds.length > 0 ? (
+            <div className="d-flex align-items-center gap-3 mb-3 flex-wrap">
+              <span className="small text-muted">{selectedDealIds.length} seleccionados</span>
+              <Button size="sm" variant="primary" onClick={openBulkEditModal}>
+                <i className="bi bi-pencil-square me-1" />
+                Editar seleccionados
+              </Button>
+              <Button size="sm" variant="outline-secondary" onClick={() => setSelectedDealIds([])}>
+                Limpiar selección
+              </Button>
+            </div>
+          ) : null}
           <div className="crm-pipeline-table-wrap">
             <Table responsive className="crm-pipeline-table mb-0">
               <thead>
                 <tr>
+                  <th style={{ width: 40 }}>
+                    <Form.Check
+                      aria-label="Seleccionar todos"
+                      checked={visibleDeals.length > 0 && visibleDeals.every((deal) => selectedDealIds.includes(deal.id))}
+                      onChange={toggleSelectAllVisible}
+                    />
+                  </th>
                   <th>#</th>
                   <th>Deal</th>
                   <th>Contacto</th>
@@ -663,6 +843,13 @@ const DealsPipelinePage = () => {
               <tbody>
                 {visibleDeals.map((deal, index) => (
                   <tr key={deal.id}>
+                    <td>
+                      <Form.Check
+                        aria-label={`Seleccionar ${deal.title || deal.id}`}
+                        checked={selectedDealIds.includes(deal.id)}
+                        onChange={() => toggleSelectDeal(deal.id)}
+                      />
+                    </td>
                     <td><span className="crm-table-pill">{formatDealDisplayNumber(deal.id, index)}</span></td>
                     <td><div className="crm-table-title">{deal.title || "Sin título"}</div></td>
                     <td>{deal.contact_name || "—"}</td>
@@ -699,7 +886,8 @@ const DealsPipelinePage = () => {
                     </td>
                     <td>
                       <div className="crm-table-actions">
-                        <Button as={Link} to={`/crm/deals/${deal.id}`} size="sm" variant="outline-primary">Editar</Button>
+                        <Button size="sm" variant="outline-primary" onClick={() => openQuickEdit(deal)}>Editar</Button>
+                        <Button as={Link} to={`/crm/deals/${deal.id}`} size="sm" variant="outline-secondary">Ver detalle</Button>
                         <Button as={Link} to={`/chat/deal/${deal.id}`} size="sm" variant="outline-success">Chat</Button>
                         <Button size="sm" variant="outline-secondary" onClick={() => openActivityModal(deal)}>Actividad</Button>
                       </div>
@@ -708,7 +896,7 @@ const DealsPipelinePage = () => {
                 ))}
                 {!visibleDeals.length ? (
                   <tr>
-                    <td colSpan={9} className="text-muted text-center py-5">No hay deals para mostrar con los filtros actuales.</td>
+                    <td colSpan={10} className="text-muted text-center py-5">No hay deals para mostrar con los filtros actuales.</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -923,6 +1111,89 @@ const DealsPipelinePage = () => {
           <Modal.Footer>
             <Button variant="outline-secondary" onClick={closeActivityModal}>Cancelar</Button>
             <Button type="submit" disabled={activitySaving}>{activitySaving ? "Creando..." : "Crear actividad"}</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      <QuickEditDealModal
+        show={Boolean(quickEditDeal)}
+        deal={quickEditDeal}
+        users={users.results || []}
+        companies={companies.results || []}
+        stages={stages}
+        onHide={() => setQuickEditDeal(null)}
+        onSaved={applyQuickEditLocally}
+      />
+
+      <LogDealCallModal
+        show={Boolean(logCallDeal)}
+        deal={logCallDeal}
+        onHide={() => setLogCallDeal(null)}
+        onLogged={(_call, deal) => {
+          if (deal?.id) bumpDealCallsCount(deal.id);
+        }}
+      />
+
+      <Modal show={showBulkEditModal} onHide={() => setShowBulkEditModal(false)} centered>
+        <Form onSubmit={submitBulkEdit}>
+          <Modal.Header closeButton>
+            <Modal.Title>Editar seleccionados ({selectedDealIds.length})</Modal.Title>
+          </Modal.Header>
+          <Modal.Body className="d-grid gap-3">
+            {bulkError ? <Alert variant="danger" className="py-2 mb-0">{bulkError}</Alert> : null}
+            <p className="small text-muted mb-0">Deja en blanco los campos que no quieras cambiar.</p>
+            <Form.Group>
+              <Form.Label>Asignado a</Form.Label>
+              <Form.Select
+                value={bulkForm.assigned_to}
+                onChange={(e) => setBulkForm((prev) => ({ ...prev, assigned_to: e.target.value }))}
+              >
+                <option value="__unchanged__">Sin cambio</option>
+                <option value="__none__">Sin asignar</option>
+                {(users.results || []).map((user) => (
+                  <option key={user.id} value={user.id}>{resolveUserDisplayName(user)}</option>
+                ))}
+              </Form.Select>
+            </Form.Group>
+            <Form.Group>
+              <Form.Label>Etapa</Form.Label>
+              <Form.Select
+                value={bulkForm.stage}
+                onChange={(e) => setBulkForm((prev) => ({ ...prev, stage: e.target.value }))}
+              >
+                <option value="">Sin cambio</option>
+                {stages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>{stage.title}</option>
+                ))}
+              </Form.Select>
+            </Form.Group>
+            <Form.Group>
+              <Form.Label>Origen</Form.Label>
+              <Form.Select
+                value={bulkForm.source}
+                onChange={(e) => setBulkForm((prev) => ({ ...prev, source: e.target.value }))}
+              >
+                <option value="">Sin cambio</option>
+                {DEAL_SOURCES.filter(([value]) => value).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </Form.Select>
+            </Form.Group>
+            <Form.Group>
+              <Form.Label>Probabilidad %</Form.Label>
+              <Form.Control
+                type="number"
+                min="0"
+                max="100"
+                placeholder="Sin cambio"
+                value={bulkForm.probability}
+                onChange={(e) => setBulkForm((prev) => ({ ...prev, probability: e.target.value }))}
+              />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="outline-secondary" onClick={() => setShowBulkEditModal(false)}>Cancelar</Button>
+            <Button type="submit" disabled={bulkSaving}>{bulkSaving ? "Guardando..." : "Aplicar cambios"}</Button>
           </Modal.Footer>
         </Form>
       </Modal>

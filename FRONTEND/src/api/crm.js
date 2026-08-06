@@ -59,6 +59,21 @@ export const deleteDeal = (id) => api.delete(`/crm/deals/${id}/`).then(unwrap);
 export const moveDealStage = (id, payload) => api.post(`/crm/deals/${id}/move-stage/`, payload).then(unwrap);
 export const fetchDealStageHistory = (id) => api.get(`/crm/deals/${id}/stage-history/`).then(unwrap);
 
+export const bulkUpdateDeals = (payload) =>
+  api.post("/crm/deals/bulk-update/", payload).then(unwrap);
+
+export const fetchDealCalls = (dealId) =>
+  api.get(`/crm/deals/${dealId}/calls/`).then(unwrap);
+
+export const createDealCall = (dealId, payload) =>
+  api.post(`/crm/deals/${dealId}/calls/`, payload).then(unwrap);
+
+export const fetchAllDealCalls = (params) =>
+  api.get("/crm/deal-calls/", { params }).then(unwrap);
+
+export const fetchDealCallsCalendar = (params) =>
+  api.get("/crm/deal-calls/calendar/", { params }).then(unwrap);
+
 export const fetchActivities = (params) => api.get("/crm/activities/", { params }).then(unwrap);
 
 export const createActivity = (payload) => api.post("/crm/activities/", payload).then(unwrap);

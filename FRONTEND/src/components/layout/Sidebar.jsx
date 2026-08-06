@@ -82,6 +82,7 @@ const Sidebar = ({ collapsed, isMobile = false, mobileOpen = false, onCloseMobil
               { to: "/crm/contacts", label: "Contactos", icon: "bi-people" },
               { to: "/crm/companies", label: "Empresas", icon: "bi-buildings" },
               { to: "/crm/pipeline", label: "Pipeline", icon: "bi-kanban" },
+              { to: "/crm/llamadas", label: "Llamadas", icon: "bi-telephone" },
             ]
           : [],
       },

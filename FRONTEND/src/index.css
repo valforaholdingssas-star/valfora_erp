@@ -1598,6 +1598,28 @@ a {
   gap: 0.6rem;
 }
 
+.crm-deal-card-topline-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.crm-deal-card-calls-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 1.5rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .crm-deal-card-number {
   font-size: 0.72rem;
   line-height: 1;
@@ -1754,6 +1776,84 @@ a {
 .crm-deal-card-icon-action:hover {
   background: #eef4fb;
   color: #1b4fa8;
+}
+
+.crm-calls-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.crm-calls-calendar-weekday {
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.crm-calls-calendar-day {
+  min-height: 3.1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.65rem;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.35rem 0.4rem;
+  color: #0f172a;
+  text-align: left;
+}
+
+.crm-calls-calendar-day.is-empty {
+  border: none;
+  background: transparent;
+}
+
+.crm-calls-calendar-day.has-calls {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.crm-calls-calendar-day.is-selected {
+  border-color: #ea580c;
+  box-shadow: inset 0 0 0 1px #ea580c;
+}
+
+.crm-calls-calendar-day span {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.crm-calls-calendar-day em {
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #c2410c;
+  align-self: flex-end;
+}
+
+.crm-calls-day-list {
+  display: grid;
+  gap: 0.45rem;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.crm-calls-day-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.65rem;
+  background: #fff;
+  padding: 0.55rem 0.7rem;
+  display: grid;
+  gap: 0.15rem;
+  text-align: left;
+}
+
+.crm-calls-day-item:hover {
+  border-color: #fdba74;
+  background: #fffaf5;
 }
 
 .crm-pipeline-drag-card {

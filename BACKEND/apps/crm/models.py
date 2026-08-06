@@ -190,6 +190,33 @@ class Deal(BaseModel):
         return self.title
 
 
+class DealCall(BaseModel):
+    """Call log entry linked to a deal (Realizar llamada workflow)."""
+
+    deal = models.ForeignKey(Deal, on_delete=models.CASCADE, related_name="calls")
+    notes = models.TextField()
+    called_at = models.DateTimeField(default=timezone.now, db_index=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="crm_deal_calls_created",
+    )
+
+    class Meta:
+        verbose_name = "Deal call"
+        verbose_name_plural = "Deal calls"
+        ordering = ["-called_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["deal", "called_at"]),
+            models.Index(fields=["called_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Call {self.deal_id} @ {self.called_at}"
+
+
 class Activity(BaseModel):
     """Follow-up activity (call, meeting, etc.)."""
 

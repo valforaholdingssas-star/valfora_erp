@@ -213,13 +213,52 @@ def generate_daily_lead_report() -> dict:
 
 @shared_task(name="crm.tasks.generate_business_summary_for_deal")
 def generate_business_summary_for_deal(deal_id: str) -> bool:
-    """Generate or refresh business notes for a deal after key stage transitions."""
+    """Generate or refresh business notes for WhatsApp deals entering the call stage."""
     try:
         deal = Deal.objects.select_related("contact", "company").get(pk=deal_id, is_active=True)
     except Deal.DoesNotExist:
         return False
 
-    summary = _build_fallback_business_summary(deal)
+    if (deal.source or "").strip().lower() != "whatsapp":
+        logger.info("Skipping business summary for non-whatsapp deal id=%s source=%s", deal_id, deal.source)
+        return False
+
+    summary = ""
+    try:
+        from apps.ai_config.services import generate_chat_completion, get_default_ai_configuration
+
+        context = _collect_business_summary_context(deal)
+        transcript = "\n".join(context.get("transcript") or [])
+        config = get_default_ai_configuration()
+        if config and transcript.strip():
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "Eres un analista comercial. Resume en español la conversación de WhatsApp "
+                        "con el lead. Incluye: necesidad detectada, objeciones, nivel de interés, "
+                        "próximo paso sugerido para la llamada. Sé concreto y útil para quien llama. "
+                        "No inventes datos que no estén en el transcript."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Deal: {deal.title}\n"
+                        f"Contacto: {deal.contact}\n"
+                        f"Empresa: {deal.company.name if deal.company_id else 'N/A'}\n"
+                        f"Etapa: {deal.stage}\n\n"
+                        f"Transcript reciente:\n{transcript}"
+                    ),
+                },
+            ]
+            result = generate_chat_completion(messages=messages, config=config)
+            summary = (result.text or "").strip()
+    except Exception:
+        logger.exception("LLM business summary failed for deal id=%s; using fallback", deal_id)
+
+    if not summary:
+        summary = _build_fallback_business_summary(deal)
     if not summary.strip():
         return False
 

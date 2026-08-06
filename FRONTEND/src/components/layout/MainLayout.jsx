@@ -17,6 +17,7 @@ const CompaniesListPage = lazy(() => import("../../features/crm/pages/CompaniesL
 const CompanyFormPage = lazy(() => import("../../features/crm/pages/CompanyFormPage.jsx"));
 const CompanyDetailPage = lazy(() => import("../../features/crm/pages/CompanyDetailPage.jsx"));
 const DealsPipelinePage = lazy(() => import("../../features/crm/pages/DealsPipelinePage.jsx"));
+const CallsDeskPage = lazy(() => import("../../features/crm/pages/CallsDeskPage.jsx"));
 const DealDetailPage = lazy(() => import("../../features/crm/pages/DealDetailPage.jsx"));
 const ChatView = lazy(() => import("../../features/chat/pages/ChatView.jsx"));
 const CalendarView = lazy(() => import("../../features/calendar/pages/CalendarView.jsx"));
@@ -138,6 +139,7 @@ const MainLayout = () => {
                 <Route path="/crm/companies/:id/edit" element={canViewCRM ? <CompanyFormPage /> : <Navigate to="/" replace />} />
                 <Route path="/crm/companies/:id" element={canViewCRM ? <CompanyDetailPage /> : <Navigate to="/" replace />} />
                 <Route path="/crm/pipeline" element={canViewCRM ? <DealsPipelinePage /> : <Navigate to="/" replace />} />
+                <Route path="/crm/llamadas" element={canViewCRM ? <CallsDeskPage /> : <Navigate to="/" replace />} />
                 <Route path="/crm/deals/:id" element={canViewCRM ? <DealDetailPage /> : <Navigate to="/" replace />} />
                 <Route path="/chat" element={canViewChat ? <ChatView /> : <Navigate to="/" replace />} />
                 <Route path="/chat/deal/:dealId" element={canViewChat ? <ChatView /> : <Navigate to="/" replace />} />

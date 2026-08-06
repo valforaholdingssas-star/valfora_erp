@@ -3,8 +3,9 @@
 import mimetypes
 from datetime import timedelta
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
+from django.db.models.functions import TruncDate
 from rest_framework import serializers as drf_serializers
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -22,6 +23,7 @@ from apps.crm.models import (
     Company,
     Contact,
     Deal,
+    DealCall,
     DealStageHistory,
     Document,
     LeadEngineConfig,
@@ -35,6 +37,8 @@ from apps.crm.serializers import (
     BulkContactStageSerializer,
     CompanySerializer,
     ContactSerializer,
+    DealBulkUpdateSerializer,
+    DealCallSerializer,
     DealStageHistorySerializer,
     DealSerializer,
     DocumentSerializer,
@@ -289,8 +293,13 @@ class DealViewSet(CRMBaseViewSet):
     serializer_class = DealSerializer
     filterset_class = DealFilter
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    search_fields = ("title", "description")
-    ordering_fields = ("value", "expected_close_date", "stage", "updated_at")
+    search_fields = ("title", "description", "contact__first_name", "contact__last_name", "contact__email")
+    ordering_fields = ("value", "expected_close_date", "stage", "updated_at", "created_at")
+
+    def get_queryset(self):
+        return super().get_queryset().annotate(
+            calls_count=Count("calls", filter=Q(calls__is_active=True)),
+        )
 
     def get_permissions(self):
         # Deals can be deleted by any role with CRM edit permission.
@@ -367,6 +376,149 @@ class DealViewSet(CRMBaseViewSet):
         qs = deal.stage_history.filter(is_active=True).order_by("-created_at")
         ser = DealStageHistorySerializer(qs, many=True)
         return Response(ser.data)
+
+    @action(detail=False, methods=["post"], url_path="bulk-update")
+    def bulk_update(self, request):
+        """Mass-update selected deals (assignee, stage, company, source, probability)."""
+        serializer = DealBulkUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        ids = data["ids"]
+        qs = Deal.objects.filter(pk__in=ids, is_active=True)
+        updated = 0
+        for deal in qs.select_related("contact", "company", "assigned_to"):
+            changes: dict = {}
+            if "stage" in data and data["stage"] != deal.stage:
+                result = PipelineAutomationService.move_stage(
+                    deal=deal,
+                    to_stage=data["stage"],
+                    trigger="manual",
+                    moved_by=request.user,
+                    notes="Actualización masiva desde tabla de pipeline",
+                )
+                if not result.moved:
+                    continue
+                deal.refresh_from_db()
+                changes["stage"] = data["stage"]
+
+            update_fields: list[str] = []
+            if "assigned_to" in data:
+                deal.assigned_to = data["assigned_to"]
+                update_fields.append("assigned_to")
+                changes["assigned_to"] = str(data["assigned_to"].id) if data["assigned_to"] else None
+            if "company" in data:
+                deal.company = data["company"]
+                update_fields.append("company")
+                changes["company"] = str(data["company"].id) if data["company"] else None
+            if "source" in data:
+                deal.source = data["source"]
+                update_fields.append("source")
+                changes["source"] = data["source"]
+            if "probability" in data:
+                deal.probability = data["probability"]
+                update_fields.append("probability")
+                changes["probability"] = data["probability"]
+            if update_fields:
+                update_fields.append("updated_at")
+                deal.save(update_fields=update_fields)
+
+            if changes:
+                write_audit_log(
+                    user=request.user,
+                    action="update",
+                    instance=deal,
+                    changes={**changes, "bulk": True},
+                    request=request,
+                )
+                updated += 1
+        return Response({"updated": updated})
+
+    @action(detail=True, methods=["get", "post"], url_path="calls")
+    def calls(self, request, pk=None):
+        """List or create call logs for a deal."""
+        deal = self.get_object()
+        if request.method == "GET":
+            qs = deal.calls.filter(is_active=True).select_related("created_by", "deal__contact").order_by("-called_at")
+            return Response(DealCallSerializer(qs, many=True).data)
+        ser = DealCallSerializer(data={**request.data, "deal": str(deal.id)})
+        ser.is_valid(raise_exception=True)
+        call = DealCall.objects.create(
+            deal=deal,
+            notes=ser.validated_data["notes"],
+            called_at=ser.validated_data.get("called_at") or timezone.now(),
+            created_by=request.user,
+        )
+        write_audit_log(
+            user=request.user,
+            action="create",
+            instance=call,
+            changes={"deal": str(deal.id)},
+            request=request,
+        )
+        return Response(DealCallSerializer(call).data, status=status.HTTP_201_CREATED)
+
+
+class DealCallViewSet(CRMBaseViewSet):
+    """Global call log listing / calendar for the call desk."""
+
+    queryset = DealCall.objects.filter(is_active=True).select_related(
+        "deal",
+        "deal__contact",
+        "created_by",
+    )
+    serializer_class = DealCallSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ("deal",)
+    search_fields = ("notes", "deal__title", "deal__contact__first_name", "deal__contact__last_name")
+    ordering_fields = ("called_at", "created_at")
+
+    def get_permissions(self):
+        return [permissions.IsAuthenticated(), IsCRMUser()]
+
+    def perform_create(self, serializer):
+        instance = serializer.save(created_by=self.request.user)
+        write_audit_log(
+            user=self.request.user,
+            action="create",
+            instance=instance,
+            changes={},
+            request=self.request,
+        )
+
+    def perform_destroy(self, instance):
+        instance.is_active = False
+        instance.save(update_fields=["is_active", "updated_at"])
+        write_audit_log(
+            user=self.request.user,
+            action="delete",
+            instance=instance,
+            changes={"is_active": False},
+            request=self.request,
+        )
+
+    @action(detail=False, methods=["get"], url_path="calendar")
+    def calendar(self, request):
+        """Daily call counts for calendar control."""
+        qs = self.filter_queryset(self.get_queryset())
+        date_from = request.query_params.get("from")
+        date_to = request.query_params.get("to")
+        if date_from:
+            qs = qs.filter(called_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(called_at__date__lte=date_to)
+        rows = (
+            qs.annotate(day=TruncDate("called_at"))
+            .values("day")
+            .annotate(count=Count("id"))
+            .order_by("day")
+        )
+        total = qs.count()
+        return Response(
+            {
+                "total": total,
+                "days": [{"date": row["day"].isoformat() if row["day"] else None, "count": row["count"]} for row in rows],
+            }
+        )
 
 
 class ActivityViewSet(

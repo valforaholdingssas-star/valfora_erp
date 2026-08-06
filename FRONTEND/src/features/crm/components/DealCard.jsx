@@ -5,6 +5,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import { Link } from "react-router-dom";
 import { formatDealDisplayNumber, formatDealValue } from "../utils/formatters.js";
 
+const CALL_STAGE_KEY = "realizar_llamada";
+
 const buildAssigneeMeta = (label) => {
   const normalized = String(label || "").trim();
   if (!normalized || normalized.toLowerCase() === "sin asignar") {
@@ -23,7 +25,7 @@ const buildAssigneeMeta = (label) => {
   return { initials, shortName };
 };
 
-const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
+const DealCard = ({ deal, stageAccent, onCreateActivity, onQuickEdit, onLogCall, orderIndex }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: deal.id,
     data: { stage: deal.stage, deal },
@@ -31,6 +33,8 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
   const assigneeLabel = deal.assigned_to_name || "Sin asignar";
   const assigneeMeta = buildAssigneeMeta(assigneeLabel);
   const companyLabel = deal.company_name || "Sin empresa";
+  const callsCount = Number(deal.calls_count || 0);
+  const isCallStage = deal.stage === CALL_STAGE_KEY;
 
   return (
     <Card
@@ -47,9 +51,17 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
       <Card.Body className="crm-deal-card-body">
         <div className="crm-deal-card-topline">
           <span className="crm-deal-card-number">{formatDealDisplayNumber(deal.id, orderIndex)}</span>
-          <span className={`crm-deal-card-company-badge ${deal.company_name ? "" : "is-empty"}`}>
-            {companyLabel}
-          </span>
+          <div className="crm-deal-card-topline-badges">
+            {callsCount > 0 ? (
+              <span className="crm-deal-card-calls-badge" title={`${callsCount} llamada(s)`}>
+                <i className="bi bi-telephone-fill" />
+                {callsCount}
+              </span>
+            ) : null}
+            <span className={`crm-deal-card-company-badge ${deal.company_name ? "" : "is-empty"}`}>
+              {companyLabel}
+            </span>
+          </div>
         </div>
         <div className="crm-deal-card-title-row">
           <span className="crm-deal-card-title">{deal.title || deal.contact_name || `Deal ${deal.id.slice(0, 8)}`}</span>
@@ -76,9 +88,32 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, orderIndex }) => {
             <span className="crm-deal-card-assignee-name">{assigneeMeta.shortName}</span>
           </div>
           <div className="crm-deal-card-actions">
-            <Link to={`/crm/deals/${deal.id}`} className="crm-deal-card-icon-action" title="Editar deal" aria-label="Editar deal">
+            <button
+              type="button"
+              className="crm-deal-card-icon-action"
+              onClick={(e) => {
+                e.stopPropagation();
+                onQuickEdit?.(deal);
+              }}
+              title="Editar deal"
+              aria-label="Editar deal"
+            >
               <i className="bi bi-pencil" />
-            </Link>
+            </button>
+            {isCallStage ? (
+              <button
+                type="button"
+                className="crm-deal-card-icon-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLogCall?.(deal);
+                }}
+                title="Registrar llamada"
+                aria-label="Registrar llamada"
+              >
+                <i className="bi bi-telephone" />
+              </button>
+            ) : null}
             <Link to={`/chat/deal/${deal.id}`} className="crm-deal-card-icon-action" title="Abrir chat" aria-label="Abrir chat">
               <i className="bi bi-chat-square-text" />
             </Link>
@@ -112,9 +147,12 @@ DealCard.propTypes = {
     is_stale: PropTypes.bool,
     company_name: PropTypes.string,
     assigned_to_name: PropTypes.string,
+    calls_count: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   }).isRequired,
   stageAccent: PropTypes.string,
   onCreateActivity: PropTypes.func,
+  onQuickEdit: PropTypes.func,
+  onLogCall: PropTypes.func,
   orderIndex: PropTypes.number,
 };
 

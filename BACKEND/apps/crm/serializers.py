@@ -8,6 +8,7 @@ from apps.crm.models import (
     Company,
     Contact,
     Deal,
+    DealCall,
     DealStageHistory,
     Document,
     LeadEngineConfig,
@@ -100,6 +101,7 @@ class DealSerializer(serializers.ModelSerializer):
     contact_name = serializers.SerializerMethodField()
     company_name = serializers.SerializerMethodField()
     assigned_to_name = serializers.SerializerMethodField()
+    calls_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Deal
@@ -122,11 +124,20 @@ class DealSerializer(serializers.ModelSerializer):
             "business_notes",
             "lost_reason",
             "is_stale",
+            "calls_count",
             "is_active",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "contact_name", "company_name", "assigned_to_name", "created_at", "updated_at")
+        read_only_fields = (
+            "id",
+            "contact_name",
+            "company_name",
+            "assigned_to_name",
+            "calls_count",
+            "created_at",
+            "updated_at",
+        )
 
     def get_contact_name(self, obj: Deal) -> str:
         return str(obj.contact)
@@ -143,6 +154,12 @@ class DealSerializer(serializers.ModelSerializer):
             return ""
         full_name = getattr(obj.assigned_to, "get_full_name", lambda: "")()
         return full_name.strip() or getattr(obj.assigned_to, "email", "") or getattr(obj.assigned_to, "username", "")
+
+    def get_calls_count(self, obj: Deal) -> int:
+        annotated = getattr(obj, "calls_count", None)
+        if annotated is not None:
+            return int(annotated)
+        return obj.calls.filter(is_active=True).count()
 
     def validate_probability(self, value: int) -> int:
         if value < 0 or value > 100:
@@ -368,3 +385,85 @@ class PipelineAutomationConfigSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = ("id", "created_at", "updated_at")
+
+
+class DealCallSerializer(serializers.ModelSerializer):
+    """Serializer for deal call logs."""
+
+    deal_title = serializers.CharField(source="deal.title", read_only=True)
+    contact_name = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DealCall
+        fields = (
+            "id",
+            "deal",
+            "deal_title",
+            "contact_name",
+            "notes",
+            "called_at",
+            "created_by",
+            "created_by_name",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "deal_title",
+            "contact_name",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_contact_name(self, obj: DealCall) -> str:
+        if obj.deal_id and obj.deal and obj.deal.contact_id:
+            return str(obj.deal.contact)
+        return ""
+
+    def get_created_by_name(self, obj: DealCall) -> str:
+        if not obj.created_by:
+            return ""
+        full_name = getattr(obj.created_by, "get_full_name", lambda: "")()
+        return full_name.strip() or getattr(obj.created_by, "email", "") or ""
+
+    def validate_notes(self, value: str) -> str:
+        cleaned = (value or "").strip()
+        if not cleaned:
+            raise serializers.ValidationError("La nota de la llamada es obligatoria.")
+        return cleaned
+
+
+class DealBulkUpdateSerializer(serializers.Serializer):
+    """Payload for mass-updating selected deals."""
+
+    ids = serializers.ListField(child=serializers.UUIDField(), min_length=1)
+    assigned_to = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(is_active=True),
+        allow_null=True,
+        required=False,
+    )
+    stage = serializers.CharField(required=False, allow_blank=False)
+    company = serializers.PrimaryKeyRelatedField(
+        queryset=Company.objects.filter(is_active=True),
+        allow_null=True,
+        required=False,
+    )
+    source = serializers.ChoiceField(choices=Deal.SOURCE_CHOICES, required=False)
+    probability = serializers.IntegerField(required=False, min_value=0, max_value=100)
+
+    def validate(self, attrs):
+        mutable_keys = {"assigned_to", "stage", "company", "source", "probability"}
+        if not any(key in attrs for key in mutable_keys):
+            raise serializers.ValidationError({"detail": "Debes enviar al menos un campo a actualizar."})
+        stage = attrs.get("stage")
+        if stage:
+            from apps.crm.pipeline_automation import PipelineAutomationService as PAS
+
+            attrs["stage"] = PAS.normalize_stage(stage)
+            if attrs["stage"] not in PAS.get_stage_map():
+                raise serializers.ValidationError({"stage": "Etapa desconocida."})
+        return attrs

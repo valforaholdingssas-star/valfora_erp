@@ -43,6 +43,9 @@ INSTALLED_APPS = [
 
 # CRM: días sin contacto para alertas Celery (tareas periódicas)
 CRM_STALE_CONTACT_DAYS = int(os.getenv("CRM_STALE_CONTACT_DAYS", "14"))
+# Auto-assign deals that enter the follow-up call stage (realizar_llamada).
+CRM_CALL_STAGE_ASSIGNEE_EMAIL = os.getenv("CRM_CALL_STAGE_ASSIGNEE_EMAIL", "").strip()
+CRM_CALL_STAGE_ASSIGNEE_NAME = os.getenv("CRM_CALL_STAGE_ASSIGNEE_NAME", "Juan Campuzano").strip()
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

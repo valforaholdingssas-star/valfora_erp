@@ -4,7 +4,15 @@ import { useDroppable } from "@dnd-kit/core";
 
 import DealCard from "./DealCard.jsx";
 
-const PipelineColumn = ({ stage, deals, stageTotal, onCreateActivity, onCreateDeal }) => {
+const PipelineColumn = ({
+  stage,
+  deals,
+  stageTotal,
+  onCreateActivity,
+  onCreateDeal,
+  onQuickEdit,
+  onLogCall,
+}) => {
   const { setNodeRef, isOver } = useDroppable({
     id: stage.id,
     data: { type: "column", stageId: stage.id },
@@ -47,6 +55,8 @@ const PipelineColumn = ({ stage, deals, stageTotal, onCreateActivity, onCreateDe
               deal={deal}
               stageAccent={stage.accent}
               onCreateActivity={onCreateActivity}
+              onQuickEdit={onQuickEdit}
+              onLogCall={onLogCall}
               orderIndex={index}
             />
           ))}
@@ -73,6 +83,8 @@ PipelineColumn.propTypes = {
   stageTotal: PropTypes.string.isRequired,
   onCreateActivity: PropTypes.func,
   onCreateDeal: PropTypes.func,
+  onQuickEdit: PropTypes.func,
+  onLogCall: PropTypes.func,
 };
 
 export default PipelineColumn;
