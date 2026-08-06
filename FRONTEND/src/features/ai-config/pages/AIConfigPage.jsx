@@ -10,6 +10,7 @@ import {
   patchAiConfiguration,
   patchAiRuntimeSettings,
   testAiConfiguration,
+  testGoogleCalendarConnection,
 } from "../../../api/aiConfig.js";
 import { deleteDocument, fetchDocuments, updateDocument, uploadDocument } from "../../../api/crm.js";
 import { useAuth } from "../../../contexts/AuthContext.jsx";
@@ -77,6 +78,8 @@ const AIConfigPage = () => {
   const [runtimeSaving, setRuntimeSaving] = useState(false);
   const [runtimeError, setRuntimeError] = useState(null);
   const [runtimeSuccess, setRuntimeSuccess] = useState(null);
+  const [googleTestLoading, setGoogleTestLoading] = useState(false);
+  const [googleTestResult, setGoogleTestResult] = useState(null);
   const [runtimeForm, setRuntimeForm] = useState({
     openai_api_key: "",
     clear_openai_api_key: false,
@@ -443,6 +446,31 @@ const AIConfigPage = () => {
     }
   };
 
+  const handleTestGoogleCalendar = async () => {
+    setGoogleTestLoading(true);
+    setGoogleTestResult(null);
+    try {
+      const result = await testGoogleCalendarConnection();
+      setGoogleTestResult(result);
+    } catch (err) {
+      const body = err?.response?.data;
+      const inner = body?.data && typeof body.data === "object" ? body.data : body;
+      setGoogleTestResult({
+        ok: false,
+        message:
+          (typeof inner?.message === "string" && inner.message) ||
+          (typeof body?.message === "string" && body.message) ||
+          (typeof body?.detail === "string" && body.detail) ||
+          err?.message ||
+          "No se pudo probar la conexión con Google Calendar.",
+        detail: typeof inner?.detail === "string" ? inner.detail : undefined,
+        service_account_email: inner?.service_account_email,
+      });
+    } finally {
+      setGoogleTestLoading(false);
+    }
+  };
+
   const handleUploadKnowledgeDocument = async (e) => {
     e.preventDefault();
     setKnowledgeSuccess(null);
@@ -617,6 +645,12 @@ const AIConfigPage = () => {
               </Form.Group>
               <hr />
               <h3 className="h6 mb-2">Google Calendar (agenda automática)</h3>
+              <Alert variant="light" className="border small py-2 mb-3">
+                La IA consulta disponibilidad, propone 3 horarios y, al confirmar el cliente, crea el evento en Google
+                Calendar y una actividad de reunión en el CRM. Pasos: 1) crea una Service Account en Google Cloud con
+                Calendar API; 2) comparte tu calendario con el email de esa cuenta (permiso de editar eventos); 3)
+                pega el Calendar ID y el JSON aquí; 4) activa el switch y prueba la conexión.
+              </Alert>
               <Form.Group className="mb-2">
                 <Form.Check
                   type="switch"
@@ -702,6 +736,40 @@ const AIConfigPage = () => {
                   }
                 />
               </Form.Group>
+              <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <Button
+                  type="button"
+                  variant="outline-primary"
+                  size="sm"
+                  disabled={googleTestLoading || runtimeSaving}
+                  onClick={handleTestGoogleCalendar}
+                >
+                  {googleTestLoading ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-1" /> Probando…
+                    </>
+                  ) : (
+                    "Probar conexión Google Calendar"
+                  )}
+                </Button>
+                {runtimeForm.has_google_service_account_json && (
+                  <Badge bg="success">Credencial guardada</Badge>
+                )}
+                {runtimeForm.google_calendar_enabled ? (
+                  <Badge bg="primary">Agenda IA activa</Badge>
+                ) : (
+                  <Badge bg="secondary">Agenda IA inactiva</Badge>
+                )}
+              </div>
+              {googleTestResult && (
+                <Alert variant={googleTestResult.ok ? "success" : "warning"} className="py-2 small">
+                  {googleTestResult.message}
+                  {googleTestResult.service_account_email
+                    ? ` · SA: ${googleTestResult.service_account_email}`
+                    : null}
+                  {googleTestResult.detail ? ` · ${googleTestResult.detail}` : null}
+                </Alert>
+              )}
               <hr />
               <h3 className="h6 mb-2">Unipile / LinkedIn (operación comercial)</h3>
               <Row className="g-2 mb-2">

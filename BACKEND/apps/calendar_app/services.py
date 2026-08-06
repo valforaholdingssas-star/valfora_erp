@@ -1,11 +1,15 @@
 """Business logic for calendar aggregated events."""
 
+import json
+import logging
 from datetime import datetime, time, timedelta
 
 from django.db.models import Q
 from django.utils import timezone
 
 from apps.crm.models import Activity, Contact, Deal
+
+logger = logging.getLogger(__name__)
 
 EVENT_COLORS = {
     "activity": "#0d6efd",
@@ -14,6 +18,7 @@ EVENT_COLORS = {
     "overdue": "#dc3545",
     "whatsapp_follow_up": "#dc3545",
     "stale_alert": "#6c757d",
+    "google_meeting": "#0f766e",
 }
 
 
@@ -178,6 +183,73 @@ def _follow_up_events(start_dt: datetime, end_dt: datetime, assigned_to: str | N
     return events
 
 
+def _google_calendar_events(start_dt: datetime, end_dt: datetime) -> list[dict]:
+    """Pull live Google Calendar events when runtime integration is enabled."""
+    from apps.ai_config.models import AIRuntimeSettings
+    from apps.calendar_app.google_client import get_service_account_token, list_events
+
+    runtime = AIRuntimeSettings.objects.order_by("-updated_at").first()
+    if not runtime or not runtime.google_calendar_enabled:
+        return []
+    if not runtime.google_calendar_id or not (runtime.google_service_account_json or "").strip():
+        return []
+
+    try:
+        sa = json.loads(runtime.google_service_account_json)
+        token = get_service_account_token(sa)
+        items = list_events(
+            access_token=token,
+            calendar_id=runtime.google_calendar_id,
+            time_min=start_dt,
+            time_max=end_dt,
+            timezone=runtime.google_calendar_timezone or "America/Bogota",
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to load Google Calendar events for ERP calendar view")
+        return []
+
+    events: list[dict] = []
+    for item in items:
+        start_raw = (item.get("start") or {}).get("dateTime") or (item.get("start") or {}).get("date")
+        end_raw = (item.get("end") or {}).get("dateTime") or (item.get("end") or {}).get("date")
+        if not start_raw:
+            continue
+        try:
+            start = datetime.fromisoformat(str(start_raw).replace("Z", "+00:00"))
+            if "T" not in str(start_raw):
+                start = timezone.make_aware(datetime.combine(start.date(), time(hour=9)))
+            end = (
+                datetime.fromisoformat(str(end_raw).replace("Z", "+00:00"))
+                if end_raw
+                else start + timedelta(minutes=int(runtime.google_slot_minutes or 30))
+            )
+            if "T" not in str(end_raw or "") and end_raw:
+                end = timezone.make_aware(datetime.combine(end.date(), time(hour=10)))
+        except ValueError:
+            continue
+        if timezone.is_naive(start):
+            start = timezone.make_aware(start)
+        if timezone.is_naive(end):
+            end = timezone.make_aware(end)
+        events.append(
+            {
+                "id": f"google-{item.get('id')}",
+                "title": item.get("summary") or "Evento Google Calendar",
+                "start": start,
+                "end": end,
+                "type": "google_meeting",
+                "color": EVENT_COLORS["google_meeting"],
+                "url": item.get("htmlLink") or "/calendar",
+                "metadata": {
+                    "google_event_id": item.get("id"),
+                    "html_link": item.get("htmlLink"),
+                    "source": "google_calendar",
+                },
+            }
+        )
+    return events
+
+
 def build_calendar_events(
     start_dt: datetime,
     end_dt: datetime,
@@ -186,9 +258,17 @@ def build_calendar_events(
     event_types: set[str] | None = None,
     follow_up_interval_days: int = 14,
 ) -> list[dict]:
-    """Aggregate calendar events from CRM entities."""
+    """Aggregate calendar events from CRM entities and Google Calendar."""
 
-    allowed_types = event_types or {"activity", "deal_close", "follow_up", "overdue", "whatsapp_follow_up", "stale_alert"}
+    allowed_types = event_types or {
+        "activity",
+        "deal_close",
+        "follow_up",
+        "overdue",
+        "whatsapp_follow_up",
+        "stale_alert",
+        "google_meeting",
+    }
     output: list[dict] = []
 
     if "activity" in allowed_types or "overdue" in allowed_types or "whatsapp_follow_up" in allowed_types:
@@ -199,5 +279,8 @@ def build_calendar_events(
         output.extend(_follow_up_events(start_dt, end_dt, assigned_to, follow_up_interval_days))
     if "stale_alert" in allowed_types:
         output.extend(_stale_alert_events(start_dt, end_dt, assigned_to))
+    if "google_meeting" in allowed_types and not assigned_to:
+        # Google events are team-calendar scoped; skip when filtering by assignee.
+        output.extend(_google_calendar_events(start_dt, end_dt))
 
     return sorted(output, key=lambda event: event["start"])

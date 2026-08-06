@@ -12,7 +12,15 @@ import CalendarSidebar from "../components/CalendarSidebar.jsx";
 import CreateActivityModal from "../components/CreateActivityModal.jsx";
 import { useCalendarEvents } from "../hooks/useCalendarEvents.js";
 
-const DEFAULT_TYPES = ["activity", "deal_close", "follow_up", "whatsapp_follow_up", "stale_alert", "overdue"];
+const DEFAULT_TYPES = [
+  "activity",
+  "deal_close",
+  "follow_up",
+  "whatsapp_follow_up",
+  "stale_alert",
+  "overdue",
+  "google_meeting",
+];
 
 const CalendarView = () => {
   const { events, loading, error, loadEvents } = useCalendarEvents();

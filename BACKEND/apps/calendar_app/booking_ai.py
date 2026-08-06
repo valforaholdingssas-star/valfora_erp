@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime
 from datetime import timedelta
@@ -20,6 +21,9 @@ from apps.calendar_app.google_client import (
 )
 from apps.calendar_app.models import CalendarBookingDraft
 from apps.chat.models import Message
+from apps.crm.models import Activity, Deal
+
+logger = logging.getLogger(__name__)
 
 SCHEDULE_KEYWORDS = (
     "agendar",
@@ -30,7 +34,26 @@ SCHEDULE_KEYWORDS = (
     "horario",
     "disponible",
     "disponibilidad",
+    "llamar",
+    "llamada",
+    "videocall",
+    "meet",
 )
+
+_WEEKDAYS_ES = (
+    "lunes",
+    "martes",
+    "miércoles",
+    "jueves",
+    "viernes",
+    "sábado",
+    "domingo",
+)
+
+
+def _format_slot_label(dt: datetime) -> str:
+    local = timezone.localtime(dt)
+    return f"{_WEEKDAYS_ES[local.weekday()]} {local.strftime('%d/%m %H:%M')}"
 
 
 def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) -> Message | None:
@@ -80,7 +103,7 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
                 )
         if intent.get("intent") == "book_slot":
             human_slots = "\n".join(
-                f"- {timezone.localtime(datetime.fromisoformat(s)).strftime('%A %d/%m %H:%M')}" for s in offered_slots[:3]
+                f"- {_format_slot_label(datetime.fromisoformat(s))}" for s in offered_slots[:3]
             )
             return Message.objects.create(
                 conversation=conv,
@@ -88,7 +111,7 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
                 content=(
                     "Para reservar necesito que elijas uno de estos horarios exactos:\n"
                     f"{human_slots}\n\n"
-                    "Puedes responder, por ejemplo: “el martes 14/05 a las 3:00 pm”."
+                    "Puedes responder, por ejemplo: “el martes 14/05 a las 15:00”."
                 ),
                 message_type="text",
                 status="pending" if conv.channel == "whatsapp" else "sent",
@@ -151,7 +174,7 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
     draft.duration_minutes = int(runtime.google_slot_minutes or 30)
     draft.save()
 
-    choices = "\n".join(f"- {timezone.localtime(s).strftime('%A %d/%m %H:%M')}" for s in slots[:3])
+    choices = "\n".join(f"- {_format_slot_label(s)}" for s in slots[:3])
     return Message.objects.create(
         conversation=conv,
         sender_type="ai_bot",
@@ -167,11 +190,55 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
     )
 
 
+def _primary_open_deal(contact_id) -> Deal | None:
+    return (
+        Deal.objects.filter(contact_id=contact_id, is_active=True)
+        .exclude(stage__in=["closed_won", "closed_lost"])
+        .order_by("-updated_at")
+        .first()
+    )
+
+
+def _sync_crm_meeting_activity(
+    *,
+    contact,
+    slot_start: datetime,
+    duration_minutes: int,
+    google_event_id: str,
+    google_html_link: str | None,
+) -> Activity | None:
+    """Create CRM meeting activity so pipeline + ERP calendar stay in sync."""
+    if not contact:
+        return None
+    deal = _primary_open_deal(contact.id)
+    description_parts = [
+        "Cita agendada automáticamente por la IA vía Google Calendar.",
+        f"Duración: {duration_minutes} minutos.",
+    ]
+    if google_event_id:
+        description_parts.append(f"Google event id: {google_event_id}")
+    if google_html_link:
+        description_parts.append(f"Enlace: {google_html_link}")
+    subject = f"Reunión con {contact.first_name} {contact.last_name}".strip()
+    activity = Activity.objects.create(
+        contact=contact,
+        deal=deal,
+        activity_type="meeting",
+        subject=subject[:255],
+        description="\n".join(description_parts),
+        due_date=slot_start,
+        assigned_to=deal.assigned_to if deal else contact.assigned_to,
+        created_by=None,
+    )
+    return activity
+
+
 def _confirm_booking(*, inbound: Message, runtime: AIRuntimeSettings, draft: CalendarBookingDraft, slot_iso: str) -> Message:
     slot_start = datetime.fromisoformat(slot_iso)
     if timezone.is_naive(slot_start):
         slot_start = timezone.make_aware(slot_start)
-    duration = timedelta(minutes=int(runtime.google_slot_minutes or draft.duration_minutes or 30))
+    duration_minutes = int(runtime.google_slot_minutes or draft.duration_minutes or 30)
+    duration = timedelta(minutes=duration_minutes)
     slot_end = slot_start + duration
 
     contact = inbound.conversation.contact
@@ -179,6 +246,7 @@ def _confirm_booking(*, inbound: Message, runtime: AIRuntimeSettings, draft: Cal
         f"Contacto: {contact.first_name} {contact.last_name}".strip(),
         f"Email: {contact.email or 'N/D'}",
         f"Teléfono: {contact.phone_number or contact.whatsapp_number or 'N/D'}",
+        f"Conversación: {inbound.conversation_id}",
     ]
     summary = f"Cita con {contact.first_name} {contact.last_name}".strip()
 
@@ -195,12 +263,28 @@ def _confirm_booking(*, inbound: Message, runtime: AIRuntimeSettings, draft: Cal
         attendee_email=contact.email or None,
     )
 
+    google_event_id = str(event.get("id") or "")
+    google_html_link = event.get("htmlLink")
+    activity = None
+    try:
+        activity = _sync_crm_meeting_activity(
+            contact=contact,
+            slot_start=slot_start,
+            duration_minutes=duration_minutes,
+            google_event_id=google_event_id,
+            google_html_link=google_html_link,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to sync CRM meeting activity after Google booking")
+
     draft.status = "confirmed"
     draft.selected_slot = slot_start
-    draft.google_event_id = str(event.get("id") or "")
+    draft.google_event_id = google_event_id
     draft.metadata = {
         **(draft.metadata or {}),
-        "google_event_html_link": event.get("htmlLink"),
+        "google_event_html_link": google_html_link,
+        "crm_activity_id": str(activity.id) if activity else None,
+        "deal_id": str(activity.deal_id) if activity and activity.deal_id else None,
     }
     draft.save(update_fields=["status", "selected_slot", "google_event_id", "metadata", "updated_at"])
 
@@ -208,12 +292,17 @@ def _confirm_booking(*, inbound: Message, runtime: AIRuntimeSettings, draft: Cal
         conversation=inbound.conversation,
         sender_type="ai_bot",
         content=(
-            f"Listo, tu cita quedó agendada para {timezone.localtime(slot_start).strftime('%A %d/%m a las %H:%M')}."
+            f"Listo, tu cita quedó agendada para {_format_slot_label(slot_start)}. "
+            "Te esperamos; si necesitas reagendar, avísame."
         ),
         message_type="text",
         status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
         is_ai_generated=True,
-        ai_context_used={"calendar_booking_confirmed": True, "google_event_id": draft.google_event_id},
+        ai_context_used={
+            "calendar_booking_confirmed": True,
+            "google_event_id": draft.google_event_id,
+            "crm_activity_id": str(activity.id) if activity else None,
+        },
     )
 
 
@@ -240,7 +329,7 @@ def _pick_slot_from_text(*, user_text: str, offered_slots: list[str], model: str
     slots_human = [
         {
             "iso": s,
-            "label": timezone.localtime(datetime.fromisoformat(s)).strftime("%A %d/%m %H:%M"),
+            "label": _format_slot_label(datetime.fromisoformat(s)),
         }
         for s in offered_slots
     ]

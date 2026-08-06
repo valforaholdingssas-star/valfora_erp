@@ -106,9 +106,13 @@ def create_event(
     end_dt: datetime,
     timezone: str,
     attendee_email: str | None = None,
+    send_updates: bool = True,
 ) -> dict[str, Any]:
     cal_id = quote(calendar_id, safe="@")
-    url = f"https://www.googleapis.com/calendar/v3/calendars/{cal_id}/events"
+    params = ""
+    if send_updates and attendee_email:
+        params = "?sendUpdates=all"
+    url = f"https://www.googleapis.com/calendar/v3/calendars/{cal_id}/events{params}"
     payload: dict[str, Any] = {
         "summary": summary[:255],
         "description": description[:8000],
@@ -125,6 +129,52 @@ def create_event(
     )
     response.raise_for_status()
     return response.json()
+
+
+def list_events(
+    *,
+    access_token: str,
+    calendar_id: str,
+    time_min: datetime,
+    time_max: datetime,
+    timezone: str,
+    max_results: int = 100,
+) -> list[dict[str, Any]]:
+    """List timed events from a Google Calendar in a date range."""
+    cal_id = quote(calendar_id, safe="@")
+    url = f"https://www.googleapis.com/calendar/v3/calendars/{cal_id}/events"
+    response = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {access_token}"},
+        params={
+            "timeMin": time_min.isoformat(),
+            "timeMax": time_max.isoformat(),
+            "timeZone": timezone,
+            "singleEvents": "true",
+            "orderBy": "startTime",
+            "maxResults": max(1, min(250, max_results)),
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return list(response.json().get("items") or [])
+
+
+def probe_calendar_access(*, access_token: str, calendar_id: str, timezone: str) -> dict[str, Any]:
+    """Lightweight connectivity check: freeBusy for the next hour."""
+    now = datetime.now(tz=UTC)
+    busy = freebusy_query(
+        access_token=access_token,
+        calendar_id=calendar_id,
+        time_min=now,
+        time_max=now + timedelta(hours=1),
+        timezone=timezone,
+    )
+    return {
+        "ok": True,
+        "calendar_id": calendar_id,
+        "busy_blocks_next_hour": len(busy),
+    }
 
 
 def compute_candidate_slots(

@@ -25,3 +25,6 @@ export const fetchAiRuntimeSettings = () =>
 
 export const patchAiRuntimeSettings = (payload) =>
   api.patch("/ai-config/runtime-settings/current/", payload).then(unwrap);
+
+export const testGoogleCalendarConnection = () =>
+  api.post("/ai-config/runtime-settings/test-google-calendar/").then(unwrap);

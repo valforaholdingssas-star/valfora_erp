@@ -8,6 +8,7 @@ const OPTIONS = [
   { key: "whatsapp_follow_up", label: "Follow-up WhatsApp" },
   { key: "stale_alert", label: "Leads fríos" },
   { key: "overdue", label: "Vencidos" },
+  { key: "google_meeting", label: "Google Calendar" },
 ];
 
 const CalendarSidebar = ({ selectedTypes, onChangeTypes, users, assignedTo, onChangeAssignedTo }) => (

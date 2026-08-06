@@ -15,6 +15,7 @@ from apps.ai_config.serializers import (
     AIRuntimeSettingsSerializer,
 )
 from apps.ai_config.services import build_openai_test_messages, generate_chat_completion
+from apps.calendar_app.connection import test_google_calendar_connection
 from apps.common.audit import write_audit_log
 
 
@@ -105,3 +106,22 @@ class AIRuntimeSettingsView(APIView):
             request=request,
         )
         return Response(AIRuntimeSettingsSerializer(updated).data)
+
+
+class GoogleCalendarConnectionTestView(APIView):
+    """Probe Google Calendar credentials saved in AI runtime settings."""
+
+    permission_classes = [IsAdminOrSuperAdmin, HasAIConfigPermission]
+
+    def post(self, request):
+        instance = get_or_create_runtime_settings()
+        result = test_google_calendar_connection(instance)
+        ok = bool(result.get("ok"))
+        return Response(
+            {
+                "status": "success" if ok else "error",
+                "data": result,
+                "message": str(result.get("message") or ""),
+            },
+            status=status.HTTP_200_OK if ok else status.HTTP_400_BAD_REQUEST,
+        )
