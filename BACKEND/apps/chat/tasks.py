@@ -13,7 +13,12 @@ from apps.ai_config.services import (
     resolve_ai_configuration_for_conversation,
     moderate_openai_text,
 )
-from apps.calendar_app.booking_ai import maybe_handle_calendar_booking
+from apps.calendar_app.booking_ai import (
+    contains_external_booking_link,
+    is_google_calendar_ready,
+    maybe_handle_calendar_booking,
+    offer_availability_slots,
+)
 from django.core.files.base import ContentFile
 
 from apps.chat import services
@@ -163,6 +168,23 @@ def _generate_ai_reply_locked(*, inbound: Message, conv: Conversation) -> None:
 
     if not result.text:
         return
+
+    # If the LLM falls back to Calendly/external booking links, replace with real Google slots.
+    if is_google_calendar_ready() and contains_external_booking_link(result.text):
+        logger.info(
+            "LLM proposed external booking link for conv %s; offering Google Calendar slots instead",
+            conv.id,
+        )
+        calendar_reply = offer_availability_slots(inbound=inbound)
+        if calendar_reply:
+            if not _should_persist_ai_reply(inbound, exclude_reply_id=str(calendar_reply.id)):
+                Message.objects.filter(pk=calendar_reply.pk).update(is_active=False, updated_at=timezone.now())
+                latest = latest_contact_message(conv.id)
+                if latest and str(latest.id) != str(inbound.id):
+                    generate_ai_reply_for_message.delay(str(latest.id))
+                return
+            _enqueue_whatsapp_if_needed(conv, calendar_reply)
+            return
 
     # Client may have sent another message while the LLM was running.
     if not _should_persist_ai_reply(inbound):

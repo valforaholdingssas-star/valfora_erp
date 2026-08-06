@@ -40,6 +40,46 @@ SCHEDULE_KEYWORDS = (
     "meet",
 )
 
+AFFIRM_SCHEDULE_PHRASES = (
+    "dale",
+    "ok",
+    "okay",
+    "va",
+    "vamos",
+    "listo",
+    "perfecto",
+    "de acuerdo",
+    "claro",
+    "si",
+    "sí",
+    "sip",
+    "sep",
+    "bueno",
+    "hagamoslo",
+    "hagámoslo",
+    "me sirve",
+    "me late",
+    "por supuesto",
+    "sale",
+    "hecho",
+    "si quiero",
+    "sí quiero",
+    "si por favor",
+    "sí por favor",
+    "ok dale",
+    "si dale",
+    "sí dale",
+    "dale pues",
+    "vamos a eso",
+    "quiero agendar",
+    "agendemos",
+)
+
+EXTERNAL_BOOKING_LINK_RE = re.compile(
+    r"(calendly\.com|cal\.com|cal\.com/|tidycal\.com|hubspot\.com/.+meeting|outlook\.office\.com/.+book)",
+    re.I,
+)
+
 _WEEKDAYS_ES = (
     "lunes",
     "martes",
@@ -56,12 +96,34 @@ def _format_slot_label(dt: datetime) -> str:
     return f"{_WEEKDAYS_ES[local.weekday()]} {local.strftime('%d/%m %H:%M')}"
 
 
+def is_google_calendar_ready(runtime: AIRuntimeSettings | None = None) -> bool:
+    runtime = runtime or AIRuntimeSettings.objects.order_by("-updated_at").first()
+    if not runtime or not runtime.google_calendar_enabled:
+        return False
+    return bool((runtime.google_calendar_id or "").strip() and (runtime.google_service_account_json or "").strip())
+
+
+def contains_external_booking_link(text: str) -> bool:
+    return bool(EXTERNAL_BOOKING_LINK_RE.search(text or ""))
+
+
+def google_calendar_system_policy() -> str:
+    """Injected into the LLM system prompt when Google Calendar booking is enabled."""
+    return (
+        "--- Agenda (obligatorio) ---\n"
+        "Esta plataforma ya tiene Google Calendar integrado para agendar reuniones.\n"
+        "NUNCA envíes ni inventes links de Calendly, Cal.com ni ningún enlace externo de reserva.\n"
+        "NUNCA digas “te paso el link” ni menciones herramientas externas de agenda.\n"
+        "Cuando invites a reunirse, propone la reunión en texto y espera la confirmación del cliente "
+        "(sí, dale, ok, etc.). El sistema ofrecerá horarios reales automáticamente.\n"
+        "Si el cliente ya aceptó, no inventes horarios ni URLs: el backend consulta disponibilidad."
+    )
+
+
 def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) -> Message | None:
     """Handle scheduling flow before standard AI response."""
     runtime = AIRuntimeSettings.objects.order_by("-updated_at").first()
-    if not runtime or not runtime.google_calendar_enabled:
-        return None
-    if not runtime.google_calendar_id or not runtime.google_service_account_json:
+    if not is_google_calendar_ready(runtime):
         return None
 
     conv = inbound.conversation
@@ -101,7 +163,7 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
                     is_ai_generated=True,
                     ai_context_used={"calendar_booking_error": str(exc)},
                 )
-        if intent.get("intent") == "book_slot":
+        if intent.get("intent") == "book_slot" or _looks_like_slot_choice(text):
             human_slots = "\n".join(
                 f"- {_format_slot_label(datetime.fromisoformat(s))}" for s in offered_slots[:3]
             )
@@ -119,9 +181,30 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
                 ai_context_used={"calendar_waiting_selection": True, "offered_slots": offered_slots[:3]},
             )
 
-    should_check_availability = intent.get("intent") == "check_availability" or _has_schedule_intent(text)
+    should_check_availability = (
+        intent.get("intent") == "check_availability"
+        or _has_schedule_intent(text)
+        or (_is_scheduling_affirmation(text) and _recent_assistant_invited_meeting(conv))
+    )
     if not should_check_availability:
         return None
+
+    return offer_availability_slots(inbound=inbound, runtime=runtime, draft=draft)
+
+
+def offer_availability_slots(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings | None = None,
+    draft: CalendarBookingDraft | None = None,
+) -> Message | None:
+    """Query Google freeBusy and create an AI message with concrete slot options."""
+    runtime = runtime or AIRuntimeSettings.objects.order_by("-updated_at").first()
+    if not is_google_calendar_ready(runtime):
+        return None
+
+    conv = inbound.conversation
+    draft = draft or CalendarBookingDraft.objects.filter(conversation=conv).first()
 
     try:
         sa = json.loads(runtime.google_service_account_json)
@@ -309,6 +392,41 @@ def _confirm_booking(*, inbound: Message, runtime: AIRuntimeSettings, draft: Cal
 def _has_schedule_intent(text: str) -> bool:
     low = text.lower()
     return any(k in low for k in SCHEDULE_KEYWORDS)
+
+
+def _normalize_affirmation(text: str) -> str:
+    low = (text or "").lower().strip()
+    low = re.sub(r"[^\wáéíóúñü\s]", " ", low, flags=re.I)
+    return re.sub(r"\s+", " ", low).strip()
+
+
+def _is_scheduling_affirmation(text: str) -> bool:
+    cleaned = _normalize_affirmation(text)
+    if not cleaned:
+        return False
+    if cleaned in AFFIRM_SCHEDULE_PHRASES:
+        return True
+    tokens = cleaned.split()
+    if len(tokens) <= 5 and any(p == cleaned or cleaned.startswith(f"{p} ") or cleaned.endswith(f" {p}") for p in AFFIRM_SCHEDULE_PHRASES):
+        return True
+    return False
+
+
+def _looks_like_slot_choice(text: str) -> bool:
+    low = (text or "").lower()
+    return bool(re.search(r"\b\d{1,2}([:/.]\d{2})?\b", low) or any(d in low for d in _WEEKDAYS_ES))
+
+
+def _recent_assistant_invited_meeting(conv) -> bool:
+    recent = (
+        Message.objects.filter(conversation=conv, is_active=True, sender_type="ai_bot")
+        .order_by("-created_at")[:4]
+    )
+    for msg in recent:
+        low = (msg.content or "").lower()
+        if any(k in low for k in ("agend", "reunión", "reunion", "cita", "30 minutos", "asesoría", "asesoria")):
+            return True
+    return False
 
 
 def _pick_slot_from_text(*, user_text: str, offered_slots: list[str], model: str) -> str | None:

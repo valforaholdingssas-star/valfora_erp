@@ -199,6 +199,14 @@ def _build_system_prompt(config: AIConfiguration) -> str:
     if raw:
         blocks.append(raw)
 
+    try:
+        from apps.calendar_app.booking_ai import google_calendar_system_policy, is_google_calendar_ready
+
+        if is_google_calendar_ready():
+            blocks.append(google_calendar_system_policy())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Google Calendar prompt policy skipped: %s", exc)
+
     if not blocks:
         return "Eres un asistente comercial profesional. Responde en español, de forma breve y útil."
     return "\n".join(blocks)
