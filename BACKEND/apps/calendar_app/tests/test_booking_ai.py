@@ -30,6 +30,112 @@ def test_compute_candidate_slots_skips_busy_and_past():
     assert all(not (busy_start <= s < busy_end) for s in slots)
 
 
+def test_compute_candidate_slots_skips_weekends():
+    # Friday 15 May 2026 → next days include weekend
+    now = timezone.make_aware(datetime(2026, 5, 15, 8, 0, 0))
+    slots = compute_candidate_slots(
+        now_local=now,
+        busy_ranges=[],
+        days_ahead=5,
+        slot_minutes=30,
+        max_results=20,
+        weekdays_only=True,
+    )
+    assert slots
+    assert all(s.weekday() < 5 for s in slots)
+
+
+def test_compute_candidate_slots_prefer_around():
+    now = timezone.make_aware(datetime(2026, 5, 11, 8, 0, 0))  # Monday
+    prefer = timezone.make_aware(datetime(2026, 5, 14, 15, 0, 0))  # Thursday 15:00
+    slots = compute_candidate_slots(
+        now_local=now,
+        busy_ranges=[],
+        days_ahead=7,
+        slot_minutes=30,
+        max_results=3,
+        prefer_around=prefer,
+    )
+    assert slots
+    assert slots[0].date() == prefer.date()
+
+
+def test_parse_preferred_datetime_spanish_phrases():
+    from unittest.mock import patch
+    from zoneinfo import ZoneInfo
+
+    from apps.calendar_app.booking_ai import _parse_preferred_datetime
+
+    bogota = ZoneInfo("America/Bogota")
+    fake_now = datetime(2026, 8, 6, 16, 0, tzinfo=bogota)
+    with patch("apps.calendar_app.booking_ai._now_in_calendar_tz", return_value=fake_now):
+        dt = _parse_preferred_datetime("Domingo 09/08 a las 3pm", tz_name="America/Bogota")
+        assert dt is not None
+        assert dt.year == 2026
+        assert dt.month == 8
+        assert dt.day == 9
+        assert dt.hour == 15
+
+        dt2 = _parse_preferred_datetime("Domingo 09/08 a las 13:00", tz_name="America/Bogota")
+        assert dt2 is not None
+        assert dt2.hour == 13
+        assert dt2.weekday() == 6  # Sunday
+
+
+@pytest.mark.django_db
+def test_pending_selection_weekend_request_reoffers_weekdays(admin_user):
+    from apps.ai_config.models import AIConfiguration
+    from apps.calendar_app.booking_ai import maybe_handle_calendar_booking
+    from zoneinfo import ZoneInfo
+
+    runtime = AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_booking_window_days=10,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Ana", last_name="Lead")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    bogota = ZoneInfo("America/Bogota")
+    offered = datetime(2026, 8, 7, 9, 0, tzinfo=bogota)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_selection",
+        offered_slots=[offered.isoformat()],
+        timezone="America/Bogota",
+        duration_minutes=30,
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Domingo 09/08 a las 3pm",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+
+    monday_slot = datetime(2026, 8, 10, 10, 0, tzinfo=bogota)
+    with (
+        patch("apps.calendar_app.booking_ai._infer_calendar_intent", return_value={"intent": "book_slot", "slot_iso": None}),
+        patch("apps.calendar_app.booking_ai.get_service_account_token", return_value="token"),
+        patch("apps.calendar_app.booking_ai.freebusy_query", return_value=[]),
+        patch(
+            "apps.calendar_app.booking_ai.compute_candidate_slots",
+            return_value=[monday_slot, monday_slot + timedelta(minutes=30)],
+        ),
+        patch("apps.calendar_app.booking_ai._now_in_calendar_tz", return_value=datetime(2026, 8, 6, 16, 0, tzinfo=bogota)),
+    ):
+        reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+
+    assert reply is not None
+    assert "fin de semana" in reply.content.lower() or "lunes a viernes" in reply.content.lower()
+    assert "elige uno de estos horarios exactos" not in reply.content.lower()
+    assert "10/08" in reply.content or "lunes" in reply.content.lower()
+
+
+
 @pytest.mark.django_db
 def test_confirm_booking_creates_google_event_and_crm_activity(admin_user):
     runtime = AIRuntimeSettings.objects.create(

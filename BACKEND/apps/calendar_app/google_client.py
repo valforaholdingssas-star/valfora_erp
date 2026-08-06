@@ -186,24 +186,42 @@ def compute_candidate_slots(
     workday_start_hour: int = 9,
     workday_end_hour: int = 18,
     max_results: int = 6,
+    weekdays_only: bool = True,
+    prefer_around: datetime | None = None,
 ) -> list[datetime]:
-    """Return candidate slot starts (timezone-aware) avoiding busy intervals."""
+    """Return candidate slot starts (timezone-aware) avoiding busy intervals.
+
+    By default only Mon–Fri. If prefer_around is set, returns free slots closest
+    to that datetime (still within the booking window).
+    """
     slot_delta = timedelta(minutes=max(15, slot_minutes))
     start_floor = now_local + timedelta(hours=2)
-    out: list[datetime] = []
+    collected: list[datetime] = []
     day_cursor = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
     for _ in range(max(1, days_ahead)):
-        day_start = day_cursor.replace(hour=workday_start_hour, minute=0)
-        day_end = day_cursor.replace(hour=workday_end_hour, minute=0)
+        if weekdays_only and day_cursor.weekday() >= 5:
+            day_cursor = day_cursor + timedelta(days=1)
+            continue
+        day_start = day_cursor.replace(hour=workday_start_hour, minute=0, second=0, microsecond=0)
+        day_end = day_cursor.replace(hour=workday_end_hour, minute=0, second=0, microsecond=0)
         slot = day_start
         while slot + slot_delta <= day_end:
             if slot >= start_floor and not _overlaps(slot, slot + slot_delta, busy_ranges):
-                out.append(slot)
-                if len(out) >= max_results:
-                    return out
+                collected.append(slot)
+                if not prefer_around and len(collected) >= max_results:
+                    return collected
             slot += slot_delta
         day_cursor = day_cursor + timedelta(days=1)
-    return out
+
+    if prefer_around and collected:
+        prefer = prefer_around if prefer_around.tzinfo else prefer_around.replace(tzinfo=now_local.tzinfo)
+        collected.sort(key=lambda s: abs((s - prefer).total_seconds()))
+        return collected[:max_results]
+    return collected[:max_results]
+
+
+def slot_overlaps_busy(start: datetime, end: datetime, busy: list[tuple[datetime, datetime]]) -> bool:
+    return _overlaps(start, end, busy)
 
 
 def _overlaps(start: datetime, end: datetime, busy: list[tuple[datetime, datetime]]) -> bool:
