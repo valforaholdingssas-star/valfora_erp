@@ -140,6 +140,38 @@ def contains_external_booking_link(text: str) -> bool:
     return bool(EXTERNAL_BOOKING_LINK_RE.search(text or ""))
 
 
+def looks_like_invented_slot_offer(text: str) -> bool:
+    """Detect LLM replies that dump concrete schedule options without backend booking."""
+    low = (text or "").lower()
+    if not low:
+        return False
+    if EXTERNAL_BOOKING_LINK_RE.search(low):
+        return True
+    has_offer_phrase = any(
+        p in low
+        for p in (
+            "horarios disponibles",
+            "te propongo estos horarios",
+            "estos horarios",
+            "elige uno de estos",
+            "dime cuál prefieres",
+            "dime cual prefieres",
+        )
+    )
+    time_hits = len(re.findall(r"\b\d{1,2}:\d{2}\b", low))
+    weekday_hits = sum(1 for d in _WEEKDAYS_ES if d in low)
+    return bool(has_offer_phrase and (time_hits >= 2 or (time_hits >= 1 and weekday_hits >= 1)))
+
+
+def start_booking_by_asking_day(*, inbound: Message, runtime: AIRuntimeSettings | None = None) -> Message | None:
+    """Public entry: begin scheduling by asking for a preferred day (never dump slots)."""
+    runtime = runtime or AIRuntimeSettings.objects.order_by("-updated_at").first()
+    if not is_google_calendar_ready(runtime):
+        return None
+    draft = CalendarBookingDraft.objects.filter(conversation=inbound.conversation).first()
+    return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
+
+
 def google_calendar_system_policy() -> str:
     """Injected into the LLM system prompt when Google Calendar booking is enabled."""
     return (
@@ -183,9 +215,15 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
     if not text:
         return None
 
-    tz_name = _calendar_tz_name(runtime)
     intent = _infer_calendar_intent(user_text=text, model=config.llm_model)
     draft = CalendarBookingDraft.objects.filter(conversation=conv).first()
+
+    # Stale/active drafts must not hijack unrelated chat (info questions, complaints, etc.).
+    if draft and draft.status in {"pending_day", "pending_period", "pending_selection", "pending_email"}:
+        if not _is_calendar_flow_message(text, draft_status=draft.status):
+            if draft.status != "pending_email":
+                _abandon_draft(draft, reason="unrelated_message")
+            return None
 
     if draft and draft.status == "pending_email":
         return _handle_pending_email(inbound=inbound, runtime=runtime, draft=draft, text=text)
@@ -215,6 +253,53 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
         return None
 
     return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
+
+
+def _abandon_draft(draft: CalendarBookingDraft, *, reason: str) -> None:
+    draft.status = "cancelled"
+    draft.metadata = {**(draft.metadata or {}), "abandoned_reason": reason}
+    draft.save(update_fields=["status", "metadata", "updated_at"])
+
+
+def _is_calendar_flow_message(text: str, *, draft_status: str) -> bool:
+    """Whether the user message still belongs to the booking funnel."""
+    low = (text or "").lower().strip()
+    if not low:
+        return False
+    if draft_status == "pending_email":
+        return bool(_parse_email_from_text(text) or _inviteable_attendee_email(low) or "@" in low)
+    if _has_schedule_intent(text) or _message_has_explicit_time(text) or _looks_like_slot_choice(text):
+        return True
+    if _parse_week_offset_days(text) is not None:
+        return True
+    if _parse_day_period(text):
+        return True
+    # Day names / hoy / mañana — without requiring full datetime
+    if any(d in low for d in _WEEKDAYS_ES) or re.search(r"\b(hoy|mañana|manana)\b", low):
+        return True
+    if re.search(r"\b\d{1,2}[/-]\d{1,2}\b", low):
+        return True
+    if draft_status in {"pending_day", "pending_period", "pending_selection"} and _is_scheduling_affirmation(text):
+        return True
+    # Frustration while mid-booking still counts as in-flow if short
+    if draft_status == "pending_selection" and any(
+        p in low for p in ("ya te dije", "te dije", "otra semana", "siguiente semana", "proxima semana", "próxima semana")
+    ):
+        return True
+    return False
+
+
+def _parse_week_offset_days(text: str) -> int | None:
+    """Return +7 when user asks for next/other week."""
+    low = (text or "").lower()
+    if re.search(
+        r"(otra|pr[oó]xima|siguiente|la\s+que\s+viene)\s+semana|semana\s+(pr[oó]xima|siguiente|que\s+viene)",
+        low,
+    ):
+        return 7
+    if re.search(r"\ben\s+8\s+d[ií]as\b", low):
+        return 7
+    return None
 
 
 def _ask_preferred_day(
@@ -270,7 +355,11 @@ def _handle_pending_day(
             preferred=preferred,
         )
 
-    day = _parse_preferred_day(text, tz_name=tz_name)
+    day = _parse_preferred_day(
+        text,
+        tz_name=tz_name,
+        week_offset_days=int((draft.metadata or {}).get("week_offset_days") or 0),
+    )
     if not day:
         return Message.objects.create(
             conversation=inbound.conversation,
@@ -304,6 +393,7 @@ def _handle_pending_day(
         **(draft.metadata or {}),
         "preferred_day": day.isoformat(),
         "preferred_day_label": f"{_WEEKDAYS_ES[day.weekday()]} {day.strftime('%d/%m')}",
+        "week_offset_days": 0,
     }
     draft.save(update_fields=["status", "metadata", "updated_at"])
     label = draft.metadata["preferred_day_label"]
@@ -394,6 +484,27 @@ def _handle_pending_selection(
     model: str,
 ) -> Message:
     tz_name = _calendar_tz_name(runtime, draft)
+    week_offset = _parse_week_offset_days(text)
+    if week_offset:
+        draft.status = "pending_day"
+        draft.offered_slots = []
+        draft.metadata = {
+            **(draft.metadata or {}),
+            "week_offset_days": week_offset,
+            "preferred_day": None,
+            "preferred_period": None,
+        }
+        draft.save(update_fields=["status", "offered_slots", "metadata", "updated_at"])
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content="Perfecto, entonces para la próxima semana: ¿qué día te queda bien?",
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_day": True, "week_offset_days": week_offset},
+        )
+
     offered_slots = [str(x) for x in (draft.offered_slots or [])]
     chosen = intent.get("slot_iso") if intent.get("intent") == "book_slot" else None
     if not chosen:
@@ -432,6 +543,10 @@ def _handle_pending_selection(
             preferred=preferred,
         )
 
+    # Change day mid-selection
+    if _parse_preferred_day(text, tz_name=tz_name):
+        return _handle_pending_day(inbound=inbound, runtime=runtime, draft=draft, text=text)
+
     if intent.get("intent") == "book_slot" or _looks_like_slot_choice(text):
         return offer_availability_slots(
             inbound=inbound,
@@ -440,18 +555,18 @@ def _handle_pending_selection(
             intro="No identifiqué ese horario. Elige uno de estos:",
         )
 
-    # Maybe they want to change day
-    if _parse_preferred_day(text, tz_name=tz_name):
-        return _handle_pending_day(inbound=inbound, runtime=runtime, draft=draft, text=text)
-
+    # Don't loop forever — restart day question once.
+    draft.status = "pending_day"
+    draft.offered_slots = []
+    draft.save(update_fields=["status", "offered_slots", "updated_at"])
     return Message.objects.create(
         conversation=inbound.conversation,
         sender_type="ai_bot",
-        content="¿Cuál de esos horarios te sirve, o prefieres otro día?",
+        content="Entendido. ¿Qué día te queda mejor para la reunión?",
         message_type="text",
         status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
         is_ai_generated=True,
-        ai_context_used={"calendar_waiting_selection": True},
+        ai_context_used={"calendar_waiting_day": True, "restarted_from_selection": True},
     )
 
 
@@ -1009,7 +1124,7 @@ def _resolve_weekday_date(weekday_idx: int, *, now: datetime) -> datetime:
     return target.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def _parse_preferred_day(text: str, *, tz_name: str):
+def _parse_preferred_day(text: str, *, tz_name: str, week_offset_days: int = 0):
     """Parse a day preference into a date (no required time)."""
     from datetime import date
 
@@ -1017,10 +1132,11 @@ def _parse_preferred_day(text: str, *, tz_name: str):
     if not low:
         return None
     now = _now_in_calendar_tz(tz_name)
+    base = now + timedelta(days=max(0, int(week_offset_days or 0)))
 
-    if re.search(r"\bhoy\b", low):
+    if re.search(r"\bhoy\b", low) and week_offset_days <= 0:
         return now.date()
-    if re.search(r"\b(mañana|manana)\b", low):
+    if re.search(r"\b(mañana|manana)\b", low) and week_offset_days <= 0:
         return (now + timedelta(days=1)).date()
 
     date_match = re.search(r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b", low)
@@ -1045,9 +1161,23 @@ def _parse_preferred_day(text: str, *, tz_name: str):
 
     for idx, name in enumerate(_WEEKDAYS_ES):
         if name in low:
-            return _resolve_weekday_date(idx, now=now).date()
+            return _resolve_weekday_date(idx, now=base).date()
     return None
 
+
+def _infer_calendar_intent(*, user_text: str, model: str) -> dict:
+    """
+    Deterministic intent only — LLM classification caused false calendar starts
+    on messages like "quiero más información".
+    """
+    low = (user_text or "").lower()
+    if any(k in low for k in SCHEDULE_KEYWORDS):
+        return {"intent": "check_availability", "slot_iso": None}
+    if _message_has_explicit_time(user_text) or (
+        _looks_like_slot_choice(user_text) and any(d in low for d in _WEEKDAYS_ES)
+    ):
+        return {"intent": "book_slot", "slot_iso": None}
+    return {"intent": "none", "slot_iso": None}
 
 def _inviteable_attendee_email(email: str | None) -> str | None:
     """Return a real email safe to invite via Google Calendar, else None.
@@ -1270,51 +1400,3 @@ def _pick_slot_from_text(
     if candidate in offered_slots:
         return candidate
     return None
-
-
-def _infer_calendar_intent(*, user_text: str, model: str) -> dict:
-    """
-    Structured intent extraction for scheduling.
-    Returns:
-      {"intent": "none"|"check_availability"|"book_slot", "slot_iso": str|None}
-    """
-    low = user_text.lower()
-    if any(k in low for k in SCHEDULE_KEYWORDS):
-        return {"intent": "check_availability", "slot_iso": None}
-
-    api_key = resolve_openai_api_key()
-    if not api_key:
-        # Deterministic fallback: date/time phrasing counts as choosing a slot
-        if _looks_like_slot_choice(user_text):
-            return {"intent": "book_slot", "slot_iso": None}
-        return {"intent": "none", "slot_iso": None}
-    client = OpenAI(api_key=api_key)
-    prompt = (
-        "Clasifica intención para agendar.\n"
-        "Responde SOLO JSON con este formato exacto: "
-        '{"intent":"none|check_availability|book_slot","slot_iso":null}.\n'
-        "Usa book_slot solo si el usuario está eligiendo/confirmando un horario.\n"
-        f"Mensaje: {user_text}"
-    )
-    try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "Devuelve únicamente JSON válido."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0,
-            max_tokens=80,
-        )
-        raw = (resp.choices[0].message.content or "").strip()
-        m = re.search(r"\{.*\}", raw, flags=re.S)
-        if not m:
-            return {"intent": "none", "slot_iso": None}
-        parsed = json.loads(m.group(0))
-        intent = parsed.get("intent")
-        if intent not in {"none", "check_availability", "book_slot"}:
-            intent = "none"
-        slot_iso = parsed.get("slot_iso")
-        return {"intent": intent, "slot_iso": slot_iso if isinstance(slot_iso, str) else None}
-    except Exception:  # noqa: BLE001
-        return {"intent": "none", "slot_iso": None}

@@ -113,12 +113,10 @@ def test_ai_reply_skips_stale_inbound_when_newer_contact_message_exists(
 
 
 @pytest.mark.django_db
-def test_scheduling_affirmation_after_meeting_invite_offers_slots(monkeypatch, admin_user):
+def test_scheduling_affirmation_after_meeting_invite_asks_day(monkeypatch, admin_user):
     from apps.ai_config.models import AIRuntimeSettings
     from apps.calendar_app.booking_ai import maybe_handle_calendar_booking
     from apps.crm.models import Contact, Deal
-    from django.utils import timezone
-    from datetime import datetime, timedelta
 
     AIRuntimeSettings.objects.create(
         google_calendar_enabled=True,
@@ -143,20 +141,14 @@ def test_scheduling_affirmation_after_meeting_invite_offers_slots(monkeypatch, a
         content="Dale",
         status="delivered",
     )
-    slot = timezone.make_aware(datetime(2026, 8, 7, 9, 0, 0))
-    monkeypatch.setattr("apps.calendar_app.booking_ai.get_service_account_token", lambda sa: "token")
-    monkeypatch.setattr("apps.calendar_app.booking_ai.freebusy_query", lambda **kwargs: [])
-    monkeypatch.setattr(
-        "apps.calendar_app.booking_ai.compute_candidate_slots",
-        lambda **kwargs: [slot, slot + timedelta(minutes=30), slot + timedelta(minutes=60)],
-    )
     from apps.ai_config.models import AIConfiguration
 
     config = AIConfiguration.objects.create(name="t", is_default=True, llm_model="gpt-4o-mini")
     reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
     assert reply is not None
-    assert "horarios disponibles" in reply.content.lower()
+    assert "qué día" in reply.content.lower() or "que dia" in reply.content.lower()
     assert "calendly" not in reply.content.lower()
+    assert "09:00" not in reply.content
 
 
 @pytest.mark.django_db

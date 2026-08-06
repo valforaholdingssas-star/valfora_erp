@@ -468,6 +468,78 @@ def test_request_email_before_confirm_when_contact_has_placeholder(admin_user):
 
 
 @pytest.mark.django_db
+def test_info_request_does_not_start_calendar(admin_user):
+    from apps.ai_config.models import AIConfiguration
+
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Ronaldo", last_name="R")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="¡Hola! Quiero más información.",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    assert maybe_handle_calendar_booking(inbound=inbound, config=config) is None
+
+
+@pytest.mark.django_db
+def test_pending_selection_other_week_asks_day(admin_user):
+    from apps.ai_config.models import AIConfiguration
+    from zoneinfo import ZoneInfo
+
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Camilo", last_name="C")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    bogota = ZoneInfo("America/Bogota")
+    slot = datetime(2026, 8, 7, 9, 0, tzinfo=bogota)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_selection",
+        offered_slots=[slot.isoformat()],
+        timezone="America/Bogota",
+        duration_minutes=30,
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Si prefiero la otra semana",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is not None
+    assert "próxima semana" in reply.content.lower() or "proxima semana" in reply.content.lower()
+    assert "qué día" in reply.content.lower() or "que dia" in reply.content.lower()
+    draft = CalendarBookingDraft.objects.get(conversation=conv)
+    assert draft.status == "pending_day"
+
+
+def test_looks_like_invented_slot_offer():
+    from apps.calendar_app.booking_ai import looks_like_invented_slot_offer
+
+    assert looks_like_invented_slot_offer(
+        "Perfecto, te propongo estos horarios disponibles:\n- viernes 07/08 09:00\n- viernes 07/08 09:30"
+    )
+    assert not looks_like_invented_slot_offer("¡Hola! ¿En qué puedo ayudarte hoy?")
+
+
+@pytest.mark.django_db
 def test_maybe_handle_calendar_booking_returns_none_when_disabled():
     AIRuntimeSettings.objects.create(google_calendar_enabled=False)
     contact = Contact.objects.create(first_name="A", last_name="B")

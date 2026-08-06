@@ -16,8 +16,9 @@ from apps.ai_config.services import (
 from apps.calendar_app.booking_ai import (
     contains_external_booking_link,
     is_google_calendar_ready,
+    looks_like_invented_slot_offer,
     maybe_handle_calendar_booking,
-    offer_availability_slots,
+    start_booking_by_asking_day,
 )
 from django.core.files.base import ContentFile
 
@@ -169,13 +170,15 @@ def _generate_ai_reply_locked(*, inbound: Message, conv: Conversation) -> None:
     if not result.text:
         return
 
-    # If the LLM falls back to Calendly/external booking links, replace with real Google slots.
-    if is_google_calendar_ready() and contains_external_booking_link(result.text):
+    # Never let the LLM dump Calendly / invented slots — start the day-first booking funnel.
+    if is_google_calendar_ready() and (
+        contains_external_booking_link(result.text) or looks_like_invented_slot_offer(result.text)
+    ):
         logger.info(
-            "LLM proposed external booking link for conv %s; offering Google Calendar slots instead",
+            "LLM proposed external/invented booking options for conv %s; asking preferred day instead",
             conv.id,
         )
-        calendar_reply = offer_availability_slots(inbound=inbound)
+        calendar_reply = start_booking_by_asking_day(inbound=inbound)
         if calendar_reply:
             if not _should_persist_ai_reply(inbound, exclude_reply_id=str(calendar_reply.id)):
                 Message.objects.filter(pk=calendar_reply.pk).update(is_active=False, updated_at=timezone.now())
