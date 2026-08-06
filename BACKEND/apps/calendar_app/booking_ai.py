@@ -612,12 +612,24 @@ def _dispatch_booking_interpretation(
         )
 
     # Escape pending_email when client changes day / reschedules (before email nag).
-    if status == "pending_email" and (
-        action in {"provide_day", "provide_datetime", "provide_period", "defer_week", "start_booking", "cancel"}
+    # NEVER escape if this message contains an email — that must complete the booking.
+    email_in_text = _inviteable_attendee_email(interp.get("email")) or _parse_email_from_text(
+        inbound.content or ""
+    )
+    if status == "pending_email" and email_in_text:
+        return _handle_pending_email(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            text=email_in_text,
+        )
+
+    if status == "pending_email" and not email_in_text and (
+        action in {"provide_day", "provide_datetime", "provide_period", "defer_week", "cancel"}
         or interp.get("weekday")
         or interp.get("date_iso")
-        or interp.get("period")
-        or interp.get("time_hhmm")
+        or (interp.get("period") and action != "provide_email")
+        or (interp.get("time_hhmm") and action != "provide_email")
     ):
         draft.offered_slots = []
         draft.selected_slot = None
@@ -645,7 +657,9 @@ def _dispatch_booking_interpretation(
         return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
 
     if status == "pending_email" or action == "provide_email":
-        email = _inviteable_attendee_email(interp.get("email")) or _parse_email_from_text(inbound.content or "")
+        email = email_in_text or _inviteable_attendee_email(interp.get("email")) or _parse_email_from_text(
+            inbound.content or ""
+        )
         if email:
             return _handle_pending_email(
                 inbound=inbound,

@@ -117,8 +117,17 @@ def _merge_interpretations(primary: dict[str, Any], hint: dict[str, Any]) -> dic
         out["related"] = True
     if out.get("action") in {None, "none", "clarify"} and hint.get("action") not in {None, "none"}:
         out["action"] = hint["action"]
+    # Explicit email in the utterance always wins (never restart booking).
+    if hint.get("email") or out.get("email"):
+        out["email"] = hint.get("email") or out.get("email")
+        out["action"] = "provide_email"
+        out["related"] = True
+        out["weekday"] = None
+        out["date_iso"] = None
+        out["period"] = None
+        out["time_hhmm"] = None
     # Promote richer actions when both agree on signals
-    if out.get("time_hhmm") and (out.get("date_iso") or out.get("weekday")) and out.get("action") in {
+    elif out.get("time_hhmm") and (out.get("date_iso") or out.get("weekday")) and out.get("action") in {
         "provide_day",
         "none",
         "clarify",

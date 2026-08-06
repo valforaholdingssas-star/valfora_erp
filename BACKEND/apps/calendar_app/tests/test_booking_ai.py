@@ -655,6 +655,83 @@ def test_nlu_layer_handles_colloquial_next_week(admin_user, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_pending_email_with_email_does_not_restart_funnel(admin_user, monkeypatch):
+    """Email while pending_email must confirm (or try), never ask for day again."""
+    from apps.ai_config.models import AIConfiguration
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Camilo", last_name="C")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    bogota = ZoneInfo("America/Bogota")
+    slot = datetime(2026, 8, 11, 10, 0, tzinfo=bogota)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_email",
+        offered_slots=[slot.isoformat()],
+        selected_slot=slot,
+        timezone="America/Bogota",
+        duration_minutes=30,
+        metadata={
+            "preferred_day": "2026-08-11",
+            "preferred_period": "morning",
+            "pending_slot_iso": slot.isoformat(),
+            "preferred_day_label": "martes 11/08",
+        },
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Luu.gomezh@gmail.com",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+
+    def fake_interpret(**kwargs):
+        # Simulate noisy LLM that tries to restart booking despite the email.
+        return {
+            "related": True,
+            "action": "start_booking",
+            "weekday": None,
+            "date_iso": None,
+            "period": "morning",
+            "time_hhmm": None,
+            "week_offset_days": 0,
+            "email": "Luu.gomezh@gmail.com",
+            "slot_iso": None,
+            "confidence": 0.5,
+            "source": "llm",
+        }
+
+    monkeypatch.setattr("apps.calendar_app.booking_ai.interpret_booking_utterance", fake_interpret)
+    with (
+        patch("apps.calendar_app.booking_ai._confirm_booking") as confirm,
+    ):
+        confirm.return_value = Message.objects.create(
+            conversation=conv,
+            sender_type="ai_bot",
+            content="Listo, te agendé la reunión y envié la invitación a Luu.gomezh@gmail.com.",
+            message_type="text",
+            status="pending",
+            is_ai_generated=True,
+        )
+        reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is not None
+    assert "qué día" not in reply.content.lower()
+    assert "reunion" not in reply.content.lower() or "agend" in reply.content.lower()
+    confirm.assert_called_once()
+
+
+@pytest.mark.django_db
 def test_pending_period_manana_means_morning_not_tomorrow(admin_user, monkeypatch):
     """Bare 'Mañana' while pending_period must keep the locked day (Monday), not jump to tomorrow."""
     from apps.ai_config.models import AIConfiguration
