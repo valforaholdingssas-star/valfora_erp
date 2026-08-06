@@ -13,6 +13,7 @@ from apps.ai_config.runtime import get_or_create_runtime_settings, resolve_globa
 from apps.common.audit import write_audit_log
 from apps.chat.models import Conversation, Message, MessageAttachment
 from apps.chat.permissions import IsChatUser
+from apps.crm.pipeline_automation import PipelineAutomationService
 from apps.chat.serializers import (
     ConversationCreateSerializer,
     ConversationSerializer,
@@ -20,7 +21,6 @@ from apps.chat.serializers import (
     MessageSerializer,
     TemplateMessageSerializer,
 )
-from apps.crm.pipeline_automation import PipelineAutomationService
 from apps.whatsapp.models import WhatsAppTemplate
 from apps.whatsapp.tasks import send_whatsapp_message, send_whatsapp_template
 
@@ -62,11 +62,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset().filter(deal__isnull=False)
         params = self.request.query_params
-        status_filter = params.get("status")
 
+        status_filter = (params.get("status") or "").strip().lower()
+        include_closed = str(params.get("include_closed") or "").strip().lower() in {"1", "true", "yes"}
         if status_filter == "closed":
             qs = qs.filter(status="archived")
-        elif status_filter == "open" or not params.get("include_closed"):
+        elif status_filter == "open" or not include_closed:
             qs = qs.exclude(status="archived")
 
         stage = params.get("deal_stage")
@@ -111,6 +112,26 @@ class ConversationViewSet(viewsets.ModelViewSet):
             )
 
         return qs.distinct()
+
+    def perform_update(self, serializer):
+        previous_status = getattr(serializer.instance, "status", None)
+        instance = serializer.save()
+        next_status = getattr(instance, "status", None)
+        changed_fields = dict(serializer.validated_data)
+        if previous_status != next_status:
+            if next_status == "archived":
+                instance.closed_at = timezone.now()
+            elif previous_status == "archived" and next_status != "archived":
+                instance.closed_at = None
+            instance.save(update_fields=["closed_at", "updated_at"])
+            changed_fields["closed_at"] = instance.closed_at.isoformat() if instance.closed_at else None
+        write_audit_log(
+            user=self.request.user,
+            action="update",
+            instance=instance,
+            changes=changed_fields,
+            request=self.request,
+        )
 
     def get_permissions(self):
         if self.action == "destroy":
@@ -182,23 +203,6 @@ class ConversationViewSet(viewsets.ModelViewSet):
             request=request,
         )
         return Response(out.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
-
-    def perform_update(self, serializer):
-        current_status = serializer.instance.status
-        next_status = serializer.validated_data.get("status", current_status)
-        closed_at = serializer.instance.closed_at
-        if next_status == "archived" and current_status != "archived":
-            closed_at = timezone.now()
-        elif current_status == "archived" and next_status != "archived":
-            closed_at = None
-        instance = serializer.save(closed_at=closed_at)
-        write_audit_log(
-            user=self.request.user,
-            action="update",
-            instance=instance,
-            changes={"status": next_status, "closed_at": instance.closed_at.isoformat() if instance.closed_at else None},
-            request=self.request,
-        )
 
     def perform_destroy(self, instance):
         instance.is_active = False

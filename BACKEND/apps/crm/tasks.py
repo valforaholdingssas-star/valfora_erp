@@ -18,28 +18,25 @@ logger = logging.getLogger(__name__)
 
 
 def _build_fallback_business_summary(deal: Deal) -> str:
-    """Build a concise commercial summary if no LLM summary is available."""
-
-    contact_name = str(deal.contact) if deal.contact_id else "Sin contacto"
-    company_name = deal.company.name if deal.company_id and deal.company else "Sin empresa"
+    conversations = deal.conversations.filter(is_active=True).prefetch_related("messages").order_by("-updated_at")
     lines = [
-        f"Contacto: {contact_name}",
-        f"Empresa: {company_name}",
+        f"Deal: {deal.title}",
+        f"Contacto: {deal.contact}",
+        f"Empresa: {deal.company.name if deal.company_id else 'Sin empresa'}",
         f"Etapa actual: {deal.stage}",
-        f"Valor estimado: {deal.value} {deal.currency}",
+        f"Valor: {deal.value} {deal.currency}",
     ]
-    recent_messages = list(
-        deal.conversations.filter(is_active=True)
-        .values_list("messages__content", flat=True)
-        .exclude(messages__content="")
-        .order_by("-messages__created_at")[:3]
-    )
-    cleaned = [message.strip() for message in recent_messages if message and message.strip()]
-    if cleaned:
-        lines.append("Mensajes recientes:")
-        lines.extend([f"- {message[:220]}" for message in cleaned])
-    if deal.description:
-        lines.append(f"Descripción actual: {deal.description[:300]}")
+    last_messages = []
+    for conv in conversations[:2]:
+        for msg in conv.messages.filter(is_active=True).order_by("-created_at")[:6]:
+            label = "Cliente" if msg.sender_type == "contact" else "Equipo"
+            content = (msg.content or "").strip()
+            if not content:
+                continue
+            last_messages.append(f"- {label}: {content[:220]}")
+    if last_messages:
+        lines.append("Resumen de conversación reciente:")
+        lines.extend(reversed(last_messages[-8:]))
     return "\n".join(lines)
 
 
@@ -116,7 +113,9 @@ def auto_close_lost_deals() -> int:
     """Close stale deals as lost after configured grace period."""
     cfg = PipelineAutomationService.get_config()
     threshold = timezone.now() - timedelta(days=cfg.auto_close_lost_days)
-    qs = Deal.objects.filter(is_active=True, is_stale=True, updated_at__lt=threshold).exclude(stage__in=PipelineAutomationService.get_closed_stage_keys())
+    qs = Deal.objects.filter(is_active=True, is_stale=True, updated_at__lt=threshold).exclude(
+        stage__in=PipelineAutomationService.get_closed_stage_keys()
+    )
     moved = 0
     for deal in qs:
         result = PipelineAutomationService.move_stage(
@@ -168,18 +167,16 @@ def generate_daily_lead_report() -> dict:
 
 @shared_task(name="crm.tasks.generate_business_summary_for_deal")
 def generate_business_summary_for_deal(deal_id: str) -> bool:
-    """Generate and persist a commercial summary for a deal."""
-
-    deal = (
-        Deal.objects.filter(id=deal_id, is_active=True)
-        .select_related("contact", "company")
-        .first()
-    )
-    if not deal:
+    """Generate or refresh business notes for a deal after key stage transitions."""
+    try:
+        deal = Deal.objects.select_related("contact", "company").get(pk=deal_id, is_active=True)
+    except Deal.DoesNotExist:
         return False
+
     summary = _build_fallback_business_summary(deal)
-    if deal.business_notes == summary:
-        return True
+    if not summary.strip():
+        return False
+
     deal.business_notes = summary
     deal.save(update_fields=["business_notes", "updated_at"])
     return True
@@ -187,32 +184,32 @@ def generate_business_summary_for_deal(deal_id: str) -> bool:
 
 @shared_task(name="crm.tasks.advance_closed_whatsapp_conversations")
 def advance_closed_whatsapp_conversations() -> int:
-    """Move expired closed WhatsApp conversations to the follow-up stage."""
-
+    """Move deals from expired closed chats into the follow-up call stage."""
+    target_stage = PipelineAutomationService.get_follow_up_stage_key()
     now = timezone.now()
-    follow_up_stage = PipelineAutomationService.get_follow_up_stage_key()
     moved = 0
-    conversations = (
+    qs = (
         Conversation.objects.filter(
             is_active=True,
             channel="whatsapp",
             status="archived",
             customer_service_window_expires__lt=now,
-            deal__isnull=False,
-            deal__is_active=True,
         )
-        .select_related("deal")
+        .select_related("deal", "contact")
+        .order_by("customer_service_window_expires")
     )
-    for conversation in conversations:
+    for conversation in qs:
         deal = conversation.deal
-        if not deal or deal.stage in PipelineAutomationService.get_closed_stage_keys():
+        if not deal or not deal.is_active:
+            continue
+        if PipelineAutomationService.normalize_stage(deal.stage) == target_stage:
             continue
         result = PipelineAutomationService.move_stage(
             deal=deal,
-            to_stage=follow_up_stage,
+            to_stage=target_stage,
             trigger="chat_window_closed",
             moved_by=None,
-            notes="Chat de WhatsApp cerrado tras vencimiento de ventana de 24 horas.",
+            notes="Conversación cerrada con ventana de WhatsApp vencida.",
         )
         if result.moved:
             moved += 1

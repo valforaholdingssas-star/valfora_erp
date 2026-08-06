@@ -22,8 +22,8 @@ const ChatSidebar = ({
   selectedWhatsAppLine,
   onSelectWhatsAppLine,
   whatsAppLineCounts,
-  conversationStatusFilter,
-  onConversationStatusFilterChange,
+  statusFilter,
+  onStatusFilterChange,
   className = "",
 }) => {
   return (
@@ -58,18 +58,18 @@ const ChatSidebar = ({
             Todos
           </Button>
         </div>
-        <div className="d-flex gap-2 mb-2">
+        <div className="d-flex gap-2 mb-2 flex-wrap">
           <Button
             size="sm"
-            variant={conversationStatusFilter === "open" ? "dark" : "outline-secondary"}
-            onClick={() => onConversationStatusFilterChange("open")}
+            variant={statusFilter === "open" ? "dark" : "outline-secondary"}
+            onClick={() => onStatusFilterChange("open")}
           >
             Abiertos
           </Button>
           <Button
             size="sm"
-            variant={conversationStatusFilter === "closed" ? "dark" : "outline-secondary"}
-            onClick={() => onConversationStatusFilterChange("closed")}
+            variant={statusFilter === "closed" ? "dark" : "outline-secondary"}
+            onClick={() => onStatusFilterChange("closed")}
           >
             Cerrados
           </Button>
@@ -159,6 +159,11 @@ const ChatSidebar = ({
                     {c.__remainingWindowLabel && (
                       <span className="app-chat-sidebar-line-label">{c.__remainingWindowLabel}</span>
                     )}
+                    {c.status === "archived" && (
+                      <Badge pill bg="secondary" className="app-chat-sidebar-flag">
+                        Cerrado
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </div>
@@ -183,8 +188,8 @@ ChatSidebar.propTypes = {
   selectedWhatsAppLine: PropTypes.string,
   onSelectWhatsAppLine: PropTypes.func,
   whatsAppLineCounts: PropTypes.object,
-  conversationStatusFilter: PropTypes.string.isRequired,
-  onConversationStatusFilterChange: PropTypes.func.isRequired,
+  statusFilter: PropTypes.string,
+  onStatusFilterChange: PropTypes.func.isRequired,
   className: PropTypes.string,
 };
 

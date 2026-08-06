@@ -140,22 +140,21 @@ const ChatThread = ({
           <div className="d-flex align-items-center gap-2 flex-shrink-0 app-chat-topbar-actions">
             <button
               type="button"
-              className="btn btn-sm btn-outline-secondary"
-              onClick={onOpenDealPanel}
-              disabled={!activeConv?.deal && !activeConv?.latest_deal_id}
+              className="btn btn-outline-secondary btn-sm"
+              onClick={() => onOpenDealPanel?.()}
             >
-              <i className="bi bi-briefcase me-1" />
+              <i className="bi bi-layout-sidebar-inset-reverse me-1" />
               Lead
             </button>
             <button
               type="button"
-              className="btn btn-sm btn-outline-secondary"
+              className={`btn btn-sm ${activeConv.status === "archived" ? "btn-outline-success" : "btn-outline-secondary"}`}
               onClick={() => {
-                void onToggleConversationStatus();
+                void onToggleConversationStatus?.(activeConv.status === "archived" ? "active" : "archived");
               }}
             >
-              <i className={`bi ${activeConv?.status === "archived" ? "bi-arrow-counterclockwise" : "bi-archive"} me-1`} />
-              {activeConv?.status === "archived" ? "Reabrir" : "Cerrar"}
+              <i className={`bi ${activeConv.status === "archived" ? "bi-unlock" : "bi-lock"}`} />
+              <span className="ms-1">{activeConv.status === "archived" ? "Reabrir" : "Cerrar"}</span>
             </button>
             <button
               id="toggle-ai"
@@ -275,8 +274,8 @@ ChatThread.propTypes = {
   onToggleAi: PropTypes.func.isRequired,
   onClearHandoff: PropTypes.func.isRequired,
   onRetry: PropTypes.func.isRequired,
-  onOpenDealPanel: PropTypes.func.isRequired,
-  onToggleConversationStatus: PropTypes.func.isRequired,
+  onOpenDealPanel: PropTypes.func,
+  onToggleConversationStatus: PropTypes.func,
   senderLabel: PropTypes.func.isRequired,
   statusWarning: PropTypes.func.isRequired,
 };

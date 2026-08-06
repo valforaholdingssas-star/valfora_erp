@@ -35,6 +35,7 @@ export const NotificationProvider = ({ children }) => {
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const reconnectAttemptRef = useRef(0);
+  const handlePayloadRef = useRef(null);
   const audioEnabledRef = useRef(false);
   const didInitChatUnreadRef = useRef(false);
   const previousChatUnreadRef = useRef(0);
@@ -173,10 +174,7 @@ export const NotificationProvider = ({ children }) => {
     if (!isAuthenticated || !user) return;
     const token = localStorage.getItem("seeds_access_token");
     if (!token) return;
-    let isUnmounted = false;
-    const url = getUserNotifyWebSocketUrl(token);
-
-    const handlePayload = (payload) => {
+    handlePayloadRef.current = (payload) => {
       if (payload.event === "notification.created" && payload.notification) {
         const n = payload.notification;
         setItems((prev) => [n, ...prev.filter((x) => x.id !== n.id)].slice(0, 50));
@@ -203,6 +201,14 @@ export const NotificationProvider = ({ children }) => {
         bumpChatEventVersion();
       }
     };
+  }, [isAuthenticated, user, playIncomingChatSound, refreshChatUnreadFromApi, bumpChatEventVersion]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user) return undefined;
+    const token = localStorage.getItem("seeds_access_token");
+    if (!token) return undefined;
+    let isUnmounted = false;
+    const url = getUserNotifyWebSocketUrl(token);
 
     const connect = () => {
       if (isUnmounted) return;
@@ -213,7 +219,7 @@ export const NotificationProvider = ({ children }) => {
       };
       ws.onmessage = (ev) => {
         try {
-          handlePayload(JSON.parse(ev.data));
+          handlePayloadRef.current?.(JSON.parse(ev.data));
         } catch {
           /* ignore */
         }
@@ -247,7 +253,7 @@ export const NotificationProvider = ({ children }) => {
       }
       reconnectAttemptRef.current = 0;
     };
-  }, [isAuthenticated, user, playIncomingChatSound, refreshChatUnreadFromApi, bumpChatEventVersion]);
+  }, [isAuthenticated, user]);
 
   const markRead = useCallback(
     async (id) => {

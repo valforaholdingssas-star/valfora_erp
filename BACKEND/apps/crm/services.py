@@ -7,7 +7,7 @@ from typing import Any
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
-from apps.crm.models import Activity, Company, Contact, Deal
+from apps.crm.models import Activity, Company, Contact, Deal, PipelineStage
 
 
 def build_contact_timeline(contact_id) -> list[dict[str, Any]]:
@@ -39,7 +39,17 @@ def build_crm_dashboard(company_id: str | None = None) -> dict[str, Any]:
     if company_id:
         deals_qs = deals_qs.filter(company_id=company_id)
 
-    active_deals = deals_qs.exclude(stage__in=("closed_won", "closed_lost"))
+    closed_stage_keys = set(
+        PipelineStage.objects.filter(is_active=True, is_closed_stage=True).values_list("key", flat=True)
+    ) or {"closed_won", "closed_lost"}
+    won_stage_keys = set(
+        PipelineStage.objects.filter(is_active=True, is_won_stage=True).values_list("key", flat=True)
+    ) or {"closed_won"}
+    lost_stage_keys = set(
+        PipelineStage.objects.filter(is_active=True, is_lost_stage=True).values_list("key", flat=True)
+    ) or {"closed_lost"}
+
+    active_deals = deals_qs.exclude(stage__in=closed_stage_keys)
     active_deals_total = active_deals.count()
     active_deals_value = active_deals.aggregate(total=Sum("value")).get("total") or Decimal("0")
     pipeline_by_stage: dict[str, dict[str, Any]] = {}
@@ -93,7 +103,7 @@ def build_crm_dashboard(company_id: str | None = None) -> dict[str, Any]:
     )
     company_stage_rows = (
         Deal.objects.filter(is_active=True)
-        .exclude(stage__in=("closed_won", "closed_lost"))
+        .exclude(stage__in=closed_stage_keys)
         .values("company_id", "company__name", "stage")
         .annotate(count=Count("id"), total=Sum("value"))
         .order_by("company__name", "stage")
@@ -125,8 +135,8 @@ def build_crm_dashboard(company_id: str | None = None) -> dict[str, Any]:
             "active_count": active_deals_total,
             "active_value": str(active_deals_value),
             "total_count": deals_qs.count(),
-            "won_count": deals_qs.filter(stage="closed_won").count(),
-            "lost_count": deals_qs.filter(stage="closed_lost").count(),
+            "won_count": deals_qs.filter(stage__in=won_stage_keys).count(),
+            "lost_count": deals_qs.filter(stage__in=lost_stage_keys).count(),
         },
         "pipeline_by_stage": pipeline_by_stage,
         "deals_by_assignee": list(deals_by_owner),

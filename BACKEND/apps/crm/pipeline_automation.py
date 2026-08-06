@@ -36,17 +36,12 @@ class PipelineAutomationService:
 
     @classmethod
     def get_closed_stage_keys(cls) -> set[str]:
-        keys = {stage.key for stage in cls.get_stages() if stage.is_closed_stage}
-        return keys or {"closed_won", "closed_lost"}
+        return {stage.key for stage in cls.get_stages() if stage.is_closed_stage}
 
     @classmethod
     def get_follow_up_stage_key(cls) -> str:
-        config = cls.get_config()
-        key = cls.normalize_stage(config.closed_chat_stage_key or "realizar_llamada")
-        stage_map = cls.get_stage_map()
-        if key in stage_map:
-            return key
-        return "realizar_llamada"
+        cfg = cls.get_config()
+        return cls.normalize_stage(cfg.closed_chat_stage_key or "realizar_llamada")
 
     @staticmethod
     def normalize_stage(stage: str) -> str:
@@ -56,19 +51,21 @@ class PipelineAutomationService:
     def can_move(cls, from_stage: str, to_stage: str) -> bool:
         from_stage = cls.normalize_stage(from_stage)
         to_stage = cls.normalize_stage(to_stage)
+        stage_map = cls.get_stage_map()
         if from_stage == to_stage:
             return False
-        if from_stage in cls.get_closed_stage_keys():
+        from_stage_obj = stage_map.get(from_stage)
+        to_stage_obj = stage_map.get(to_stage)
+        if not from_stage_obj or not to_stage_obj:
             return False
-        if to_stage in cls.get_closed_stage_keys():
+        if from_stage_obj.is_closed_stage:
+            return False
+        if to_stage_obj.is_closed_stage:
             return True
-        stage_map = cls.get_stage_map()
-        if from_stage not in stage_map or to_stage not in stage_map:
+        open_sequence = [stage.key for stage in cls.get_stages() if not stage.is_closed_stage]
+        if from_stage not in open_sequence or to_stage not in open_sequence:
             return False
-        ordered_open_stages = [stage.key for stage in cls.get_stages() if not stage.is_closed_stage]
-        if from_stage not in ordered_open_stages or to_stage not in ordered_open_stages:
-            return False
-        return ordered_open_stages.index(to_stage) == ordered_open_stages.index(from_stage) + 1
+        return open_sequence.index(to_stage) == open_sequence.index(from_stage) + 1
 
     @classmethod
     def move_stage(
@@ -80,20 +77,22 @@ class PipelineAutomationService:
         moved_by=None,
         notes: str = "",
     ) -> StageMoveResult:
-        from apps.crm.tasks import generate_business_summary_for_deal
-
         to_stage = cls.normalize_stage(to_stage)
         current = cls.normalize_stage(deal.stage)
+        stage_map = cls.get_stage_map()
+        if to_stage not in stage_map:
+            return StageMoveResult(moved=False, reason=f"Unknown target stage: {to_stage}")
+        # Manual moves from UI/canvas are intentionally flexible.
+        # Automated moves remain constrained by can_move().
         is_manual = trigger == "manual"
-        closed_stage_keys = cls.get_closed_stage_keys()
         if not is_manual and not cls.can_move(current, to_stage):
             return StageMoveResult(moved=False, reason=f"Invalid transition {current} -> {to_stage}")
-        if is_manual and current in closed_stage_keys and to_stage not in closed_stage_keys:
+        if is_manual and current in cls.get_closed_stage_keys() and to_stage not in cls.get_closed_stage_keys():
             return StageMoveResult(moved=False, reason=f"Invalid transition {current} -> {to_stage}")
 
         raw_from = deal.stage
         deal.stage = to_stage
-        if to_stage in closed_stage_keys:
+        if stage_map[to_stage].is_closed_stage:
             deal.is_stale = False
         deal.save(update_fields=["stage", "is_stale", "updated_at"])
 
@@ -112,5 +111,7 @@ class PipelineAutomationService:
             changes={"from_stage": raw_from, "to_stage": to_stage, "trigger": trigger, "automated": moved_by is None},
         )
         if to_stage == cls.get_follow_up_stage_key():
+            from apps.crm.tasks import generate_business_summary_for_deal
+
             generate_business_summary_for_deal.delay(str(deal.id))
         return StageMoveResult(moved=True)

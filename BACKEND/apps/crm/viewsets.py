@@ -117,6 +117,34 @@ class CompanyViewSet(CRMBaseViewSet):
     ordering_fields = ("name", "created_at")
 
 
+class PipelineStageViewSet(CRMBaseViewSet):
+    """Manage configurable deal pipeline stages."""
+
+    queryset = PipelineStage.objects.filter(is_active=True).order_by("position", "created_at")
+    serializer_class = PipelineStageSerializer
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ("name", "key")
+    ordering_fields = ("position", "created_at", "name")
+
+    @action(detail=False, methods=["post"], url_path="reorder")
+    def reorder(self, request):
+        ordered_ids = request.data.get("ids") or []
+        if not isinstance(ordered_ids, list) or not ordered_ids:
+            raise drf_serializers.ValidationError({"ids": "Debes enviar una lista de etapas."})
+        stage_map = {
+            str(stage.id): stage
+            for stage in self.get_queryset().filter(pk__in=ordered_ids)
+        }
+        if len(stage_map) != len(set(str(item) for item in ordered_ids)):
+            raise drf_serializers.ValidationError({"ids": "Algunas etapas no existen."})
+        for index, stage_id in enumerate(ordered_ids):
+            stage = stage_map[str(stage_id)]
+            if stage.position != index:
+                stage.position = index
+                stage.save(update_fields=["position", "updated_at"])
+        return Response(PipelineStageSerializer(self.get_queryset(), many=True).data)
+
+
 class ContactViewSet(CRMBaseViewSet):
     """Contacts CRUD + timeline."""
 
@@ -339,31 +367,6 @@ class DealViewSet(CRMBaseViewSet):
         qs = deal.stage_history.filter(is_active=True).order_by("-created_at")
         ser = DealStageHistorySerializer(qs, many=True)
         return Response(ser.data)
-
-
-class PipelineStageViewSet(CRMBaseViewSet):
-    """Pipeline stages CRUD and manual reordering."""
-
-    queryset = PipelineStage.objects.filter(is_active=True).order_by("position", "created_at")
-    serializer_class = PipelineStageSerializer
-    filter_backends = [SearchFilter, OrderingFilter]
-    search_fields = ("name", "key")
-    ordering_fields = ("position", "created_at", "name")
-
-    @action(detail=False, methods=["post"], url_path="reorder")
-    def reorder(self, request):
-        ordered_ids = request.data.get("ordered_ids") or []
-        if not isinstance(ordered_ids, list) or not ordered_ids:
-            raise drf_serializers.ValidationError({"ordered_ids": "Debes enviar una lista de ids."})
-        stages = {str(stage.id): stage for stage in self.get_queryset().filter(id__in=ordered_ids)}
-        if len(stages) != len(ordered_ids):
-            raise drf_serializers.ValidationError({"ordered_ids": "Algunas etapas no existen."})
-        for index, stage_id in enumerate(ordered_ids):
-            stage = stages[str(stage_id)]
-            if stage.position != index:
-                stage.position = index
-                stage.save(update_fields=["position", "updated_at"])
-        return Response(PipelineStageSerializer(self.get_queryset(), many=True).data)
 
 
 class ActivityViewSet(

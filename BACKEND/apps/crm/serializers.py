@@ -157,6 +157,28 @@ class DealSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class PipelineStageSerializer(serializers.ModelSerializer):
+    """Serializer for configurable deal pipeline stages."""
+
+    class Meta:
+        model = PipelineStage
+        fields = (
+            "id",
+            "key",
+            "name",
+            "position",
+            "accent_color",
+            "tint_color",
+            "is_closed_stage",
+            "is_won_stage",
+            "is_lost_stage",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+
 class ActivitySerializer(serializers.ModelSerializer):
     """Serializer for Activity."""
 
@@ -293,28 +315,6 @@ class DealStageHistorySerializer(serializers.ModelSerializer):
             "created_at",
         )
         read_only_fields = fields
-
-
-class PipelineStageSerializer(serializers.ModelSerializer):
-    """Serializer for configurable CRM pipeline stages."""
-
-    class Meta:
-        model = PipelineStage
-        fields = (
-            "id",
-            "key",
-            "name",
-            "position",
-            "accent_color",
-            "tint_color",
-            "is_closed_stage",
-            "is_won_stage",
-            "is_lost_stage",
-            "is_active",
-            "created_at",
-            "updated_at",
-        )
-        read_only_fields = ("id", "created_at", "updated_at")
 
 
 class LeadEngineConfigSerializer(serializers.ModelSerializer):

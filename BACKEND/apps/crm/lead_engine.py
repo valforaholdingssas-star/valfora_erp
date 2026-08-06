@@ -14,7 +14,6 @@ from apps.ai_config.runtime import resolve_global_ai_mode_enabled
 from apps.common.audit import write_audit_log
 from apps.crm.assignment_engine import AssignmentEngine
 from apps.crm.models import Activity, Contact, Deal, LeadEngineConfig
-from apps.crm.pipeline_automation import PipelineAutomationService
 
 
 def normalize_phone(raw_phone: str) -> str:
@@ -66,7 +65,7 @@ class LeadEngine:
                 "is_new_contact": False,
                 "deal": conv.deal
                 or Deal.objects.filter(contact=conv.contact, is_active=True)
-                .exclude(stage__in=PipelineAutomationService.get_closed_stage_keys())
+                .exclude(stage__in=["closed_won", "closed_lost"])
                 .first(),
                 "is_new_deal": False,
                 "conversation": conv,
@@ -235,29 +234,31 @@ class LeadEngine:
         return contact, True
 
     def find_or_create_deal(self, *, contact: Contact, source: str) -> tuple[Deal | None, bool]:
-        """Find active deal or create one for contact depending on config."""
+        """Find an active deal for the current open chat session or create a fresh one."""
 
-        active_conversation_deal_ids = list(
-            contact.conversations.filter(
-                is_active=True,
+        from apps.chat.models import Conversation
+        from apps.crm.pipeline_automation import PipelineAutomationService
+
+        closed_stage_keys = PipelineAutomationService.get_closed_stage_keys()
+        open_conversation = (
+            Conversation.objects.filter(
+                contact=contact,
                 channel="whatsapp",
-                status="active",
-                deal__isnull=False,
-                deal__is_active=True,
+                is_active=True,
             )
-            .exclude(deal__stage__in=PipelineAutomationService.get_closed_stage_keys())
-            .values_list("deal_id", flat=True)
-            .distinct()
+            .exclude(status="archived")
+            .exclude(deal__isnull=True)
+            .order_by("-updated_at", "-created_at")
+            .first()
         )
-        active = None
-        if active_conversation_deal_ids:
+        if open_conversation and open_conversation.deal_id:
             active = (
-                Deal.objects.filter(id__in=active_conversation_deal_ids, is_active=True)
-                .order_by("-updated_at", "-created_at")
+                Deal.objects.filter(pk=open_conversation.deal_id, is_active=True)
+                .exclude(stage__in=closed_stage_keys)
                 .first()
             )
-        if active:
-            return active, False
+            if active:
+                return active, False
         if not self.config.auto_create_deal:
             return None, False
 

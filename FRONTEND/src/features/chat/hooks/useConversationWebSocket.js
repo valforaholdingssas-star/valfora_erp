@@ -15,10 +15,38 @@ export const useConversationWebSocket = ({
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const reconnectAttemptRef = useRef(0);
+  const messageCreatedRef = useRef(onMessageCreated);
+  const messageUpdatedRef = useRef(onMessageUpdated);
+  const typingRef = useRef(onTyping);
   const [status, setStatus] = useState("disconnected");
 
   useEffect(() => {
+    messageCreatedRef.current = onMessageCreated;
+  }, [onMessageCreated]);
+
+  useEffect(() => {
+    messageUpdatedRef.current = onMessageUpdated;
+  }, [onMessageUpdated]);
+
+  useEffect(() => {
+    typingRef.current = onTyping;
+  }, [onTyping]);
+
+  useEffect(() => {
     if (!conversationId || !token) {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch {
+          /* ignore close errors during reset */
+        }
+        wsRef.current = null;
+      }
+      reconnectAttemptRef.current = 0;
       setStatus("disconnected");
       return undefined;
     }
@@ -43,15 +71,15 @@ export const useConversationWebSocket = ({
         try {
           const payload = JSON.parse(ev.data);
           if (payload.event === "message.created" && payload.message) {
-            onMessageCreated?.(payload.message);
+            messageCreatedRef.current?.(payload.message);
             return;
           }
           if (payload.event === "message.updated" && payload.message) {
-            onMessageUpdated?.(payload.message);
+            messageUpdatedRef.current?.(payload.message);
             return;
           }
           if (payload.event === "typing") {
-            onTyping?.(payload);
+            typingRef.current?.(payload);
           }
         } catch {
           /* ignore malformed payloads */
@@ -94,7 +122,7 @@ export const useConversationWebSocket = ({
       reconnectAttemptRef.current = 0;
       setStatus("disconnected");
     };
-  }, [conversationId, token, onMessageCreated, onMessageUpdated, onTyping]);
+  }, [conversationId, token]);
 
   const sendJson = (payload) => {
     const ws = wsRef.current;

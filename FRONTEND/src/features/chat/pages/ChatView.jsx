@@ -139,17 +139,15 @@ const computeConversationSla = (conversation) => {
 };
 
 const computeRemainingWindowLabel = (conversation) => {
-  if (conversation?.channel !== "whatsapp") return "";
-  const expiresAt = conversation?.customer_service_window_expires;
-  if (!expiresAt) return "Sin ventana";
-  const expiry = new Date(expiresAt).getTime();
-  if (Number.isNaN(expiry)) return "Sin ventana";
-  const diffMin = Math.floor((expiry - Date.now()) / 60000);
-  if (diffMin <= 0) return "Ventana cerrada";
-  const hours = Math.floor(diffMin / 60);
-  const minutes = diffMin % 60;
-  if (hours <= 0) return `${minutes} min restantes`;
-  return `${hours} h ${minutes} min restantes`;
+  if (conversation?.channel !== "whatsapp" || !conversation?.customer_service_window_expires) return "";
+  const expires = new Date(conversation.customer_service_window_expires).getTime();
+  if (Number.isNaN(expires)) return "";
+  const diff = expires - Date.now();
+  if (diff <= 0) return "24h vencidas";
+  const totalMinutes = Math.floor(diff / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h ${minutes}m`;
 };
 
 const CHAT_OVERDUE_FILTER_STORAGE_KEY = "chat_sla_overdue_only";
@@ -189,7 +187,10 @@ const ChatView = () => {
     dealOpenedTo: "",
     responsible: "",
   });
+  const [conversationStatusFilter, setConversationStatusFilter] = useState("open");
   const [responsibleOptions, setResponsibleOptions] = useState([]);
+  const [companyOptions, setCompanyOptions] = useState([]);
+  const [pipelineStages, setPipelineStages] = useState([]);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [clearingHandoff, setClearingHandoff] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -219,9 +220,6 @@ const ChatView = () => {
   const [globalAiModeLoading, setGlobalAiModeLoading] = useState(false);
   const [whatsAppLines, setWhatsAppLines] = useState([]);
   const [selectedWhatsAppLine, setSelectedWhatsAppLine] = useState("");
-  const [conversationStatusFilter, setConversationStatusFilter] = useState("open");
-  const [companyOptions, setCompanyOptions] = useState([]);
-  const [pipelineStages, setPipelineStages] = useState([]);
   const [isMobileViewport, setIsMobileViewport] = useState(() => (
     typeof window !== "undefined" ? window.innerWidth < 992 : false
   ));
@@ -293,6 +291,7 @@ const ChatView = () => {
     const params = {
       page_size: 50,
       channel: channelFilter || undefined,
+      status: conversationStatusFilter || undefined,
       search_text: searchQuery || undefined,
       search: searchQuery || undefined,
       deal_stage: filters.dealStage || undefined,
@@ -300,7 +299,6 @@ const ChatView = () => {
       deal_opened_to: filters.dealOpenedTo || undefined,
       responsible: filters.responsible || undefined,
       whatsapp_phone_number: selectedWhatsAppLine || undefined,
-      status: conversationStatusFilter || undefined,
     };
     fetchConversations(params)
       .then((data) => {
@@ -381,20 +379,30 @@ const ChatView = () => {
   }, []);
 
   useEffect(() => {
-    fetchWhatsAppPhoneNumbers({ page_size: 200 })
-      .then((data) => setWhatsAppLines(data.results || []))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    fetchCompanies({ page_size: 200, is_active: true })
+    fetchCompanies({ page_size: 200 })
       .then((data) => setCompanyOptions(data.results || []))
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    fetchPipelineStages({ page_size: 100, ordering: "position" })
-      .then((data) => setPipelineStages(data.results || data || []))
+    fetchPipelineStages({ page_size: 200 })
+      .then((data) => {
+        const rows = (data.results || [])
+          .map((stage) => ({
+            value: stage.key,
+            label: stage.name,
+            position: Number(stage.position || 0),
+            isClosedStage: Boolean(stage.is_closed_stage),
+          }))
+          .sort((a, b) => a.position - b.position);
+        setPipelineStages(rows);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchWhatsAppPhoneNumbers({ page_size: 200 })
+      .then((data) => setWhatsAppLines(data.results || []))
       .catch(() => {});
   }, []);
 
@@ -783,6 +791,31 @@ const ChatView = () => {
     [conversations.results, activeId],
   );
 
+  const handleToggleConversationStatus = async (nextStatus) => {
+    if (!activeId) return;
+    try {
+      const updated = await patchConversation(activeId, { status: nextStatus });
+      const isClosedList = conversationStatusFilter === "closed";
+      if (nextStatus === "archived" && !isClosedList) {
+        setConversations((prev) => ({
+          ...prev,
+          count: Math.max(0, (prev.count || 1) - 1),
+          results: (prev.results || []).filter((row) => String(row.id) !== String(activeId)),
+        }));
+        const nextConversation = filteredConversations.find((row) => String(row.id) !== String(activeId));
+        setActiveId(nextConversation?.id || null);
+      } else {
+        setConversations((prev) => ({
+          ...prev,
+          results: (prev.results || []).map((row) => (String(row.id) === String(activeId) ? { ...row, ...updated } : row)),
+        }));
+      }
+      setComposerError("");
+    } catch (error) {
+      setComposerError(extractApiError(error, "No se pudo actualizar el estado de la conversación."));
+    }
+  };
+
   useEffect(() => {
     if (activeConv) {
       setAiEnabled(Boolean(activeConv.ai_mode_enabled));
@@ -891,21 +924,10 @@ const ChatView = () => {
   );
 
   const dealStages = useMemo(
-    () =>
-      (pipelineStages || []).length
-        ? pipelineStages.map((stage) => [stage.key, stage.name])
-        : [
-            ["new_lead", "Nuevo lead"],
-            ["contacted", "Contactado"],
-            ["qualified", "Calificado"],
-            ["proposal", "Propuesta"],
-            ["negotiation", "Negociación"],
-            ["closed_won", "Cerrado ganado"],
-            ["closed_lost", "Cerrado perdido"],
-          ],
+    () => pipelineStages.map((stage) => [stage.value, stage.label]),
     [pipelineStages],
   );
-  const orderedStageKeys = useMemo(() => dealStages.map(([value]) => value), [dealStages]);
+  const orderedStageKeys = useMemo(() => pipelineStages.map((stage) => stage.value), [pipelineStages]);
 
   useEffect(() => {
     const dealId = activeConv?.deal || activeConv?.latest_deal_id;
@@ -952,7 +974,7 @@ const ChatView = () => {
     setDealSaveError("");
     try {
       const payload = {
-        title: dealDraft.title || dealDetail.title,
+        title: dealDraft.title?.trim() || dealDetail.title || "",
         stage: dealDraft.stage,
         value: Number(dealDraft.value || 0),
         probability: Number(dealDraft.probability || 0),
@@ -982,7 +1004,6 @@ const ChatView = () => {
                   ...c,
                   latest_deal_stage: updated.stage,
                   latest_deal_assigned_to: updated.assigned_to,
-                  deal_title: updated.title,
                 }
               : c,
           ) ?? [],
@@ -1014,9 +1035,6 @@ const ChatView = () => {
         probability: updated.probability ?? prev?.probability ?? 0,
         expected_close_date: updated.expected_close_date || prev?.expected_close_date || "",
         assigned_to: updated.assigned_to || prev?.assigned_to || "",
-        company: updated.company || prev?.company || "",
-        business_notes: updated.business_notes || prev?.business_notes || "",
-        title: updated.title || prev?.title || "",
       }));
       setConversations((prev) => ({
         ...prev,
@@ -1035,29 +1053,6 @@ const ChatView = () => {
       setDealSaveError(extractApiError(error, "No se pudo mover a la siguiente etapa."));
     } finally {
       setSavingDeal(false);
-    }
-  };
-
-  const handleToggleConversationStatus = async () => {
-    if (!activeId || !activeConv) return;
-    const nextStatus = activeConv.status === "archived" ? "open" : "archived";
-    try {
-      const updated = await patchConversation(activeId, { status: nextStatus });
-      setConversations((prev) => ({
-        ...prev,
-        results: (prev.results || []).map((row) => (
-          String(row.id) === String(activeId) ? { ...row, ...updated } : row
-        )),
-      }));
-      if (conversationStatusFilter === "open" && nextStatus === "archived") {
-        setActiveId(null);
-      }
-      if (conversationStatusFilter === "closed" && nextStatus === "open") {
-        setActiveId(null);
-      }
-      loadConversations({ silent: true });
-    } catch (error) {
-      setComposerError(extractApiError(error, "No se pudo actualizar el estado de la conversación."));
     }
   };
 
@@ -1123,10 +1118,10 @@ const ChatView = () => {
             className="btn btn-primary btn-sm app-chat-action-btn"
             onClick={() => setQuickDealModalOpen(true)}
             disabled={!activeConv}
-            aria-label="Abrir edición rápida del deal"
+            aria-label="Abrir panel comercial del lead"
           >
             <i className="bi bi-briefcase" />
-            <span className="ms-1 app-chat-action-label">Deal rápido</span>
+            <span className="ms-1 app-chat-action-label">Lead</span>
           </button>
         </div>
       </div>
@@ -1164,8 +1159,8 @@ const ChatView = () => {
             selectedWhatsAppLine={selectedWhatsAppLine}
             onSelectWhatsAppLine={setSelectedWhatsAppLine}
             whatsAppLineCounts={whatsappLineCounts}
-            conversationStatusFilter={conversationStatusFilter}
-            onConversationStatusFilterChange={setConversationStatusFilter}
+            statusFilter={conversationStatusFilter}
+            onStatusFilterChange={setConversationStatusFilter}
             className={mobileSection !== "conversations" ? "d-none d-lg-flex" : ""}
           />
         )}
@@ -1260,8 +1255,8 @@ const ChatView = () => {
           <Form.Group>
             <Form.Label>Estado de conversación</Form.Label>
             <Form.Select value={conversationStatusFilter} onChange={(e) => setConversationStatusFilter(e.target.value)}>
-              <option value="open">Abiertos</option>
-              <option value="closed">Cerrados</option>
+              <option value="open">Abiertas</option>
+              <option value="closed">Cerradas</option>
             </Form.Select>
           </Form.Group>
           <Form.Group>
@@ -1347,34 +1342,30 @@ const ChatView = () => {
           )}
         </Modal.Body>
       </Modal>
-      <Modal
-        show={quickDealModalOpen}
-        onHide={() => setQuickDealModalOpen(false)}
-        centered
-        size="lg"
-        dialogClassName="app-chat-deal-modal"
-      >
-        <Modal.Header closeButton><Modal.Title>Edición rápida del deal</Modal.Title></Modal.Header>
-        <Modal.Body>
-          {loadingDeal && <p className="small text-muted mb-0">Cargando deal...</p>}
-          {!loadingDeal && !dealDetail && <p className="small text-muted mb-0">Este chat no tiene deal asociado.</p>}
-          {!loadingDeal && dealDetail && dealDraft && (
-            <div className="d-flex flex-column gap-2">
+      <div className={`app-chat-deal-drawer ${quickDealModalOpen ? "is-open" : ""}`}>
+        <button type="button" className="app-chat-deal-drawer-backdrop border-0" onClick={() => setQuickDealModalOpen(false)} aria-label="Cerrar panel comercial" />
+        <div className="app-chat-deal-drawer-panel">
+          <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
+            <div>
+              <div className="small text-muted text-uppercase fw-semibold">Panel comercial</div>
+              <h3 className="h5 mb-0">Lead / deal</h3>
+            </div>
+            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setQuickDealModalOpen(false)}>
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+          {loadingDeal ? <p className="small text-muted mb-0">Cargando deal...</p> : null}
+          {!loadingDeal && !dealDetail ? <p className="small text-muted mb-0">Este chat no tiene deal asociado.</p> : null}
+          {!loadingDeal && dealDetail && dealDraft ? (
+            <div className="d-flex flex-column gap-3">
               <Form.Group>
-                <Form.Label>Título del lead</Form.Label>
+                <Form.Label>Título</Form.Label>
                 <Form.Control value={dealDraft.title || ""} onChange={(e) => handleDealDraftChange("title", e.target.value)} />
               </Form.Group>
-              <Form.Group><Form.Label>Etapa</Form.Label><Form.Select value={dealDraft.stage} onChange={(e) => handleDealDraftChange("stage", e.target.value)}>{dealStages.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Form.Select></Form.Group>
-              <Form.Group><Form.Label>Valor</Form.Label><Form.Control type="number" min="0" step="0.01" value={dealDraft.value} onChange={(e) => handleDealDraftChange("value", e.target.value)} /></Form.Group>
-              <Form.Group><Form.Label>Probabilidad (%)</Form.Label><Form.Control type="number" min="0" max="100" value={dealDraft.probability} onChange={(e) => handleDealDraftChange("probability", e.target.value)} /></Form.Group>
-              <Form.Group><Form.Label>Cierre estimado</Form.Label><Form.Control type="date" value={dealDraft.expected_close_date || ""} onChange={(e) => handleDealDraftChange("expected_close_date", e.target.value)} /></Form.Group>
               <Form.Group>
-                <Form.Label>Empresa</Form.Label>
-                <Form.Select value={dealDraft.company || ""} onChange={(e) => handleDealDraftChange("company", e.target.value)}>
-                  <option value="">Sin empresa</option>
-                  {companyOptions.map((company) => (
-                    <option key={company.id} value={company.id}>{company.name}</option>
-                  ))}
+                <Form.Label>Etapa</Form.Label>
+                <Form.Select value={dealDraft.stage} onChange={(e) => handleDealDraftChange("stage", e.target.value)}>
+                  {dealStages.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </Form.Select>
               </Form.Group>
               <Form.Group>
@@ -1385,29 +1376,52 @@ const ChatView = () => {
                 </Form.Select>
               </Form.Group>
               <Form.Group>
-                <Form.Label>Notas de negocio</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={5}
-                  value={dealDraft.business_notes || ""}
-                  onChange={(e) => handleDealDraftChange("business_notes", e.target.value)}
-                />
+                <Form.Label>Empresa</Form.Label>
+                <Form.Select value={dealDraft.company || ""} onChange={(e) => handleDealDraftChange("company", e.target.value)}>
+                  <option value="">Sin empresa</option>
+                  {companyOptions.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                </Form.Select>
               </Form.Group>
-              {dealSaveError && <Alert variant="warning" className="py-2 px-3 small mb-0 mt-1">{dealSaveError}</Alert>}
+              <div className="row g-3">
+                <div className="col-6">
+                  <Form.Group>
+                    <Form.Label>Valor</Form.Label>
+                    <Form.Control type="number" min="0" step="0.01" value={dealDraft.value} onChange={(e) => handleDealDraftChange("value", e.target.value)} />
+                  </Form.Group>
+                </div>
+                <div className="col-6">
+                  <Form.Group>
+                    <Form.Label>Probabilidad (%)</Form.Label>
+                    <Form.Control type="number" min="0" max="100" value={dealDraft.probability} onChange={(e) => handleDealDraftChange("probability", e.target.value)} />
+                  </Form.Group>
+                </div>
+              </div>
+              <Form.Group>
+                <Form.Label>Cierre estimado</Form.Label>
+                <Form.Control type="date" value={dealDraft.expected_close_date || ""} onChange={(e) => handleDealDraftChange("expected_close_date", e.target.value)} />
+              </Form.Group>
+              <Form.Group>
+                <Form.Label>Notas de negocio</Form.Label>
+                <Form.Control as="textarea" rows={8} value={dealDraft.business_notes || ""} onChange={(e) => handleDealDraftChange("business_notes", e.target.value)} />
+              </Form.Group>
+              {dealSaveError ? <Alert variant="warning" className="py-2 px-3 small mb-0">{dealSaveError}</Alert> : null}
+              <div className="d-flex flex-wrap gap-2 pt-2">
+                <Button variant="outline-primary" onClick={() => { void handleAdvanceDealStage(); }} disabled={savingDeal || !dealDraft || orderedStageKeys.indexOf(dealDraft.stage) >= orderedStageKeys.length - 1}>
+                  Siguiente etapa
+                </Button>
+                <Button variant="primary" onClick={() => { void handleSaveDealQuickEdit(); }} disabled={savingDeal || !dealDetail}>
+                  {savingDeal ? "Guardando..." : "Guardar cambios"}
+                </Button>
+                {dealDetail?.id ? (
+                  <Button as="a" href={`/crm/deals/${dealDetail.id}`} variant="outline-secondary">
+                    Abrir deal
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          )}
-        </Modal.Body>
-        <Modal.Footer>
-          {dealDetail && (
-            <Button variant="outline-primary" onClick={() => { void handleAdvanceDealStage(); }} disabled={savingDeal || !dealDraft || orderedStageKeys.indexOf(dealDraft.stage) >= orderedStageKeys.length - 1}>
-              Siguiente etapa
-            </Button>
-          )}
-          <Button variant="primary" onClick={() => { void handleSaveDealQuickEdit(); }} disabled={savingDeal || !dealDetail}>
-            {savingDeal ? "Guardando..." : "Guardar cambios"}
-          </Button>
-        </Modal.Footer>
-      </Modal>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 };
