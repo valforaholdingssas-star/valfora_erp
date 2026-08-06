@@ -113,6 +113,31 @@ def test_ai_reply_skips_stale_inbound_when_newer_contact_message_exists(
 
 
 @pytest.mark.django_db
+def test_has_ai_reply_after_excludes_current_reply():
+    from apps.chat.ai_reply_guard import has_ai_reply_after
+    from apps.crm.models import Contact, Deal
+
+    contact = Contact.objects.create(first_name="A", last_name="B", email="ab@example.com")
+    deal = Deal.objects.create(title="exclude reply", contact=contact)
+    conv = Conversation.objects.get(deal=deal, channel="internal")
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="agendar",
+        status="delivered",
+    )
+    reply = Message.objects.create(
+        conversation=conv,
+        sender_type="ai_bot",
+        content="slots",
+        status="pending",
+        is_ai_generated=True,
+    )
+    assert has_ai_reply_after(inbound) is True
+    assert has_ai_reply_after(inbound, exclude_id=str(reply.id)) is False
+
+
+@pytest.mark.django_db
 @patch("apps.rag.retrieval.retrieve_relevant_chunks", return_value=[])
 @patch("apps.rag.embeddings.embed_query", return_value=[0.0] * 1536)
 @patch("apps.chat.tasks.try_reserve_conversation_tokens", return_value=True)

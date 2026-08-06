@@ -56,8 +56,11 @@ def _enqueue_whatsapp_if_needed(conv: Conversation, reply: Message) -> None:
         send_whatsapp_outbound.delay(str(reply.id))
 
 
-def _should_persist_ai_reply(inbound: Message) -> bool:
-    return is_latest_contact_message(inbound) and not has_ai_reply_after(inbound)
+def _should_persist_ai_reply(inbound: Message, *, exclude_reply_id: str | None = None) -> bool:
+    return is_latest_contact_message(inbound) and not has_ai_reply_after(
+        inbound,
+        exclude_id=exclude_reply_id,
+    )
 
 
 @shared_task(bind=True, name="chat.tasks.generate_ai_reply_for_message")
@@ -122,8 +125,10 @@ def _generate_ai_reply_locked(*, inbound: Message, conv: Conversation) -> None:
 
     calendar_reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
     if calendar_reply:
-        if not _should_persist_ai_reply(inbound):
-            Message.objects.filter(pk=calendar_reply.pk).update(is_active=False)
+        # Exclude the reply we just created; otherwise has_ai_reply_after always matches itself
+        # and soft-deletes every calendar offer without sending it to WhatsApp.
+        if not _should_persist_ai_reply(inbound, exclude_reply_id=str(calendar_reply.id)):
+            Message.objects.filter(pk=calendar_reply.pk).update(is_active=False, updated_at=timezone.now())
             latest = latest_contact_message(conv.id)
             if latest and str(latest.id) != str(inbound.id):
                 generate_ai_reply_for_message.delay(str(latest.id))

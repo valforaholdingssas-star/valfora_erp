@@ -41,17 +41,20 @@ def is_latest_contact_message(inbound: Message) -> bool:
     return bool(latest and str(latest.id) == str(inbound.id))
 
 
-def has_ai_reply_after(inbound: Message) -> bool:
+def has_ai_reply_after(inbound: Message, *, exclude_id: str | None = None) -> bool:
     """True if an AI reply was already persisted after this inbound message."""
     from apps.chat.models import Message
 
-    return Message.objects.filter(
+    qs = Message.objects.filter(
         conversation_id=inbound.conversation_id,
         sender_type="ai_bot",
         is_ai_generated=True,
         is_active=True,
         created_at__gte=inbound.created_at,
-    ).exists()
+    )
+    if exclude_id:
+        qs = qs.exclude(pk=exclude_id)
+    return qs.exists()
 
 
 def acquire_conversation_ai_lock(conversation_id: str, *, owner: str) -> bool:
