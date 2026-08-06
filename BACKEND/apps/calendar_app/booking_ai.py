@@ -771,6 +771,17 @@ def _apply_provide_day(
             ai_context_used={"calendar_waiting_day": True, "nlu": interp},
         )
     if day.weekday() >= 5:
+        draft.status = "pending_day"
+        draft.offered_slots = []
+        draft.selected_slot = None
+        draft.metadata = {
+            **(draft.metadata or {}),
+            "preferred_day": None,
+            "preferred_day_label": None,
+            "preferred_period": None,
+            "pending_slot_iso": None,
+        }
+        draft.save(update_fields=["status", "offered_slots", "selected_slot", "metadata", "updated_at"])
         return Message.objects.create(
             conversation=inbound.conversation,
             sender_type="ai_bot",
