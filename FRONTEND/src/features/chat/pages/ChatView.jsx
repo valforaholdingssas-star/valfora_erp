@@ -421,25 +421,6 @@ const ChatView = () => {
   }, [isMobileViewport]);
 
   useEffect(() => {
-    if (!chatEventVersion) return;
-    loadConversations({ silent: true });
-    // AI replies are created in Celery; conversation WS can miss them. Soft-merge
-    // the active thread when inbox events arrive so agents see IA without reload.
-    const active = activeIdRef.current;
-    if (!active) return undefined;
-    const eventConvId = String(
-      lastChatEvent?.conversation_id
-        || lastChatEvent?.conversation?.id
-        || "",
-    );
-    if (eventConvId && eventConvId !== String(active)) return undefined;
-    const timer = window.setTimeout(() => {
-      loadMessages(active, { silent: true, merge: true });
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [chatEventVersion, lastChatEvent, loadConversations, loadMessages]);
-
-  useEffect(() => {
     const incomingConversation = lastChatEvent?.conversation;
     if (!incomingConversation?.id) return;
     upsertConversationRow(incomingConversation);
@@ -536,6 +517,25 @@ const ChatView = () => {
       markRead(convId).catch(() => {});
     }
   }, [mergeIncomingMessage]);
+
+  useEffect(() => {
+    if (!chatEventVersion) return undefined;
+    loadConversations({ silent: true });
+    // AI replies are created in Celery; conversation WS can miss them. Soft-merge
+    // the active thread when inbox events arrive so agents see IA without reload.
+    const active = activeIdRef.current;
+    if (!active) return undefined;
+    const eventConvId = String(
+      lastChatEvent?.conversation_id
+        || lastChatEvent?.conversation?.id
+        || "",
+    );
+    if (eventConvId && eventConvId !== String(active)) return undefined;
+    const timer = window.setTimeout(() => {
+      loadMessages(active, { silent: true, merge: true });
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [chatEventVersion, lastChatEvent, loadConversations, loadMessages]);
 
   const activateConversation = useCallback((conversationId, { openChatOnMobile = true } = {}) => {
     const nextId = conversationId ? String(conversationId) : null;
