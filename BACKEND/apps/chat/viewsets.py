@@ -13,6 +13,7 @@ from apps.ai_config.runtime import get_or_create_runtime_settings, resolve_globa
 from apps.common.audit import write_audit_log
 from apps.chat.models import Conversation, Message, MessageAttachment
 from apps.chat.permissions import IsChatUser
+from apps.chat.services import resolve_whatsapp_conversation
 from apps.crm.pipeline_automation import PipelineAutomationService
 from apps.chat.serializers import (
     ConversationCreateSerializer,
@@ -63,30 +64,37 @@ class ConversationViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset().filter(deal__isnull=False)
         params = self.request.query_params
         requested_channel = (params.get("channel") or "").strip().lower()
-        strict_whatsapp_origin = str(params.get("strict_whatsapp_origin", "false")).strip().lower() not in {"0", "false", "no"}
         closed_whatsapp_origin_only = str(params.get("closed_whatsapp_origin_only", "true")).strip().lower() not in {"0", "false", "no"}
         is_list_action = self.action == "list"
-
-        if requested_channel == "whatsapp" and strict_whatsapp_origin and is_list_action:
-            qs = qs.filter(deal__source="whatsapp")
 
         status_filter = (params.get("status") or "").strip().lower()
         whatsapp_window_status = (params.get("whatsapp_window_status") or "").strip().lower()
         include_closed = str(params.get("include_closed") or "").strip().lower() in {"1", "true", "yes"}
         if requested_channel == "whatsapp" and is_list_action:
             now = timezone.now()
+            has_whatsapp_signal = (
+                Q(customer_service_window_expires__isnull=False)
+                | Q(last_inbound_message_at__isnull=False)
+                | Q(last_message_at__isnull=False)
+                | Q(messages__is_active=True)
+            )
+            real_whatsapp_origin = Q(deal__source="whatsapp") | Q(deal__isnull=True, contact__source="whatsapp")
+            has_real_history = (
+                Q(messages__is_active=True)
+                | Q(last_inbound_message_at__isnull=False)
+                | Q(last_message_at__isnull=False)
+            )
+            closed_window_q = Q(
+                customer_service_window_expires__isnull=False,
+                customer_service_window_expires__lte=now,
+            )
             if whatsapp_window_status == "closed":
                 if closed_whatsapp_origin_only:
-                    qs = qs.filter(deal__source="whatsapp")
-                qs = qs.filter(
-                    Q(status="archived")
-                    | Q(customer_service_window_expires__isnull=True)
-                    | Q(customer_service_window_expires__lte=now)
-                )
+                    qs = qs.filter(real_whatsapp_origin)
+                qs = qs.filter(has_whatsapp_signal).filter(Q(status="archived") | closed_window_q)
             elif whatsapp_window_status == "open" or not include_closed:
-                qs = qs.exclude(status="archived").filter(
-                    Q(deal__source="whatsapp", customer_service_window_expires__gt=now)
-                    | ~Q(deal__source="whatsapp")
+                qs = qs.filter(has_whatsapp_signal).exclude(
+                    Q(status="archived") | (real_whatsapp_origin & closed_window_q)
                 )
         elif is_list_action:
             if status_filter == "closed":
@@ -198,7 +206,16 @@ class ConversationViewSet(viewsets.ModelViewSet):
             "ai_mode_enabled": resolve_global_ai_mode_enabled(),
             "closed_at": None,
         }
-        if deal:
+        if channel == "whatsapp":
+            conv, created = resolve_whatsapp_conversation(
+                contact,
+                deal=deal,
+                assigned_to=assigned_to,
+                ai_mode_enabled=resolve_global_ai_mode_enabled(),
+                status=defaults["status"],
+                ai_configuration=ai_cfg,
+            )
+        elif deal:
             conv, created = Conversation.objects.update_or_create(
                 deal=deal,
                 channel=channel,
@@ -243,8 +260,33 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def messages(self, request, pk=None):
         """List or create messages in a conversation."""
         conv = self.get_object()
+        if request.method == "GET" and conv.channel == "whatsapp" and conv.contact_id:
+            canonical_conv, _ = resolve_whatsapp_conversation(
+                conv.contact,
+                deal=conv.deal,
+                assigned_to=conv.assigned_to,
+                whatsapp_phone_number=conv.whatsapp_phone_number,
+                ai_mode_enabled=conv.ai_mode_enabled,
+                status=conv.status,
+                ai_configuration=conv.ai_configuration,
+            )
+            conv = canonical_conv
         if request.method == "GET":
-            qs = Message.objects.filter(conversation=conv, is_active=True).order_by("created_at")
+            if conv.channel == "whatsapp" and conv.contact_id:
+                related_conversation_ids = list(
+                    Conversation.objects.filter(
+                        contact_id=conv.contact_id,
+                        channel="whatsapp",
+                    )
+                    .filter(Q(deal_id=conv.deal_id) | Q(deal__isnull=True))
+                    .values_list("id", flat=True)
+                )
+                qs = Message.objects.filter(
+                    conversation_id__in=related_conversation_ids or [conv.id],
+                    is_active=True,
+                ).order_by("created_at")
+            else:
+                qs = Message.objects.filter(conversation=conv, is_active=True).order_by("created_at")
             page = self.paginate_queryset(qs)
             ser = MessageSerializer(page, many=True, context={"request": request})
             return self.get_paginated_response(ser.data)

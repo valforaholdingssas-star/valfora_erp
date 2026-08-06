@@ -17,14 +17,15 @@ from apps.notifications.models import Notification
 logger = logging.getLogger(__name__)
 
 
-def _build_fallback_business_summary(deal: Deal) -> str:
-    conversations = deal.conversations.filter(is_active=True).prefetch_related("messages").order_by("-updated_at")
+def _collect_business_summary_context(deal: Deal) -> dict:
+    conversations = deal.conversations.prefetch_related("messages").order_by("-updated_at")
     line_name = None
     latest_inbound = None
     latest_outbound = None
     user_need = None
     objections = None
     next_step = None
+    transcript: list[str] = []
 
     for conv in conversations[:2]:
         if conv.channel == "whatsapp" and conv.whatsapp_phone_number:
@@ -37,6 +38,8 @@ def _build_fallback_business_summary(deal: Deal) -> str:
             content = (msg.content or "").strip()
             if not content:
                 continue
+            label = "Contacto" if msg.sender_type == "contact" else "Equipo"
+            transcript.append(f"{label}: {content[:220]}")
             if msg.sender_type == "contact":
                 latest_inbound = latest_inbound or content[:280]
                 user_need = user_need or content[:220]
@@ -47,25 +50,39 @@ def _build_fallback_business_summary(deal: Deal) -> str:
                 if not next_step and len(content) > 35:
                     next_step = content[:220]
 
-    lines = [
-        f"Lead: {deal.title}",
-        f"Contacto: {deal.contact}",
-        f"Empresa: {deal.company.name if deal.company_id else 'Sin empresa'}",
-        f"Etapa actual: {deal.stage}",
-        f"Valor estimado: {deal.value} {deal.currency}",
-    ]
-    if line_name:
-        lines.append(f"Línea: {line_name}")
-    if user_need:
-        lines.append(f"Necesidad detectada: {user_need}")
-    if objections:
-        lines.append(f"Detalle u objeción: {objections}")
-    if latest_inbound:
-        lines.append(f"Último mensaje del cliente: {latest_inbound}")
-    if latest_outbound:
-        lines.append(f"Última respuesta enviada: {latest_outbound}")
-    if next_step:
-        lines.append(f"Próximo paso sugerido: {next_step}")
+    return {
+        "line_name": line_name,
+        "latest_inbound": latest_inbound,
+        "latest_outbound": latest_outbound,
+        "user_need": user_need,
+        "objections": objections,
+        "next_step": next_step,
+        "transcript": transcript[:10],
+    }
+
+
+def _build_fallback_business_summary(deal: Deal) -> str:
+    context = _collect_business_summary_context(deal)
+    lines = ["Resumen comercial"]
+    lines.append(f"Negocio: {deal.title}")
+    lines.append(f"Contacto: {deal.contact}")
+    lines.append(f"Empresa: {deal.company.name if deal.company_id else 'Sin empresa asignada'}")
+    lines.append(f"Etapa actual: {deal.stage}")
+    lines.append(f"Valor estimado: {deal.value} {deal.currency}")
+    if context["line_name"]:
+        lines.append(f"Canal principal: {context['line_name']}")
+    if context["user_need"]:
+        lines.append(f"Necesidad detectada: {context['user_need']}")
+    if context["objections"] and context["objections"] != context["user_need"]:
+        lines.append(f"Detalle u objeción clave: {context['objections']}")
+    if context["latest_outbound"]:
+        lines.append(f"Última gestión del equipo: {context['latest_outbound']}")
+    if context["next_step"]:
+        lines.append(f"Siguiente paso sugerido: {context['next_step']}")
+    elif deal.stage == PipelineAutomationService.get_follow_up_stage_key():
+        lines.append("Siguiente paso sugerido: realizar llamada de seguimiento y reconfirmar interés.")
+    elif context["latest_inbound"]:
+        lines.append("Siguiente paso sugerido: retomar contacto sobre el último interés expresado por el lead.")
     return "\n".join(lines)
 
 

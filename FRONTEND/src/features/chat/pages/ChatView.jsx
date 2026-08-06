@@ -169,24 +169,6 @@ const fetchAllPages = async (fetcher, params = {}, pageSize = 100) => {
   return { count: expectedCount ?? results.length, results };
 };
 
-const isWhatsAppOriginConversation = (conversation) => (
-  Boolean(conversation?.is_whatsapp_origin)
-  || conversation?.latest_deal_source === "whatsapp"
-  || conversation?.contact_source === "whatsapp"
-);
-
-const isClosedWhatsAppConversation = (conversation) => {
-  if (!conversation || conversation.channel !== "whatsapp") return conversation?.status === "archived";
-  if (!isWhatsAppOriginConversation(conversation)) return false;
-  if (conversation.status === "archived") return true;
-  if (typeof conversation.is_whatsapp_window_closed === "boolean") {
-    return conversation.is_whatsapp_window_closed;
-  }
-  const expiresAt = new Date(conversation.customer_service_window_expires || "").getTime();
-  if (Number.isNaN(expiresAt)) return false;
-  return expiresAt <= Date.now();
-};
-
 const ChatView = () => {
   const WHATSAPP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
   const WHATSAPP_DOCUMENT_MAX_BYTES = 100 * 1024 * 1024;
@@ -291,6 +273,31 @@ const ChatView = () => {
     });
   }, []);
 
+  const mergeConversationCollections = useCallback((currentRows, incomingRows, preservedConversationId = null) => {
+    const orderedRows = [];
+    const seen = new Set();
+
+    incomingRows.forEach((row) => {
+      if (!row?.id) return;
+      const key = String(row.id);
+      if (seen.has(key)) return;
+      seen.add(key);
+      orderedRows.push(row);
+    });
+
+    if (preservedConversationId) {
+      const preservedKey = String(preservedConversationId);
+      if (!seen.has(preservedKey)) {
+        const preservedRow = currentRows.find((row) => String(row.id) === preservedKey);
+        if (preservedRow) {
+          orderedRows.unshift(preservedRow);
+        }
+      }
+    }
+
+    return orderedRows;
+  }, []);
+
   const mergeIncomingMessage = useCallback((prevMessages, incoming) => {
     const list = [...(prevMessages || [])];
     const exactIndex = list.findIndex((msg) => String(msg.id) === String(incoming.id));
@@ -323,8 +330,7 @@ const ChatView = () => {
     const params = {
       channel: channelFilter || undefined,
       include_closed: channelFilter === "whatsapp" ? true : undefined,
-      strict_whatsapp_origin: channelFilter === "whatsapp" ? true : undefined,
-      whatsapp_window_status: channelFilter === "whatsapp" ? conversationStatusFilter : undefined,
+      whatsapp_window_status: channelFilter === "whatsapp" && !dealId ? conversationStatusFilter : undefined,
       whatsapp_phone_number: channelFilter === "whatsapp" ? selectedWhatsAppLine || undefined : undefined,
       search_text: searchQuery || undefined,
       search: searchQuery || undefined,
@@ -338,9 +344,9 @@ const ChatView = () => {
         if (conversationsRequestRef.current !== requestId) return;
         setConversations((prev) => {
           const prevRows = prev?.results || [];
-          const nextRows = data?.results || [];
+          const nextRows = mergeConversationCollections(prevRows, data?.results || [], activeId);
           const isSame =
-            prev?.count === data?.count &&
+            prev?.count === Math.max(data?.count || 0, nextRows.length) &&
             prevRows.length === nextRows.length &&
             prevRows.every((row, index) => {
               const next = nextRows[index];
@@ -356,7 +362,7 @@ const ChatView = () => {
                 String(row.last_inbound_message_at || "") === String(next?.last_inbound_message_at || "")
               );
             });
-          return isSame ? prev : data;
+          return isSame ? prev : { ...data, count: Math.max(data?.count || 0, nextRows.length), results: nextRows };
         });
       })
       .catch(() => {})
@@ -365,7 +371,7 @@ const ChatView = () => {
           setLoadingList(false);
         }
       });
-  }, [searchQuery, filters, channelFilter, selectedWhatsAppLine, conversationStatusFilter]);
+  }, [searchQuery, filters, channelFilter, selectedWhatsAppLine, conversationStatusFilter, mergeConversationCollections, activeId]);
 
   const extractApiError = (error, fallback = "No fue posible completar la operación.") => {
     const payload = error?.response?.data?.data ?? error?.response?.data ?? {};
@@ -820,6 +826,7 @@ const ChatView = () => {
       setMessages({ results: [], count: 0 });
     }
     setActiveId(id);
+    loadMessages(id);
     if (isMobileViewport) {
       setMobileSection("chat");
     }
@@ -846,20 +853,12 @@ const ChatView = () => {
       return bDate - aDate;
     });
   }, [conversationsWithSla]);
-  const statusScopedConversations = useMemo(() => {
-    if (channelFilter !== "whatsapp") return sortedConversations;
-    return sortedConversations.filter((conversation) => {
-      const isClosed = isClosedWhatsAppConversation(conversation);
-      return conversationStatusFilter === "closed" ? isClosed : !isClosed;
-    });
-  }, [sortedConversations, channelFilter, conversationStatusFilter]);
-
   const lineScopedConversations = useMemo(() => {
-    if (channelFilter !== "whatsapp" || !selectedWhatsAppLine) return statusScopedConversations;
-    return statusScopedConversations.filter(
+    if (channelFilter !== "whatsapp" || !selectedWhatsAppLine) return sortedConversations;
+    return sortedConversations.filter(
       (conversation) => String(conversation.whatsapp_phone_number || "") === String(selectedWhatsAppLine),
     );
-  }, [statusScopedConversations, channelFilter, selectedWhatsAppLine]);
+  }, [sortedConversations, channelFilter, selectedWhatsAppLine]);
 
   const filteredConversations = useMemo(
     () => (showOnlyOverdue ? lineScopedConversations.filter((c) => c.__sla?.isOverdue) : lineScopedConversations),
@@ -879,12 +878,12 @@ const ChatView = () => {
   }, [filteredConversations, activeId, dealId]);
   const whatsappLineCounts = useMemo(() => {
     const counts = {};
-    statusScopedConversations.forEach((conv) => {
+    sortedConversations.forEach((conv) => {
       const key = conv.whatsapp_phone_number || "__none__";
       counts[key] = (counts[key] || 0) + 1;
     });
     return counts;
-  }, [statusScopedConversations]);
+  }, [sortedConversations]);
   const activeConv = useMemo(
     () => conversationsWithSla.find((c) => String(c.id) === String(activeId)) || null,
     [conversationsWithSla, activeId],

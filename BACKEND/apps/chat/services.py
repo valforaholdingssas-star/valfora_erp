@@ -7,6 +7,7 @@ import hmac
 import json
 import logging
 import os
+from datetime import timedelta
 from typing import Any
 
 import requests
@@ -17,6 +18,7 @@ from django.utils import timezone
 from apps.ai_config.runtime import resolve_global_ai_mode_enabled
 from apps.chat.models import Conversation, Message
 from apps.crm.models import Contact
+from apps.crm.pipeline_automation import PipelineAutomationService
 from apps.whatsapp.models import WhatsAppPhoneNumber
 
 logger = logging.getLogger(__name__)
@@ -37,37 +39,117 @@ def find_contact_by_whatsapp_phone(phone: str) -> Contact | None:
     return None
 
 
-def get_or_create_whatsapp_conversation(contact: Contact) -> tuple[Conversation, bool]:
-    """Return WhatsApp conversation for contact."""
-    deal = (
+def _resolve_contact_whatsapp_deal(contact: Contact):
+    closed_stage_keys = PipelineAutomationService.get_closed_stage_keys()
+    return (
         contact.deals.filter(is_active=True)
-        .exclude(stage__in=["closed_won", "closed_lost"])
+        .exclude(stage__in=closed_stage_keys)
         .order_by("-updated_at", "-created_at")
         .first()
     ) or contact.deals.filter(is_active=True).order_by("-updated_at", "-created_at").first()
-    if deal:
-        conv, created = Conversation.objects.get_or_create(
-            deal=deal,
-            channel="whatsapp",
-            defaults={
-                "contact": contact,
-                "assigned_to": contact.assigned_to,
-                "status": "active",
-                "ai_mode_enabled": resolve_global_ai_mode_enabled(),
-            },
+
+
+def _conversation_has_history(conversation: Conversation) -> bool:
+    if conversation.last_inbound_message_at or conversation.last_message_at:
+        return True
+    return conversation.messages.filter(is_active=True).exists()
+
+
+def resolve_whatsapp_conversation(
+    contact: Contact,
+    *,
+    deal=None,
+    assigned_to=None,
+    whatsapp_phone_number: WhatsAppPhoneNumber | None = None,
+    ai_mode_enabled: bool | None = None,
+    status: str = "active",
+    ai_configuration=None,
+) -> tuple[Conversation, bool]:
+    """Return the canonical WhatsApp conversation for a contact/deal pair.
+
+    This auto-heals legacy splits where the message history lives on a contact-only
+    conversation while the UI opens an empty deal-linked conversation.
+    """
+    target_deal = deal or _resolve_contact_whatsapp_deal(contact)
+    resolved_ai_mode = resolve_global_ai_mode_enabled() if ai_mode_enabled is None else bool(ai_mode_enabled)
+    base_defaults = {
+        "contact": contact,
+        "assigned_to": assigned_to or contact.assigned_to,
+        "status": status or "active",
+        "is_active": True,
+        "ai_mode_enabled": resolved_ai_mode,
+        "ai_configuration": ai_configuration,
+    }
+
+    deal_conversation = None
+    if target_deal:
+        deal_conversation = (
+            Conversation.objects.filter(deal=target_deal, channel="whatsapp", is_active=True)
+            .order_by("-updated_at", "-created_at")
+            .first()
         )
+
+    sibling_conversations = (
+        Conversation.objects.filter(contact=contact, channel="whatsapp")
+        .exclude(pk=getattr(deal_conversation, "pk", None))
+        .order_by("-last_message_at", "-updated_at", "-created_at")
+    )
+    sibling_with_history = None
+    for sibling in sibling_conversations:
+        if _conversation_has_history(sibling):
+            sibling_with_history = sibling
+            break
+
+    created = False
+    conversation = deal_conversation
+
+    if (
+        conversation
+        and not _conversation_has_history(conversation)
+        and sibling_with_history
+        and sibling_with_history.deal_id in {None, getattr(target_deal, "id", None)}
+    ):
+        conversation.is_active = False
+        conversation.deal = None
+        conversation.closed_at = timezone.now()
+        conversation.save(update_fields=["is_active", "deal", "closed_at", "updated_at"])
+        conversation = sibling_with_history
+        if target_deal:
+            conversation.deal = target_deal
+    elif not conversation and sibling_with_history and sibling_with_history.deal_id in {None, getattr(target_deal, "id", None)}:
+        conversation = sibling_with_history
+        if target_deal and sibling_with_history.deal_id is None:
+            conversation.deal = target_deal
+
+    if not conversation:
+        conversation = Conversation.objects.create(
+            channel="whatsapp",
+            deal=target_deal,
+            whatsapp_phone_number=whatsapp_phone_number,
+            closed_at=None,
+            **base_defaults,
+        )
+        created = True
     else:
-        conv, created = Conversation.objects.get_or_create(
-            contact=contact,
-            deal=None,
-            channel="whatsapp",
-            defaults={
-                "assigned_to": contact.assigned_to,
-                "status": "active",
-                "ai_mode_enabled": resolve_global_ai_mode_enabled(),
-            },
-        )
-    return conv, created
+        conversation.contact = contact
+        conversation.assigned_to = base_defaults["assigned_to"]
+        conversation.status = base_defaults["status"]
+        conversation.is_active = True
+        conversation.ai_mode_enabled = base_defaults["ai_mode_enabled"]
+        conversation.ai_configuration = ai_configuration
+        if target_deal and not conversation.deal_id:
+            conversation.deal = target_deal
+        if whatsapp_phone_number and not conversation.whatsapp_phone_number_id:
+            conversation.whatsapp_phone_number = whatsapp_phone_number
+        if conversation.status != "archived":
+            conversation.closed_at = None
+        conversation.save()
+    return conversation, created
+
+
+def get_or_create_whatsapp_conversation(contact: Contact) -> tuple[Conversation, bool]:
+    """Return canonical WhatsApp conversation for contact."""
+    return resolve_whatsapp_conversation(contact)
 
 
 def _whatsapp_media_id_from_raw(raw: dict[str, Any], message_type: str) -> str:
@@ -100,7 +182,11 @@ def create_inbound_whatsapp_message(
     if not contact:
         logger.warning("No CRM contact for WhatsApp sender %s", from_phone)
         return None
-    conv, _ = get_or_create_whatsapp_conversation(contact)
+    conv, _ = resolve_whatsapp_conversation(
+        contact,
+        whatsapp_phone_number=None,
+        status="active",
+    )
     mt = message_type if message_type in dict(Message.TYPE_CHOICES) else "text"
     display = (body or "").strip()
     if mt != "text" and not display:
@@ -116,6 +202,8 @@ def create_inbound_whatsapp_message(
     )
     Conversation.objects.filter(pk=conv.pk).update(
         updated_at=timezone.now(),
+        last_inbound_message_at=timezone.now(),
+        customer_service_window_expires=timezone.now() + timedelta(hours=24),
         unread_count=F("unread_count") + 1,
     )
     mid = (media_id or "").strip() or _whatsapp_media_id_from_raw(raw_payload, mt)

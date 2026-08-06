@@ -192,9 +192,17 @@ class ConversationSerializer(serializers.ModelSerializer):
     def get_is_whatsapp_window_closed(self, obj: Conversation):
         if obj.channel != "whatsapp":
             return False
+        deal = self._latest_deal(obj)
+        is_real_whatsapp_origin = bool(deal and deal.source == "whatsapp") or bool(
+            not deal and obj.contact_id and obj.contact.source == "whatsapp"
+        )
+        if not is_real_whatsapp_origin:
+            return False
+        if obj.status == "archived":
+            return True
         expires = obj.customer_service_window_expires
         if not expires:
-            return True
+            return False
         return expires <= timezone.now()
 
     def get_whatsapp_line_name(self, obj: Conversation):

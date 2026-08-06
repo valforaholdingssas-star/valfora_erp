@@ -13,7 +13,7 @@ from apps.ai_config.models import AIRuntimeSettings
 from apps.chat.models import Conversation, Message
 from apps.crm.lead_engine import LeadEngine
 from apps.crm.pipeline_automation import PipelineAutomationService
-from apps.crm.tasks import advance_closed_whatsapp_conversations
+from apps.crm.tasks import advance_closed_whatsapp_conversations, generate_business_summary_for_deal
 from apps.crm.models import Activity, Contact, Deal, DealStageHistory, LeadEngineConfig
 from apps.whatsapp.models import WhatsAppBusinessAccount, WhatsAppPhoneNumber
 
@@ -349,3 +349,56 @@ def test_repair_non_whatsapp_closed_window_moves_reverts_only_wrong_auto_move(mo
     assert latest_history.trigger == "manual"
     assert latest_history.to_stage == "qualified"
     assert "no era origen WhatsApp" in latest_history.notes
+
+
+@pytest.mark.django_db
+def test_generate_business_summary_for_deal_builds_structured_summary_without_dumping_raw_transcript(admin_user):
+    contact = Contact.objects.create(
+        first_name="Resumen",
+        last_name="Lead",
+        email="resumenlead@example.com",
+        whatsapp_number="573001000111",
+        created_by=admin_user,
+        source="whatsapp",
+    )
+    deal = Deal.objects.create(
+        title="Servicio ERP",
+        contact=contact,
+        source="whatsapp",
+        stage="qualified",
+        assigned_to=admin_user,
+        currency="COP",
+        value=2500000,
+    )
+    conv = Conversation.objects.create(
+        contact=contact,
+        deal=deal,
+        channel="whatsapp",
+        status="archived",
+        is_active=True,
+    )
+    Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Necesito una propuesta para automatizar inventarios y facturación.",
+        message_type="text",
+        status="delivered",
+    )
+    Message.objects.create(
+        conversation=conv,
+        sender_type="user",
+        sender_user=admin_user,
+        content="Perfecto, el siguiente paso es revisar alcance y agendar una llamada.",
+        message_type="text",
+        status="sent",
+    )
+
+    assert generate_business_summary_for_deal(str(deal.id)) is True
+
+    deal.refresh_from_db()
+    assert "Resumen comercial" in deal.business_notes
+    assert "Negocio: Servicio ERP" in deal.business_notes
+    assert "Necesidad detectada:" in deal.business_notes
+    assert "Siguiente paso sugerido:" in deal.business_notes
+    assert "Contacto:" in deal.business_notes
+    assert "Contacto: Necesito una propuesta" not in deal.business_notes

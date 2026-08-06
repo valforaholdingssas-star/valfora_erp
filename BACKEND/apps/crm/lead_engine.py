@@ -52,7 +52,8 @@ class LeadEngine:
     ) -> dict[str, Any]:
         """Process inbound WhatsApp payload and sync CRM + chat records atomically."""
 
-        from apps.chat.models import Conversation, Message
+        from apps.chat.models import Message
+        from apps.chat.services import resolve_whatsapp_conversation
         from apps.chat.services import _whatsapp_media_id_from_raw
         from apps.chat.tasks import fetch_whatsapp_media_for_message
 
@@ -89,30 +90,14 @@ class LeadEngine:
 
         deal, is_new_deal = self.find_or_create_deal(contact=contact, source="whatsapp")
 
-        if deal:
-            conv, _ = Conversation.objects.get_or_create(
-                deal=deal,
-                channel="whatsapp",
-                defaults={
-                    "contact": contact,
-                    "status": "active",
-                    "assigned_to": contact.assigned_to,
-                    "whatsapp_phone_number": whatsapp_phone_number,
-                    "ai_mode_enabled": resolve_global_ai_mode_enabled(),
-                },
-            )
-        else:
-            conv, _ = Conversation.objects.get_or_create(
-                contact=contact,
-                deal=None,
-                channel="whatsapp",
-                defaults={
-                    "status": "active",
-                    "assigned_to": contact.assigned_to,
-                    "whatsapp_phone_number": whatsapp_phone_number,
-                    "ai_mode_enabled": resolve_global_ai_mode_enabled(),
-                },
-            )
+        conv, _ = resolve_whatsapp_conversation(
+            contact,
+            deal=deal,
+            assigned_to=contact.assigned_to,
+            whatsapp_phone_number=whatsapp_phone_number,
+            ai_mode_enabled=resolve_global_ai_mode_enabled(),
+            status="active",
+        )
         conv.last_inbound_message_at = timezone.now()
         conv.customer_service_window_expires = timezone.now() + timedelta(hours=24)
         if whatsapp_phone_number and not conv.whatsapp_phone_number_id:

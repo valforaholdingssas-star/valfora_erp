@@ -255,6 +255,68 @@ def test_whatsapp_attachment_rejects_oversized_image(admin_user):
 
 
 @pytest.mark.django_db
+def test_create_whatsapp_conversation_reuses_legacy_contact_thread_with_history(admin_user):
+    contact = Contact.objects.create(
+        first_name="Legacy",
+        last_name="WhatsApp",
+        email="legacywa@example.com",
+        whatsapp_number="573001231231",
+        created_by=admin_user,
+    )
+    deal = Deal.objects.create(
+        title="Legacy WA Deal",
+        contact=contact,
+        source="whatsapp",
+        assigned_to=admin_user,
+    )
+    legacy_conv = Conversation.objects.create(
+        contact=contact,
+        deal=None,
+        channel="whatsapp",
+        status="archived",
+        assigned_to=admin_user,
+        last_inbound_message_at=timezone.now() - timedelta(hours=3),
+        customer_service_window_expires=timezone.now() - timedelta(hours=1),
+    )
+    Message.objects.create(
+        conversation=legacy_conv,
+        sender_type="contact",
+        content="Histórico real",
+        whatsapp_message_id="wamid-legacy-thread",
+        status="delivered",
+    )
+    empty_deal_conv = Conversation.objects.create(
+        contact=contact,
+        deal=deal,
+        channel="whatsapp",
+        status="archived",
+        assigned_to=admin_user,
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=admin_user)
+    response = client.post(
+        "/api/v1/chat/conversations/",
+        {"deal": str(deal.id), "contact": str(contact.id), "channel": "whatsapp"},
+        format="json",
+    )
+    assert response.status_code in (200, 201)
+    data = _j(response)["data"]
+    assert str(data["id"]) == str(legacy_conv.id)
+
+    legacy_conv.refresh_from_db()
+    empty_deal_conv.refresh_from_db()
+    assert legacy_conv.deal_id == deal.id
+    assert empty_deal_conv.is_active is False
+
+    history = client.get(f"/api/v1/chat/conversations/{legacy_conv.id}/messages/")
+    assert history.status_code == 200
+    payload = _j(history)["data"]["results"]
+    assert len(payload) == 1
+    assert payload[0]["content"] == "Histórico real"
+
+
+@pytest.mark.django_db
 def test_conversation_filters_by_whatsapp_phone_number(admin_user):
     account = WhatsAppBusinessAccount.objects.create(
         name="Main",
@@ -375,6 +437,26 @@ def test_whatsapp_conversation_filters_only_real_whatsapp_origin_and_real_window
     conv_workana.status = "active"
     conv_workana.save(update_fields=["customer_service_window_expires", "status", "updated_at"])
 
+    contact_manual = Contact.objects.create(
+        first_name="Manual",
+        last_name="Lead",
+        email="manual@example.com",
+        whatsapp_number="573001230004",
+        created_by=admin_user,
+        source="manual",
+    )
+    deal_manual = Deal.objects.create(
+        title="Manual no inbound",
+        contact=contact_manual,
+        source="manual",
+        assigned_to=admin_user,
+    )
+    conv_manual, _ = Conversation.objects.get_or_create(contact=contact_manual, deal=deal_manual, channel="whatsapp")
+    conv_manual.customer_service_window_expires = None
+    conv_manual.last_inbound_message_at = None
+    conv_manual.status = "active"
+    conv_manual.save(update_fields=["customer_service_window_expires", "last_inbound_message_at", "status", "updated_at"])
+
     client = APIClient()
     client.force_authenticate(user=admin_user)
 
@@ -385,6 +467,7 @@ def test_whatsapp_conversation_filters_only_real_whatsapp_origin_and_real_window
     assert str(conv_open.id) in open_ids
     assert str(conv_closed.id) not in open_ids
     assert str(conv_workana.id) in open_ids
+    assert str(conv_manual.id) not in open_ids
     open_row = next(row for row in body_open["results"] if row["id"] == str(conv_open.id))
     open_workana_row = next(row for row in body_open["results"] if row["id"] == str(conv_workana.id))
     assert open_row["is_whatsapp_origin"] is True
@@ -401,6 +484,63 @@ def test_whatsapp_conversation_filters_only_real_whatsapp_origin_and_real_window
     assert str(conv_open.id) not in closed_ids
     assert str(conv_closed.id) in closed_ids
     assert str(conv_workana.id) not in closed_ids
+    assert str(conv_manual.id) not in closed_ids
     closed_row = next(row for row in body_closed["results"] if row["id"] == str(conv_closed.id))
     assert closed_row["is_whatsapp_origin"] is True
     assert closed_row["is_whatsapp_window_closed"] is True
+
+
+@pytest.mark.django_db
+def test_whatsapp_closed_conversation_uses_historical_thread_messages_when_legacy_empty_duplicate_exists(admin_user):
+    now = timezone.now()
+    contact = Contact.objects.create(
+        first_name="Legacy",
+        last_name="Closed",
+        email="legacyclosed@example.com",
+        whatsapp_number="573001230099",
+        created_by=admin_user,
+        source="whatsapp",
+    )
+    deal = Deal.objects.create(
+        title="Legacy Closed Deal",
+        contact=contact,
+        source="whatsapp",
+        assigned_to=admin_user,
+    )
+    history_conv = Conversation.objects.create(
+        contact=contact,
+        deal=None,
+        channel="whatsapp",
+        status="archived",
+        is_active=True,
+        customer_service_window_expires=now - timedelta(hours=2),
+        last_inbound_message_at=now - timedelta(hours=3),
+        last_message_at=now - timedelta(hours=2, minutes=50),
+    )
+    Message.objects.create(
+        conversation=history_conv,
+        sender_type="contact",
+        content="Necesito más información del servicio",
+        message_type="text",
+        status="delivered",
+    )
+    empty_duplicate = Conversation.objects.create(
+        contact=contact,
+        deal=deal,
+        channel="whatsapp",
+        status="archived",
+        is_active=True,
+        customer_service_window_expires=now - timedelta(hours=1),
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=admin_user)
+    response = client.get(f"/api/v1/chat/conversations/{empty_duplicate.id}/messages/")
+
+    assert response.status_code == 200
+    body = _j(response)["data"]
+    assert body["count"] == 1
+    assert body["results"][0]["content"] == "Necesito más información del servicio"
+
+    history_conv.refresh_from_db()
+    assert history_conv.deal_id == deal.id

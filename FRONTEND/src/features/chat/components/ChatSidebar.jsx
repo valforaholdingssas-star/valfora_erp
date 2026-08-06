@@ -43,7 +43,7 @@ const ChatSidebar = ({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
         />
-        <div className="d-flex gap-2 mb-2 flex-wrap app-chat-sidebar-switches">
+        <div className="d-flex gap-2 mb-3 flex-wrap app-chat-sidebar-switches">
           <Button
             size="sm"
             variant={channelFilter === "whatsapp" ? "primary" : "outline-secondary"}
@@ -62,7 +62,7 @@ const ChatSidebar = ({
           </Button>
         </div>
         {channelFilter === "whatsapp" && (
-          <div className="d-flex gap-2 mb-2 flex-wrap app-chat-sidebar-switches">
+          <div className="d-flex gap-2 mb-3 flex-wrap app-chat-sidebar-switches">
             <Button
               size="sm"
               variant={statusFilter === "open" ? "dark" : "outline-secondary"}
@@ -82,7 +82,7 @@ const ChatSidebar = ({
           </div>
         )}
         {channelFilter === "whatsapp" && (whatsAppLines || []).length > 0 && (
-          <div className="d-flex flex-wrap gap-2 mb-1 app-chat-sidebar-line-switches app-chat-sidebar-switches">
+          <div className="d-flex flex-wrap gap-2 mb-3 app-chat-sidebar-line-switches app-chat-sidebar-switches">
             <Button
               size="sm"
               variant={selectedWhatsAppLine === "" ? "dark" : "outline-secondary"}
@@ -141,31 +141,17 @@ const ChatSidebar = ({
                       </span>
                     )}
                   </div>
-                  <div className="app-chat-sidebar-item-meta">
-                    {c.__sla?.label && (
-                      <span className="app-chat-sidebar-sla-inline">SLA: {c.__sla.label}</span>
-                    )}
-                  </div>
-                  <div className="app-chat-sidebar-item-submeta">
-                    {c.whatsapp_line_name ? <span className="app-chat-sidebar-meta-text">{c.whatsapp_line_name}</span> : null}
-                    {c.__remainingWindowLabel ? <span className="app-chat-sidebar-meta-text">{c.__remainingWindowLabel}</span> : null}
-                    {Number(c.unread_count || 0) > 0 ? (
-                      <span className="app-chat-sidebar-inline-status app-chat-sidebar-inline-status--unread">
-                        {Number(c.unread_count || 0)} sin leer
-                      </span>
-                    ) : null}
-                    {c.__sla?.awaitingReply ? (
-                      <span
-                        className={`app-chat-sidebar-inline-status ${
-                          c.__sla?.isOverdue
-                            ? "app-chat-sidebar-inline-status--late"
-                            : "app-chat-sidebar-inline-status--pending"
-                        }`}
-                      >
-                        {c.__sla?.isOverdue ? "Sin responder" : "Pendiente"}
-                      </span>
-                    ) : null}
-                    {c.status === "archived" ? <span className="app-chat-sidebar-inline-closed">Cerrado</span> : null}
+                  <div className="app-chat-sidebar-item-statusline">
+                    {[
+                      c.__sla?.label ? `SLA ${c.__sla.label}` : "SLA sin dato",
+                      c.whatsapp_line_name || null,
+                      c.__remainingWindowLabel || null,
+                      c.status === "archived" ? "Chat cerrado" : null,
+                      Number(c.unread_count || 0) > 0 ? `${Number(c.unread_count || 0)} sin leer` : null,
+                      c.__sla?.awaitingReply ? (c.__sla?.isOverdue ? "Respuesta vencida" : "Respuesta pendiente") : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </div>
                 </div>
               </div>
