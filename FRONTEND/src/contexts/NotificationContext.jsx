@@ -82,9 +82,28 @@ export const NotificationProvider = ({ children }) => {
 
   const refreshChatUnreadFromApi = useCallback(async () => {
     try {
-      const data = await fetchConversations({ page_size: 500 });
-      const list = data?.results || [];
-      const total = list.reduce((acc, conv) => acc + Number(conv?.unread_count || 0), 0);
+      // API max_page_size is 100; page through open WhatsApp inbox only.
+      let page = 1;
+      let expectedCount = null;
+      let total = 0;
+      const seen = [];
+      while (true) {
+        const data = await fetchConversations({
+          page,
+          page_size: 100,
+          channel: "whatsapp",
+          whatsapp_window_status: "open",
+        });
+        const list = data?.results || [];
+        if (expectedCount === null) {
+          expectedCount = Number(data?.count || list.length || 0);
+        }
+        total += list.reduce((acc, conv) => acc + Number(conv?.unread_count || 0), 0);
+        seen.push(...list);
+        if (!list.length || seen.length >= expectedCount) break;
+        page += 1;
+        if (page > 20) break;
+      }
       setChatUnreadCount(total);
     } catch {
       /* ignore */

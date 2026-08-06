@@ -249,6 +249,7 @@ const ChatView = () => {
   const typingStopRef = useRef(null);
   const conversationsRequestRef = useRef(0);
   const messagesRequestRef = useRef(0);
+  const activeIdRef = useRef(null);
 
   const currentUserId = useMemo(() => (user?.id ? String(user.id) : null), [user?.id]);
   const canManageAiConfigs = user && ["admin", "super_admin"].includes(user.role);
@@ -355,7 +356,8 @@ const ChatView = () => {
         setConversations((prev) => {
           const prevRows = prev?.results || [];
           const nextRows = mergeConversationCollections(prevRows, data?.results || [], {
-            preserveConversationId: dealId ? activeId : null,
+            // Only preserve the active row when opened from a deal route.
+            preserveConversationId: dealId ? activeIdRef.current : null,
           });
           const isSame =
             prev?.count === Math.max(data?.count || 0, nextRows.length) &&
@@ -383,7 +385,8 @@ const ChatView = () => {
           setLoadingList(false);
         }
       });
-  }, [searchQuery, filters, channelFilter, selectedWhatsAppLine, conversationStatusFilter, mergeConversationCollections, dealId, activeId]);
+    // intentional: activeId must NOT be a dependency or every chat click reloads the inbox
+  }, [searchQuery, filters, channelFilter, selectedWhatsAppLine, conversationStatusFilter, mergeConversationCollections, dealId]);
 
   const extractApiError = (error, fallback = "No fue posible completar la operación.") => {
     const payload = error?.response?.data?.data ?? error?.response?.data ?? {};
@@ -511,20 +514,24 @@ const ChatView = () => {
     const nextId = conversationId ? String(conversationId) : null;
     setComposerError("");
     setMessageLoadError("");
+    setPeerTyping(false);
     if (!nextId) {
       setActiveId(null);
-      loadMessages(null);
+      setMessages({ results: [], count: 0 });
       return;
     }
-    if (String(activeId || "") !== nextId) {
+    if (String(activeIdRef.current || "") !== nextId) {
       setMessages({ results: [], count: 0 });
     }
     setActiveId(nextId);
-    loadMessages(nextId);
     if (openChatOnMobile && isMobileViewport) {
       setMobileSection("chat");
     }
-  }, [activeId, isMobileViewport, loadMessages]);
+  }, [isMobileViewport]);
+
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
 
   useEffect(() => {
     if (dealId && !activeId) {
@@ -557,7 +564,9 @@ const ChatView = () => {
   useEffect(() => {
     if (!activeId) {
       loadMessages(null);
+      return;
     }
+    loadMessages(activeId);
   }, [activeId, loadMessages]);
 
   const handleWsMessageCreated = useCallback((incoming) => {
@@ -873,21 +882,19 @@ const ChatView = () => {
   }, [sortedConversations, channelFilter, selectedWhatsAppLine]);
 
   const filteredConversations = useMemo(() => {
+    // Server already applies whatsapp_window_status / line filters.
+    // Avoid re-filtering stale rows client-side or the inbox goes empty while reloading.
     let rows = lineScopedConversations;
-    if (channelFilter === "whatsapp" && !dealId) {
-      rows = rows.filter((conversation) => {
-        const isClosed = conversation.status === "archived" || Boolean(conversation.is_whatsapp_window_closed);
-        return conversationStatusFilter === "closed" ? isClosed : !isClosed;
-      });
-    }
     if (showOnlyOverdue) {
       rows = rows.filter((conversation) => conversation.__sla?.isOverdue);
     }
     return rows;
-  }, [showOnlyOverdue, lineScopedConversations, channelFilter, conversationStatusFilter, dealId]);
+  }, [showOnlyOverdue, lineScopedConversations]);
 
   useEffect(() => {
     if (dealId) return;
+    // Wait for inbox fetch to finish so open/closed switches don't clear the active chat.
+    if (loadingList) return;
     if (!filteredConversations.length) {
       if (activeId) setActiveId(null);
       return;
@@ -896,7 +903,7 @@ const ChatView = () => {
     if (!activeId || !activeStillVisible) {
       activateConversation(filteredConversations[0].id, { openChatOnMobile: false });
     }
-  }, [filteredConversations, activeId, dealId, activateConversation]);
+  }, [filteredConversations, activeId, dealId, activateConversation, loadingList]);
   const whatsappLineCounts = useMemo(() => {
     const counts = {};
     sortedConversations.forEach((conv) => {

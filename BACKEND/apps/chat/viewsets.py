@@ -1,7 +1,7 @@
 """ViewSets for chat API."""
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import OuterRef, Q, Subquery
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import permissions, status, viewsets
@@ -129,7 +129,15 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 | Q(messages__content__icontains=text)
             )
 
-        return qs.distinct()
+        qs = qs.distinct()
+        if is_list_action:
+            latest_message_content = (
+                Message.objects.filter(conversation_id=OuterRef("pk"), is_active=True)
+                .order_by("-created_at")
+                .values("content")[:1]
+            )
+            qs = qs.annotate(_list_last_message_content=Subquery(latest_message_content))
+        return qs
 
     def perform_update(self, serializer):
         previous_status = getattr(serializer.instance, "status", None)

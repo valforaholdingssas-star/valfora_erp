@@ -27,13 +27,6 @@ const buildSidebarMeta = (conversation) => {
     label: isClosed ? "Cerrado" : "Abierto",
     tone: isClosed ? "status-closed" : "status-open",
   });
-  if (conversation?.whatsapp_line_name) {
-    parts.push({
-      key: "line",
-      label: conversation.whatsapp_line_name,
-      tone: "line",
-    });
-  }
   const windowLabel = formatWindowTagLabel(conversation);
   if (windowLabel) {
     parts.push({
@@ -63,6 +56,17 @@ const ChatSidebar = ({
   onStatusFilterChange,
   className = "",
 }) => {
+  const buildSubtitle = (conversation) => {
+    const parts = [];
+    if (conversation?.channel) {
+      parts.push(conversation.channel === "whatsapp" ? "WhatsApp" : conversation.channel);
+    }
+    if (conversation?.whatsapp_line_name) {
+      parts.push(conversation.whatsapp_line_name);
+    }
+    return parts.join(" · ");
+  };
+
   return (
     <div className={`p-2 h-100 app-chat-sidebar ${className}`}>
       <div className="app-chat-sidebar-head">
@@ -147,12 +151,17 @@ const ChatSidebar = ({
           </div>
         )}
       </div>
-      {loading ? (
+      {loading && (!conversations || conversations.length === 0) ? (
         <div className="p-2">
           <Spinner animation="border" size="sm" />
         </div>
       ) : (
         <div className="d-flex flex-column gap-2 app-chat-sidebar-list">
+          {loading ? (
+            <div className="px-2 pb-1">
+              <Spinner animation="border" size="sm" />
+            </div>
+          ) : null}
           {(!conversations || conversations.length === 0) && (
             <div className="app-empty-state-mini">
               <i className="bi bi-chat-left-text" />
@@ -163,7 +172,7 @@ const ChatSidebar = ({
             <button
               key={c.id}
               type="button"
-              className={`app-chat-sidebar-item ${c.id === activeId ? "is-active" : ""}`}
+              className={`app-chat-sidebar-item ${String(c.id) === String(activeId) ? "is-active" : ""}`}
               onClick={() => onSelect(c.id)}
             >
               <div className="app-chat-sidebar-item-shell">
@@ -182,6 +191,11 @@ const ChatSidebar = ({
                       )}
                     </div>
                   </div>
+                  {buildSubtitle(c) ? (
+                    <div className="app-chat-sidebar-item-subtitle">
+                      {buildSubtitle(c)}
+                    </div>
+                  ) : null}
                   <div className="app-chat-sidebar-item-statusline">
                     {buildSidebarMeta(c).map((tag) => (
                       <span

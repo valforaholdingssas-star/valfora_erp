@@ -2577,6 +2577,17 @@ a {
   border-color: rgba(220, 53, 69, 0.22) !important;
 }
 
+.app-chat-sidebar-item-subtitle {
+  margin-top: 0.12rem;
+  color: #7a879c;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .app-chat-sidebar-item-statusline {
   display: flex;
   flex-wrap: wrap;

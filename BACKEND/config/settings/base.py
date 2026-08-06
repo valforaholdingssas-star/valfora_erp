@@ -143,10 +143,20 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": True,
 }
 
+# Channels must not share Redis DB 0 with Celery broker (BRPOP/pubsub contention).
+_CHANNEL_REDIS_DEFAULT = "redis://localhost:6379/3"
+_REDIS_BASE = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+if "/" in _REDIS_BASE.rsplit(":", 1)[-1]:
+    _CHANNEL_REDIS_DEFAULT = f"{_REDIS_BASE.rsplit('/', 1)[0]}/3"
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [os.getenv("REDIS_URL", "redis://localhost:6379/0")]},
+        "CONFIG": {
+            "hosts": [os.getenv("CHANNEL_REDIS_URL", _CHANNEL_REDIS_DEFAULT)],
+            "capacity": 1500,
+            "expiry": 15,
+        },
     }
 }
 

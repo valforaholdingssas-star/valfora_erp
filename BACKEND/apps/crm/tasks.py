@@ -30,8 +30,8 @@ def _collect_business_summary_context(deal: Deal) -> dict:
     for conv in conversations[:2]:
         if conv.channel == "whatsapp" and conv.whatsapp_phone_number:
             line_name = line_name or (
-                conv.whatsapp_phone_number.line_name
-                or conv.whatsapp_phone_number.internal_name
+                conv.whatsapp_phone_number.internal_name
+                or conv.whatsapp_phone_number.verified_name
                 or conv.whatsapp_phone_number.display_phone_number
             )
         for msg in conv.messages.filter(is_active=True).order_by("-created_at")[:8]:

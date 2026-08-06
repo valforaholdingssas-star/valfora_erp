@@ -139,8 +139,14 @@ class ConversationSerializer(serializers.ModelSerializer):
         return obj.contact.email
 
     def get_last_message_preview(self, obj: Conversation) -> str:
+        if hasattr(obj, "_list_last_message_content"):
+            content = obj._list_last_message_content or ""
+            return (content[:120] + "…") if len(content) > 120 else content
         last = obj.messages.filter(is_active=True).order_by("-created_at").first()
-        return (last.content[:120] + "…") if last and len(last.content) > 120 else (last.content if last else "")
+        if not last:
+            return ""
+        content = last.content or ""
+        return (content[:120] + "…") if len(content) > 120 else content
 
     def get_ai_configuration_name(self, obj: Conversation) -> str | None:
         if obj.ai_configuration_id and getattr(obj, "ai_configuration", None):
