@@ -184,7 +184,7 @@ def generate_business_summary_for_deal(deal_id: str) -> bool:
 
 @shared_task(name="crm.tasks.advance_closed_whatsapp_conversations")
 def advance_closed_whatsapp_conversations() -> int:
-    """Move deals from expired closed chats into the follow-up call stage."""
+    """Archive expired WhatsApp conversations and move their deals into the follow-up call stage."""
     target_stage = PipelineAutomationService.get_follow_up_stage_key()
     now = timezone.now()
     moved = 0
@@ -192,13 +192,17 @@ def advance_closed_whatsapp_conversations() -> int:
         Conversation.objects.filter(
             is_active=True,
             channel="whatsapp",
-            status="archived",
             customer_service_window_expires__lt=now,
         )
         .select_related("deal", "contact")
         .order_by("customer_service_window_expires")
     )
     for conversation in qs:
+        if conversation.status != "archived":
+            conversation.status = "archived"
+            conversation.closed_at = conversation.closed_at or now
+            conversation.save(update_fields=["status", "closed_at", "updated_at"])
+
         deal = conversation.deal
         if not deal or not deal.is_active:
             continue
