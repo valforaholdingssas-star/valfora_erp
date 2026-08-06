@@ -11,6 +11,7 @@ class CalendarBookingDraft(BaseModel):
 
     STATUS_CHOICES = (
         ("pending_selection", "Pending selection"),
+        ("pending_email", "Pending email"),
         ("confirmed", "Confirmed"),
         ("cancelled", "Cancelled"),
     )

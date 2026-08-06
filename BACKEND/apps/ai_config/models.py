@@ -115,6 +115,8 @@ class AIRuntimeSettings(BaseModel):
     google_slot_minutes = models.PositiveSmallIntegerField(default=30)
     google_booking_window_days = models.PositiveSmallIntegerField(default=7)
     google_service_account_json = EncryptedTextField(blank=True)
+    # Workspace user to impersonate via Domain-Wide Delegation (invites + Meet as that user).
+    google_calendar_delegated_user = models.EmailField(blank=True)
     unipile_api_base_url = models.CharField(max_length=255, blank=True)
     unipile_api_key = EncryptedTextField(blank=True)
     unipile_webhook_secret = EncryptedTextField(blank=True)

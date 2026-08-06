@@ -212,6 +212,13 @@ def test_inviteable_attendee_email_filters_whatsapp_placeholders():
     assert _inviteable_attendee_email(None) is None
 
 
+def test_parse_email_from_text():
+    from apps.calendar_app.booking_ai import _parse_email_from_text
+
+    assert _parse_email_from_text("Mi correo es lucia.a@gmail.com gracias") == "lucia.a@gmail.com"
+    assert _parse_email_from_text("wa-123@auto.local") is None
+
+
 def test_create_event_retries_without_attendees_on_sa_403(monkeypatch):
     from apps.calendar_app import google_client as gc
 
@@ -232,12 +239,22 @@ def test_create_event_retries_without_attendees_on_sa_403(monkeypatch):
 
     def fake_post(url, headers=None, json=None, timeout=None):
         calls.append({"url": url, "json": json})
+        if "meet.googleapis.com" in url:
+            return FakeResp(200, payload={"meetingUri": "https://meet.google.com/aaa-bbbb-ccc", "name": "spaces/x"})
         if json and json.get("attendees"):
             return FakeResp(
                 403,
                 text='{"error":{"errors":[{"reason":"forbiddenForServiceAccounts"}],"message":"Service accounts cannot invite attendees without Domain-Wide Delegation of Authority."}}',
             )
-        return FakeResp(200, payload={"id": "evt-ok", "htmlLink": "https://x"})
+        return FakeResp(
+            200,
+            payload={
+                "id": "evt-ok",
+                "htmlLink": "https://x",
+                "hangoutLink": "https://meet.google.com/aaa-bbbb-ccc",
+                "attendees": [],
+            },
+        )
 
     monkeypatch.setattr(gc.requests, "post", fake_post)
     start = timezone.make_aware(datetime(2026, 8, 7, 11, 0, 0))
@@ -251,11 +268,65 @@ def test_create_event_retries_without_attendees_on_sa_403(monkeypatch):
         end_dt=end,
         timezone="America/Bogota",
         attendee_email="guest@somewhere.com",
+        add_google_meet=True,
     )
     assert out["id"] == "evt-ok"
-    assert len(calls) == 2
-    assert "attendees" in calls[0]["json"]
-    assert "attendees" not in calls[1]["json"]
+    assert out.get("_meet_uri") == "https://meet.google.com/aaa-bbbb-ccc"
+    assert "conferenceDataVersion=1" in calls[-1]["url"]
+    # First calendar post had attendees; retry without
+    cal_calls = [c for c in calls if "calendar" in c["url"]]
+    assert len(cal_calls) >= 2
+    assert "attendees" in cal_calls[0]["json"]
+    assert "attendees" not in cal_calls[1]["json"]
+    assert cal_calls[1]["json"].get("conferenceData")
+
+
+@pytest.mark.django_db
+def test_request_email_before_confirm_when_contact_has_placeholder(admin_user):
+    from apps.ai_config.models import AIConfiguration
+    from apps.calendar_app.booking_ai import maybe_handle_calendar_booking
+    from zoneinfo import ZoneInfo
+
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(
+        first_name="Lucia",
+        last_name="A",
+        email="wa-573507847789@auto.local",
+    )
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    bogota = ZoneInfo("America/Bogota")
+    slot = datetime(2026, 8, 7, 11, 0, tzinfo=bogota)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_selection",
+        offered_slots=[slot.isoformat()],
+        timezone="America/Bogota",
+        duration_minutes=30,
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="El viernes 07/08 a las 11:00",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    with patch(
+        "apps.calendar_app.booking_ai._infer_calendar_intent",
+        return_value={"intent": "book_slot", "slot_iso": None},
+    ):
+        reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+
+    assert reply is not None
+    assert "correo" in reply.content.lower()
+    draft = CalendarBookingDraft.objects.get(conversation=conv)
+    assert draft.status == "pending_email"
 
 
 @pytest.mark.django_db

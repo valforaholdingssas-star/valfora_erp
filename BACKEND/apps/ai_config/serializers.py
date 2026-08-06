@@ -110,6 +110,7 @@ class AIRuntimeSettingsSerializer(serializers.ModelSerializer):
             "google_calendar_timezone",
             "google_slot_minutes",
             "google_booking_window_days",
+            "google_calendar_delegated_user",
             "has_google_service_account_json",
             "google_service_account_json",
             "clear_google_service_account_json",

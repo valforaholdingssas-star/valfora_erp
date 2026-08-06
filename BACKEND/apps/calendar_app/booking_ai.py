@@ -15,6 +15,8 @@ from openai import OpenAI
 from apps.ai_config.models import AIRuntimeSettings, AIConfiguration
 from apps.ai_config.runtime import resolve_openai_api_key
 from apps.calendar_app.google_client import (
+    GOOGLE_CAL_SCOPE,
+    GOOGLE_EVENT_SCOPES,
     compute_candidate_slots,
     create_event,
     freebusy_query,
@@ -142,13 +144,27 @@ def google_calendar_system_policy() -> str:
     """Injected into the LLM system prompt when Google Calendar booking is enabled."""
     return (
         "--- Agenda (obligatorio) ---\n"
-        "Esta plataforma ya tiene Google Calendar integrado para agendar reuniones.\n"
+        "Esta plataforma ya tiene Google Calendar integrado para agendar reuniones con Google Meet.\n"
         "NUNCA envíes ni inventes links de Calendly, Cal.com ni ningún enlace externo de reserva.\n"
         "NUNCA digas “te paso el link” ni menciones herramientas externas de agenda.\n"
         "Cuando invites a reunirse, propone la reunión en texto y espera la confirmación del cliente "
         "(sí, dale, ok, etc.). El sistema ofrecerá horarios reales automáticamente.\n"
-        "Si el cliente ya aceptó, no inventes horarios ni URLs: el backend consulta disponibilidad."
+        "Si el cliente ya aceptó, no inventes horarios ni URLs: el backend consulta disponibilidad.\n"
+        "El sistema pedirá el correo del cliente para enviarle la invitación de Calendar + Meet."
     )
+
+
+def _google_token(runtime: AIRuntimeSettings, *, for_events: bool = False) -> str:
+    sa = json.loads(runtime.google_service_account_json)
+    subject = (getattr(runtime, "google_calendar_delegated_user", None) or "").strip() or None
+    scope = GOOGLE_EVENT_SCOPES if for_events else GOOGLE_CAL_SCOPE
+    try:
+        return get_service_account_token(sa, scope=scope, subject=subject)
+    except Exception:
+        if not subject:
+            raise
+        logger.warning("Delegated Google token failed; retrying without impersonation")
+        return get_service_account_token(sa, scope=scope, subject=None)
 
 
 def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) -> Message | None:
@@ -165,6 +181,10 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
     tz_name = _calendar_tz_name(runtime)
     intent = _infer_calendar_intent(user_text=text, model=config.llm_model)
     draft = CalendarBookingDraft.objects.filter(conversation=conv).first()
+
+    if draft and draft.status == "pending_email":
+        return _handle_pending_email(inbound=inbound, runtime=runtime, draft=draft, text=text)
+
     if draft and draft.status == "pending_selection":
         tz_name = _calendar_tz_name(runtime, draft)
         offered_slots = [str(x) for x in (draft.offered_slots or [])]
@@ -177,26 +197,12 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
                 tz_name=tz_name,
             )
         if chosen and chosen in offered_slots:
-            try:
-                return _confirm_booking(
-                    inbound=inbound,
-                    runtime=runtime,
-                    draft=draft,
-                    slot_iso=chosen,
-                )
-            except Exception as exc:  # noqa: BLE001
-                return Message.objects.create(
-                    conversation=conv,
-                    sender_type="ai_bot",
-                    content=(
-                        "Intenté reservar la cita pero hubo un error con el calendario. "
-                        "¿Te comparto nuevos horarios?"
-                    ),
-                    message_type="text",
-                    status="pending" if conv.channel == "whatsapp" else "sent",
-                    is_ai_generated=True,
-                    ai_context_used={"calendar_booking_error": str(exc)},
-                )
+            return _request_email_or_confirm(
+                inbound=inbound,
+                runtime=runtime,
+                draft=draft,
+                slot_iso=chosen,
+            )
 
         preferred = _parse_preferred_datetime(text, tz_name=tz_name)
         if preferred:
@@ -206,25 +212,12 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
             )
             matched = _match_offered_slot(preferred, offered_slots, tz_name=tz_name)
             if matched:
-                try:
-                    return _confirm_booking(
-                        inbound=inbound,
-                        runtime=runtime,
-                        draft=draft,
-                        slot_iso=matched,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    logger.exception("Failed confirming matched preferred slot")
-                    return offer_availability_slots(
-                        inbound=inbound,
-                        runtime=runtime,
-                        draft=draft,
-                        prefer_around=preferred,
-                        intro=(
-                            "Hubo un problema al reservar ese horario. "
-                            "Te propongo estas alternativas:"
-                        ),
-                    )
+                return _request_email_or_confirm(
+                    inbound=inbound,
+                    runtime=runtime,
+                    draft=draft,
+                    slot_iso=matched,
+                )
 
             if preferred.weekday() >= 5:
                 return offer_availability_slots(
@@ -262,22 +255,12 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
                 )
 
             if _is_preferred_slot_free(runtime=runtime, slot_start=preferred, draft=draft):
-                try:
-                    return _confirm_booking(
-                        inbound=inbound,
-                        runtime=runtime,
-                        draft=draft,
-                        slot_iso=preferred.isoformat(),
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    logger.exception("Failed booking preferred free slot: %s", exc)
-                    return offer_availability_slots(
-                        inbound=inbound,
-                        runtime=runtime,
-                        draft=draft,
-                        prefer_around=preferred,
-                        intro="No pude confirmar ese horario. Te propongo estos:",
-                    )
+                return _request_email_or_confirm(
+                    inbound=inbound,
+                    runtime=runtime,
+                    draft=draft,
+                    slot_iso=preferred.isoformat(),
+                )
 
             return offer_availability_slots(
                 inbound=inbound,
@@ -342,7 +325,7 @@ def offer_availability_slots(
             ai_context_used={"calendar_config_error": "invalid_service_account_json"},
         )
 
-    token = get_service_account_token(sa)
+    token = _google_token(runtime, for_events=False)
     now_local = _now_in_calendar_tz(tz_name)
     days = int(runtime.google_booking_window_days or 7)
     time_max = now_local + timedelta(days=max(1, days))
@@ -447,7 +430,14 @@ def _sync_crm_meeting_activity(
     return activity
 
 
-def _confirm_booking(*, inbound: Message, runtime: AIRuntimeSettings, draft: CalendarBookingDraft, slot_iso: str) -> Message:
+def _confirm_booking(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft,
+    slot_iso: str,
+    attendee_email: str | None = None,
+) -> Message:
     tz_name = _calendar_tz_name(runtime, draft)
     slot_start = datetime.fromisoformat(slot_iso)
     if timezone.is_naive(slot_start):
@@ -459,16 +449,18 @@ def _confirm_booking(*, inbound: Message, runtime: AIRuntimeSettings, draft: Cal
     slot_end = slot_start + duration
 
     contact = inbound.conversation.contact
+    guest_email = _inviteable_attendee_email(
+        attendee_email or (draft.metadata or {}).get("guest_email") or getattr(contact, "email", None)
+    )
     notes = [
         f"Contacto: {contact.first_name} {contact.last_name}".strip(),
-        f"Email: {contact.email or 'N/D'}",
+        f"Email: {guest_email or contact.email or 'N/D'}",
         f"Teléfono: {contact.phone_number or contact.whatsapp_number or 'N/D'}",
         f"Conversación: {inbound.conversation_id}",
     ]
     summary = f"Cita con {contact.first_name} {contact.last_name}".strip()
 
-    sa = json.loads(runtime.google_service_account_json)
-    token = get_service_account_token(sa)
+    token = _google_token(runtime, for_events=True)
     event = create_event(
         access_token=token,
         calendar_id=runtime.google_calendar_id,
@@ -477,11 +469,15 @@ def _confirm_booking(*, inbound: Message, runtime: AIRuntimeSettings, draft: Cal
         start_dt=slot_start,
         end_dt=slot_end,
         timezone=tz_name,
-        attendee_email=_inviteable_attendee_email(getattr(contact, "email", None)),
+        attendee_email=guest_email,
+        add_google_meet=True,
+        send_updates=True,
     )
 
     google_event_id = str(event.get("id") or "")
     google_html_link = event.get("htmlLink")
+    meet_uri = (event.get("_meet_uri") or event.get("hangoutLink") or "").strip() or None
+    invited = bool(event.get("_attendee_invited"))
     activity = None
     try:
         activity = _sync_crm_meeting_activity(
@@ -500,28 +496,181 @@ def _confirm_booking(*, inbound: Message, runtime: AIRuntimeSettings, draft: Cal
     draft.metadata = {
         **(draft.metadata or {}),
         "google_event_html_link": google_html_link,
+        "google_meet_uri": meet_uri,
+        "guest_email": guest_email,
+        "attendee_invited": invited,
         "crm_activity_id": str(activity.id) if activity else None,
         "deal_id": str(activity.deal_id) if activity and activity.deal_id else None,
     }
     draft.save(update_fields=["status", "selected_slot", "google_event_id", "metadata", "updated_at"])
 
+    label = _format_slot_label(slot_start, tz_name)
+    parts = [f"Listo, tu cita quedó agendada para {label}."]
+    if meet_uri:
+        parts.append(f"Enlace de Google Meet: {meet_uri}")
+    if guest_email and invited:
+        parts.append(f"Te enviamos la invitación a {guest_email} para que quede en tu calendario.")
+    elif guest_email and not invited:
+        parts.append(
+            f"Registré tu correo ({guest_email}). "
+            "Si no te llega la invitación automática, entra con el enlace de Meet de arriba."
+        )
+    parts.append("Si necesitas reagendar, avísame.")
+
     return Message.objects.create(
         conversation=inbound.conversation,
         sender_type="ai_bot",
-        content=(
-            f"Listo, tu cita quedó agendada para "
-            f"{_format_slot_label(slot_start, tz_name)}. "
-            "Te esperamos; si necesitas reagendar, avísame."
-        ),
+        content=" ".join(parts),
         message_type="text",
         status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
         is_ai_generated=True,
         ai_context_used={
             "calendar_booking_confirmed": True,
             "google_event_id": draft.google_event_id,
+            "google_meet_uri": meet_uri,
+            "attendee_invited": invited,
             "crm_activity_id": str(activity.id) if activity else None,
         },
     )
+
+
+def _request_email_or_confirm(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft,
+    slot_iso: str,
+) -> Message:
+    """Ask for a real email before booking, or confirm immediately if already known."""
+    contact = inbound.conversation.contact
+    existing = _inviteable_attendee_email(getattr(contact, "email", None))
+    if existing:
+        try:
+            return _confirm_booking(
+                inbound=inbound,
+                runtime=runtime,
+                draft=draft,
+                slot_iso=slot_iso,
+                attendee_email=existing,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed confirming booking with existing email")
+            return Message.objects.create(
+                conversation=inbound.conversation,
+                sender_type="ai_bot",
+                content=(
+                    "Intenté reservar la cita pero hubo un error con el calendario. "
+                    "¿Te comparto nuevos horarios?"
+                ),
+                message_type="text",
+                status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+                is_ai_generated=True,
+                ai_context_used={"calendar_booking_error": str(exc)},
+            )
+
+    tz_name = _calendar_tz_name(runtime, draft)
+    slot_start = datetime.fromisoformat(slot_iso)
+    if timezone.is_naive(slot_start):
+        slot_start = slot_start.replace(tzinfo=_tz(tz_name))
+    else:
+        slot_start = slot_start.astimezone(_tz(tz_name))
+
+    draft.status = "pending_email"
+    draft.selected_slot = slot_start
+    draft.metadata = {
+        **(draft.metadata or {}),
+        "pending_slot_iso": slot_iso,
+    }
+    draft.save(update_fields=["status", "selected_slot", "metadata", "updated_at"])
+
+    return Message.objects.create(
+        conversation=inbound.conversation,
+        sender_type="ai_bot",
+        content=(
+            f"Perfecto, dejamos tentativo el {_format_slot_label(slot_start, tz_name)}. "
+            "Para enviarte la invitación a tu calendario con el enlace de Google Meet, "
+            "¿me compartes tu correo electrónico?"
+        ),
+        message_type="text",
+        status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+        is_ai_generated=True,
+        ai_context_used={
+            "calendar_waiting_email": True,
+            "pending_slot_iso": slot_iso,
+        },
+    )
+
+
+def _handle_pending_email(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft,
+    text: str,
+) -> Message:
+    email = _parse_email_from_text(text) or _inviteable_attendee_email(text.strip())
+    if not email:
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content=(
+                "Necesito un correo válido para enviarte la invitación "
+                "(por ejemplo: nombre@gmail.com)."
+            ),
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_email": True},
+        )
+
+    contact = inbound.conversation.contact
+    if contact and (contact.email or "") != email:
+        contact.email = email
+        contact.save(update_fields=["email", "updated_at"])
+
+    slot_iso = (draft.metadata or {}).get("pending_slot_iso")
+    if not slot_iso and draft.selected_slot:
+        slot_iso = draft.selected_slot.isoformat()
+    if not slot_iso:
+        draft.status = "pending_selection"
+        draft.save(update_fields=["status", "updated_at"])
+        return offer_availability_slots(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            intro="Gracias por el correo. Elige de nuevo el horario y te confirmo la cita:",
+        )
+
+    draft.metadata = {**(draft.metadata or {}), "guest_email": email}
+    draft.save(update_fields=["metadata", "updated_at"])
+    try:
+        return _confirm_booking(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            slot_iso=str(slot_iso),
+            attendee_email=email,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed confirming booking after collecting email")
+        draft.status = "pending_selection"
+        draft.save(update_fields=["status", "updated_at"])
+        return offer_availability_slots(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            intro=(
+                "Guardé tu correo, pero hubo un problema al crear el evento. "
+                "Elige de nuevo un horario:"
+            ),
+        )
+
+
+def _parse_email_from_text(text: str) -> str | None:
+    match = re.search(r"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}", text or "", flags=re.I)
+    if not match:
+        return None
+    return _inviteable_attendee_email(match.group(0))
 
 
 def _has_schedule_intent(text: str) -> bool:
@@ -622,7 +771,7 @@ def _is_preferred_slot_free(
     tz_name = _calendar_tz_name(runtime, draft)
     try:
         sa = json.loads(runtime.google_service_account_json)
-        token = get_service_account_token(sa)
+        token = _google_token(runtime, for_events=False)
         busy = freebusy_query(
             access_token=token,
             calendar_id=runtime.google_calendar_id,

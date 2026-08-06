@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -12,7 +14,11 @@ import requests
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
+logger = logging.getLogger(__name__)
+
 GOOGLE_CAL_SCOPE = "https://www.googleapis.com/auth/calendar"
+GOOGLE_MEET_SPACE_SCOPE = "https://www.googleapis.com/auth/meetings.space.created"
+GOOGLE_EVENT_SCOPES = f"{GOOGLE_CAL_SCOPE} {GOOGLE_MEET_SPACE_SCOPE}"
 
 
 def _b64url(data: bytes) -> str:
@@ -24,16 +30,24 @@ def _sign_rs256(payload: bytes, private_key_pem: str) -> bytes:
     return key.sign(payload, padding.PKCS1v15(), hashes.SHA256())
 
 
-def build_service_account_jwt(sa_info: dict[str, Any], scope: str = GOOGLE_CAL_SCOPE) -> str:
+def build_service_account_jwt(
+    sa_info: dict[str, Any],
+    scope: str = GOOGLE_CAL_SCOPE,
+    *,
+    subject: str | None = None,
+) -> str:
     now = int(datetime.now(tz=UTC).timestamp())
     header = {"alg": "RS256", "typ": "JWT"}
-    claim_set = {
+    claim_set: dict[str, Any] = {
         "iss": sa_info["client_email"],
         "scope": scope,
         "aud": sa_info.get("token_uri", "https://oauth2.googleapis.com/token"),
         "exp": now + 3600,
         "iat": now,
     }
+    # Domain-Wide Delegation: impersonate a Workspace user (required to invite guests / Meet).
+    if subject:
+        claim_set["sub"] = subject.strip()
     encoded_header = _b64url(json.dumps(header, separators=(",", ":")).encode("utf-8"))
     encoded_claims = _b64url(json.dumps(claim_set, separators=(",", ":")).encode("utf-8"))
     signing_input = f"{encoded_header}.{encoded_claims}".encode("utf-8")
@@ -41,8 +55,13 @@ def build_service_account_jwt(sa_info: dict[str, Any], scope: str = GOOGLE_CAL_S
     return f"{encoded_header}.{encoded_claims}.{_b64url(signature)}"
 
 
-def get_service_account_token(sa_info: dict[str, Any], scope: str = GOOGLE_CAL_SCOPE) -> str:
-    assertion = build_service_account_jwt(sa_info, scope=scope)
+def get_service_account_token(
+    sa_info: dict[str, Any],
+    scope: str = GOOGLE_CAL_SCOPE,
+    *,
+    subject: str | None = None,
+) -> str:
+    assertion = build_service_account_jwt(sa_info, scope=scope, subject=subject)
     token_uri = sa_info.get("token_uri", "https://oauth2.googleapis.com/token")
     response = requests.post(
         token_uri,
@@ -96,6 +115,30 @@ def freebusy_query(
     return out
 
 
+def create_meet_space(*, access_token: str) -> dict[str, Any] | None:
+    """Create a Google Meet space via Meet API. Returns space payload or None."""
+    response = requests.post(
+        "https://meet.googleapis.com/v2/spaces",
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+        json={"config": {"accessType": "OPEN"}},
+        timeout=30,
+    )
+    if response.status_code >= 400:
+        logger.warning("Meet space create failed: %s %s", response.status_code, response.text[:400])
+        return None
+    return response.json()
+
+
+def _extract_meet_uri(event: dict[str, Any]) -> str | None:
+    hangout = (event.get("hangoutLink") or "").strip()
+    if hangout:
+        return hangout
+    for ep in (event.get("conferenceData") or {}).get("entryPoints") or []:
+        if (ep.get("entryPointType") or "") == "video" and ep.get("uri"):
+            return str(ep["uri"]).strip()
+    return None
+
+
 def create_event(
     *,
     access_token: str,
@@ -107,40 +150,114 @@ def create_event(
     timezone: str,
     attendee_email: str | None = None,
     send_updates: bool = True,
+    add_google_meet: bool = True,
 ) -> dict[str, Any]:
-    cal_id = quote(calendar_id, safe="@")
-    payload: dict[str, Any] = {
-        "summary": summary[:255],
-        "description": description[:8000],
-        "start": {"dateTime": start_dt.isoformat(), "timeZone": timezone},
-        "end": {"dateTime": end_dt.isoformat(), "timeZone": timezone},
-    }
-    invite = (attendee_email or "").strip() or None
-    if invite:
-        payload["attendees"] = [{"email": invite}]
+    """Create a Calendar event, optionally with Google Meet and guest invite.
 
-    def _post(*, with_invite: bool) -> Any:
-        body = dict(payload)
-        if not with_invite:
-            body.pop("attendees", None)
-        params = "?sendUpdates=all" if (send_updates and with_invite and invite) else ""
-        url = f"https://www.googleapis.com/calendar/v3/calendars/{cal_id}/events{params}"
+    Query params include conferenceDataVersion=1 so Meet is attached to the event.
+    """
+    cal_id = quote(calendar_id, safe="@")
+    invite = (attendee_email or "").strip() or None
+    meet_uri: str | None = None
+    desc = description[:8000]
+
+    if add_google_meet:
+        space = create_meet_space(access_token=access_token)
+        if space:
+            meet_uri = (space.get("meetingUri") or "").strip() or None
+
+    def _build_payload(*, with_invite: bool, with_meet_create: bool, meet_link: str | None) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "summary": summary[:255],
+            "description": desc,
+            "start": {"dateTime": start_dt.isoformat(), "timeZone": timezone},
+            "end": {"dateTime": end_dt.isoformat(), "timeZone": timezone},
+        }
+        if with_invite and invite:
+            body["attendees"] = [{"email": invite, "responseStatus": "needsAction"}]
+        if meet_link:
+            body["location"] = meet_link
+            if meet_link not in body["description"]:
+                body["description"] = f"{body['description']}\n\nGoogle Meet: {meet_link}".strip()[:8000]
+            # Attach Meet as conference entry so Calendar UI shows Join.
+            conference_id = meet_link.rstrip("/").split("/")[-1]
+            body["conferenceData"] = {
+                "conferenceId": conference_id,
+                "conferenceSolution": {
+                    "key": {"type": "hangoutsMeet"},
+                    "name": "Google Meet",
+                },
+                "entryPoints": [
+                    {
+                        "entryPointType": "video",
+                        "uri": meet_link,
+                        "label": meet_link.replace("https://", ""),
+                    }
+                ],
+            }
+        elif with_meet_create:
+            body["conferenceData"] = {
+                "createRequest": {
+                    "requestId": str(uuid.uuid4()),
+                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
+                }
+            }
+        return body
+
+    def _post(payload: dict[str, Any], *, with_invite: bool) -> requests.Response:
+        params: list[str] = ["conferenceDataVersion=1"]
+        if send_updates and with_invite and invite:
+            params.append("sendUpdates=all")
+        url = f"https://www.googleapis.com/calendar/v3/calendars/{cal_id}/events?{'&'.join(params)}"
         return requests.post(
             url,
             headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
-            json=body,
+            json=payload,
             timeout=30,
         )
 
-    response = _post(with_invite=bool(invite))
+    # Prefer Meet space URI when available; else ask Calendar to create Meet.
+    payload = _build_payload(
+        with_invite=bool(invite),
+        with_meet_create=add_google_meet and not meet_uri,
+        meet_link=meet_uri,
+    )
+    response = _post(payload, with_invite=bool(invite))
+
+    # Retry without guests if SA lacks Domain-Wide Delegation.
     if response.status_code == 403 and invite:
-        # Service accounts cannot invite guests without Domain-Wide Delegation.
-        # Retry as a calendar-only event (contact details stay in the description).
         err_text = (response.text or "").lower()
         if "forbiddenforserviceaccounts" in err_text or "domain-wide" in err_text or "attendee" in err_text:
-            response = _post(with_invite=False)
+            logger.warning("Calendar invite blocked for SA; creating event without attendees")
+            payload = _build_payload(
+                with_invite=False,
+                with_meet_create=add_google_meet and not meet_uri,
+                meet_link=meet_uri,
+            )
+            response = _post(payload, with_invite=False)
+
+    # Retry without conference createRequest if calendar rejects conference type.
+    if response.status_code == 400 and add_google_meet and not meet_uri:
+        err_text = (response.text or "").lower()
+        if "conference" in err_text or "invalid" in err_text:
+            logger.warning("Calendar Meet createRequest rejected; creating event without conferenceData")
+            payload = _build_payload(with_invite=bool(invite), with_meet_create=False, meet_link=None)
+            response = _post(payload, with_invite=bool(invite))
+            if response.status_code == 403 and invite:
+                payload = _build_payload(with_invite=False, with_meet_create=False, meet_link=None)
+                response = _post(payload, with_invite=False)
+
     response.raise_for_status()
-    return response.json()
+    event = response.json()
+    if meet_uri and not _extract_meet_uri(event):
+        event["hangoutLink"] = meet_uri
+        event["_meet_uri"] = meet_uri
+    elif _extract_meet_uri(event):
+        event["_meet_uri"] = _extract_meet_uri(event)
+    event["_attendee_invited"] = bool(invite) and any(
+        (a.get("email") or "").lower() == invite.lower() for a in (event.get("attendees") or [])
+    )
+    return event
 
 
 def list_events(

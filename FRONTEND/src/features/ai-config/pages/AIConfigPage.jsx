@@ -91,6 +91,7 @@ const AIConfigPage = () => {
     google_calendar_enabled: false,
     google_calendar_id: "",
     google_calendar_timezone: "America/Bogota",
+    google_calendar_delegated_user: "",
     google_slot_minutes: 30,
     google_booking_window_days: 7,
     has_google_service_account_json: false,
@@ -189,6 +190,7 @@ const AIConfigPage = () => {
         google_calendar_enabled: Boolean(runtime.google_calendar_enabled),
         google_calendar_id: runtime.google_calendar_id || "",
         google_calendar_timezone: runtime.google_calendar_timezone || "America/Bogota",
+        google_calendar_delegated_user: runtime.google_calendar_delegated_user || "",
         google_slot_minutes: runtime.google_slot_minutes ?? 30,
         google_booking_window_days: runtime.google_booking_window_days ?? 7,
         has_google_service_account_json: Boolean(runtime.has_google_service_account_json),
@@ -363,6 +365,7 @@ const AIConfigPage = () => {
       google_calendar_enabled: Boolean(runtimeForm.google_calendar_enabled),
       google_calendar_id: (runtimeForm.google_calendar_id || "").trim(),
       google_calendar_timezone: (runtimeForm.google_calendar_timezone || "America/Bogota").trim() || "America/Bogota",
+      google_calendar_delegated_user: (runtimeForm.google_calendar_delegated_user || "").trim(),
       google_slot_minutes: Math.max(15, Math.min(180, Math.floor(toNumberOr(runtimeForm.google_slot_minutes, 30)))),
       google_booking_window_days: Math.max(
         1,
@@ -418,6 +421,7 @@ const AIConfigPage = () => {
       google_calendar_enabled: Boolean(updated.google_calendar_enabled),
       google_calendar_id: updated.google_calendar_id || "",
       google_calendar_timezone: updated.google_calendar_timezone || "America/Bogota",
+      google_calendar_delegated_user: updated.google_calendar_delegated_user || "",
       google_slot_minutes: updated.google_slot_minutes ?? 30,
       google_booking_window_days: updated.google_booking_window_days ?? 7,
       has_google_service_account_json: Boolean(updated.has_google_service_account_json),
@@ -759,6 +763,25 @@ const AIConfigPage = () => {
                     setRuntimeForm((prev) => ({ ...prev, google_calendar_timezone: e.target.value }))
                   }
                 />
+              </Form.Group>
+              <Form.Group className="mb-2">
+                <Form.Label>Usuario delegado (Workspace, opcional)</Form.Label>
+                <Form.Control
+                  type="email"
+                  placeholder="dueño-del-calendario@tu-empresa.com"
+                  value={runtimeForm.google_calendar_delegated_user}
+                  onChange={(e) =>
+                    setRuntimeForm((prev) => ({
+                      ...prev,
+                      google_calendar_delegated_user: e.target.value,
+                    }))
+                  }
+                />
+                <Form.Text className="text-muted">
+                  Requerido para invitar al cliente por correo y generar Meet como ese usuario
+                  (Domain-Wide Delegation en Google Workspace). Con Gmail personal las invitaciones
+                  automáticas están limitadas; igual pedimos el correo y adjuntamos Meet cuando sea posible.
+                </Form.Text>
               </Form.Group>
               <Form.Group className="mb-2">
                 <Form.Label>Service Account JSON</Form.Label>
