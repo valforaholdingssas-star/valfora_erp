@@ -296,7 +296,8 @@ const ChatView = () => {
               ? "open"
               : undefined
           : undefined,
-      strict_whatsapp_origin: channelFilter === "whatsapp" ? true : undefined,
+      closed_whatsapp_origin_only:
+        channelFilter === "whatsapp" && conversationStatusFilter === "closed" ? true : undefined,
       search_text: searchQuery || undefined,
       search: searchQuery || undefined,
       deal_stage: filters.dealStage || undefined,

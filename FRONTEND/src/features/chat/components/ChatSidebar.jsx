@@ -43,11 +43,12 @@ const ChatSidebar = ({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
         />
-        <div className="d-flex gap-2 mb-2">
+        <div className="d-flex gap-2 mb-2 flex-wrap app-chat-sidebar-switches">
           <Button
             size="sm"
             variant={channelFilter === "whatsapp" ? "primary" : "outline-secondary"}
             onClick={() => onChannelFilterChange("whatsapp")}
+            className="app-chat-sidebar-switch-btn"
           >
             WhatsApp
           </Button>
@@ -55,16 +56,18 @@ const ChatSidebar = ({
             size="sm"
             variant={channelFilter === "" ? "primary" : "outline-secondary"}
             onClick={() => onChannelFilterChange("")}
+            className="app-chat-sidebar-switch-btn"
           >
             Todos
           </Button>
         </div>
         {channelFilter === "whatsapp" && (
-          <div className="d-flex gap-2 mb-2 flex-wrap">
+          <div className="d-flex gap-2 mb-2 flex-wrap app-chat-sidebar-switches">
             <Button
               size="sm"
               variant={statusFilter === "open" ? "dark" : "outline-secondary"}
               onClick={() => onStatusFilterChange("open")}
+              className="app-chat-sidebar-switch-btn"
             >
               Abiertos
             </Button>
@@ -72,17 +75,19 @@ const ChatSidebar = ({
               size="sm"
               variant={statusFilter === "closed" ? "dark" : "outline-secondary"}
               onClick={() => onStatusFilterChange("closed")}
+              className="app-chat-sidebar-switch-btn"
             >
               Cerrados
             </Button>
           </div>
         )}
         {channelFilter === "whatsapp" && (whatsAppLines || []).length > 0 && (
-          <div className="d-flex flex-wrap gap-2 mb-1 app-chat-sidebar-line-switches">
+          <div className="d-flex flex-wrap gap-2 mb-1 app-chat-sidebar-line-switches app-chat-sidebar-switches">
             <Button
               size="sm"
               variant={selectedWhatsAppLine === "" ? "dark" : "outline-secondary"}
               onClick={() => onSelectWhatsAppLine("")}
+              className="app-chat-sidebar-switch-btn app-chat-sidebar-switch-btn--count"
             >
               Todas
               <span className="ms-1">({totalCount || conversations?.length || 0})</span>
@@ -96,6 +101,7 @@ const ChatSidebar = ({
                   size="sm"
                   variant={selectedWhatsAppLine === line.id ? "dark" : "outline-secondary"}
                   onClick={() => onSelectWhatsAppLine(line.id)}
+                  className="app-chat-sidebar-switch-btn app-chat-sidebar-switch-btn--count"
                 >
                   {label}
                   <span className="ms-1">({count})</span>
@@ -157,10 +163,10 @@ const ChatSidebar = ({
                       </Badge>
                     )}
                     {c.whatsapp_line_name && (
-                      <span className="app-chat-sidebar-line-label">{c.whatsapp_line_name}</span>
+                      <span className="app-chat-sidebar-line-label app-chat-sidebar-line-tag">{c.whatsapp_line_name}</span>
                     )}
                     {c.__remainingWindowLabel && (
-                      <span className="app-chat-sidebar-line-label">{c.__remainingWindowLabel}</span>
+                      <span className="app-chat-sidebar-line-label app-chat-sidebar-line-tag is-window">{c.__remainingWindowLabel}</span>
                     )}
                     {c.status === "archived" && (
                       <Badge pill bg="secondary" className="app-chat-sidebar-flag">

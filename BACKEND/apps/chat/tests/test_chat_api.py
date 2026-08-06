@@ -384,11 +384,15 @@ def test_whatsapp_conversation_filters_only_real_whatsapp_origin_and_real_window
     open_ids = {row["id"] for row in body_open["results"]}
     assert str(conv_open.id) in open_ids
     assert str(conv_closed.id) not in open_ids
-    assert str(conv_workana.id) not in open_ids
+    assert str(conv_workana.id) in open_ids
     open_row = next(row for row in body_open["results"] if row["id"] == str(conv_open.id))
+    open_workana_row = next(row for row in body_open["results"] if row["id"] == str(conv_workana.id))
     assert open_row["is_whatsapp_origin"] is True
     assert open_row["is_whatsapp_window_closed"] is False
     assert open_row["latest_deal_source"] == "whatsapp"
+    assert open_workana_row["is_whatsapp_origin"] is False
+    assert open_workana_row["is_whatsapp_window_closed"] is False
+    assert open_workana_row["latest_deal_source"] == "workana"
 
     response_closed = client.get("/api/v1/chat/conversations/", {"channel": "whatsapp", "whatsapp_window_status": "closed"})
     assert response_closed.status_code == 200

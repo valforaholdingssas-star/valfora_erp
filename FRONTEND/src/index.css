@@ -2560,6 +2560,42 @@ a {
   font-weight: 600;
 }
 
+.app-chat-sidebar-line-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vf-primary-soft) 66%, var(--vf-surface));
+  border: 1px solid color-mix(in srgb, var(--vf-primary) 12%, var(--vf-border));
+  color: var(--vf-text-soft);
+}
+
+.app-chat-sidebar-line-tag.is-window {
+  background: color-mix(in srgb, var(--vf-success-soft) 72%, var(--vf-surface));
+  border-color: color-mix(in srgb, var(--vf-success) 18%, var(--vf-border));
+  color: #1f7a4f;
+  font-weight: 700;
+}
+
+.app-chat-sidebar-switches {
+  align-items: center;
+}
+
+.app-chat-sidebar-switch-btn.btn {
+  border-radius: 999px;
+  min-height: 34px;
+  padding: 0.45rem 0.88rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.app-chat-sidebar-switch-btn--count.btn span {
+  opacity: 0.72;
+  font-weight: 700;
+}
+
 .app-chat-sidebar-line-switches .btn {
   border-radius: 999px;
 }
