@@ -284,7 +284,19 @@ const ChatView = () => {
     const params = {
       page_size: 50,
       channel: channelFilter || undefined,
-      status: conversationStatusFilter === "closed" ? "archived" : conversationStatusFilter === "open" ? "active" : undefined,
+      status:
+        channelFilter === "whatsapp"
+          ? undefined
+          : undefined,
+      whatsapp_window_status:
+        channelFilter === "whatsapp"
+          ? conversationStatusFilter === "closed"
+            ? "closed"
+            : conversationStatusFilter === "open"
+              ? "open"
+              : undefined
+          : undefined,
+      strict_whatsapp_origin: channelFilter === "whatsapp" ? true : undefined,
       search_text: searchQuery || undefined,
       search: searchQuery || undefined,
       deal_stage: filters.dealStage || undefined,
@@ -445,6 +457,12 @@ const ChatView = () => {
       setSelectedWhatsAppLine("");
     }
   }, [channelFilter, selectedWhatsAppLine]);
+
+  useEffect(() => {
+    if (channelFilter !== "whatsapp" && conversationStatusFilter !== "open") {
+      setConversationStatusFilter("open");
+    }
+  }, [channelFilter, conversationStatusFilter]);
 
   useEffect(() => {
     if (activeId) {
@@ -1211,6 +1229,7 @@ const ChatView = () => {
           <ChatSidebar
             loading={loadingList}
             conversations={filteredConversations}
+            totalCount={Number(conversations?.count || filteredConversations.length || 0)}
             activeId={activeId}
             onSelect={selectConv}
             query={searchQuery}
@@ -1314,13 +1333,15 @@ const ChatView = () => {
               </Form.Select>
             </Form.Group>
           )}
-          <Form.Group>
-            <Form.Label>Estado de conversación</Form.Label>
-            <Form.Select value={conversationStatusFilter} onChange={(e) => setConversationStatusFilter(e.target.value)}>
-              <option value="open">Abiertas</option>
-              <option value="closed">Cerradas</option>
-            </Form.Select>
-          </Form.Group>
+          {channelFilter === "whatsapp" && (
+            <Form.Group>
+              <Form.Label>Estado de conversación</Form.Label>
+              <Form.Select value={conversationStatusFilter} onChange={(e) => setConversationStatusFilter(e.target.value)}>
+                <option value="open">Abiertas</option>
+                <option value="closed">Cerradas</option>
+              </Form.Select>
+            </Form.Group>
+          )}
           <Form.Group>
             <Form.Label>Etapa del deal</Form.Label>
             <Form.Select value={filters.dealStage} onChange={(e) => setFilters((p) => ({ ...p, dealStage: e.target.value }))}>

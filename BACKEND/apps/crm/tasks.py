@@ -193,6 +193,9 @@ def advance_closed_whatsapp_conversations() -> int:
             is_active=True,
             channel="whatsapp",
             customer_service_window_expires__lt=now,
+            deal__isnull=False,
+            deal__is_active=True,
+            deal__source="whatsapp",
         )
         .select_related("deal", "contact")
         .order_by("customer_service_window_expires")
@@ -204,8 +207,6 @@ def advance_closed_whatsapp_conversations() -> int:
             conversation.save(update_fields=["status", "closed_at", "updated_at"])
 
         deal = conversation.deal
-        if not deal or not deal.is_active:
-            continue
         if PipelineAutomationService.normalize_stage(deal.stage) == target_stage:
             continue
         result = PipelineAutomationService.move_stage(

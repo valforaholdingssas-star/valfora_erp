@@ -12,6 +12,7 @@ const initials = (name = "") =>
 const ChatSidebar = ({
   loading,
   conversations,
+  totalCount,
   activeId,
   onSelect,
   query,
@@ -32,7 +33,7 @@ const ChatSidebar = ({
         <div className="d-flex justify-content-between align-items-center px-2 mb-2">
           <div>
             <div className="app-chat-sidebar-title">Bandeja</div>
-            <div className="app-chat-sidebar-subtitle">{conversations?.length || 0} conversaciones</div>
+            <div className="app-chat-sidebar-subtitle">{totalCount || conversations?.length || 0} conversaciones</div>
           </div>
         </div>
         <Form.Control
@@ -58,22 +59,24 @@ const ChatSidebar = ({
             Todos
           </Button>
         </div>
-        <div className="d-flex gap-2 mb-2 flex-wrap">
-          <Button
-            size="sm"
-            variant={statusFilter === "open" ? "dark" : "outline-secondary"}
-            onClick={() => onStatusFilterChange("open")}
-          >
-            Abiertos
-          </Button>
-          <Button
-            size="sm"
-            variant={statusFilter === "closed" ? "dark" : "outline-secondary"}
-            onClick={() => onStatusFilterChange("closed")}
-          >
-            Cerrados
-          </Button>
-        </div>
+        {channelFilter === "whatsapp" && (
+          <div className="d-flex gap-2 mb-2 flex-wrap">
+            <Button
+              size="sm"
+              variant={statusFilter === "open" ? "dark" : "outline-secondary"}
+              onClick={() => onStatusFilterChange("open")}
+            >
+              Abiertos
+            </Button>
+            <Button
+              size="sm"
+              variant={statusFilter === "closed" ? "dark" : "outline-secondary"}
+              onClick={() => onStatusFilterChange("closed")}
+            >
+              Cerrados
+            </Button>
+          </div>
+        )}
         {channelFilter === "whatsapp" && (whatsAppLines || []).length > 0 && (
           <div className="d-flex flex-wrap gap-2 mb-1 app-chat-sidebar-line-switches">
             <Button
@@ -82,7 +85,7 @@ const ChatSidebar = ({
               onClick={() => onSelectWhatsAppLine("")}
             >
               Todas
-              <span className="ms-1">({conversations?.length || 0})</span>
+              <span className="ms-1">({totalCount || conversations?.length || 0})</span>
             </Button>
             {whatsAppLines.map((line) => {
               const label = line.line_name || line.internal_name || line.verified_name || line.display_phone_number;
@@ -178,6 +181,7 @@ const ChatSidebar = ({
 ChatSidebar.propTypes = {
   loading: PropTypes.bool,
   conversations: PropTypes.arrayOf(PropTypes.object),
+  totalCount: PropTypes.number,
   activeId: PropTypes.string,
   onSelect: PropTypes.func.isRequired,
   query: PropTypes.string.isRequired,

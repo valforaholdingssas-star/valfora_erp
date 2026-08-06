@@ -1,10 +1,12 @@
 """Tests for chat REST API."""
 
 import json
+from datetime import timedelta
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.chat.models import Conversation, Message
@@ -294,9 +296,11 @@ def test_conversation_filters_by_whatsapp_phone_number(admin_user):
     conv_a, _ = Conversation.objects.get_or_create(contact=contact_a, deal=deal_a, channel="whatsapp", defaults={"whatsapp_phone_number": phone_a})
     conv_b, _ = Conversation.objects.get_or_create(contact=contact_b, deal=deal_b, channel="whatsapp", defaults={"whatsapp_phone_number": phone_b})
     conv_a.whatsapp_phone_number = phone_a
-    conv_a.save(update_fields=["whatsapp_phone_number", "updated_at"])
+    conv_a.customer_service_window_expires = timezone.now() + timedelta(hours=2)
+    conv_a.save(update_fields=["whatsapp_phone_number", "customer_service_window_expires", "updated_at"])
     conv_b.whatsapp_phone_number = phone_b
-    conv_b.save(update_fields=["whatsapp_phone_number", "updated_at"])
+    conv_b.customer_service_window_expires = timezone.now() + timedelta(hours=2)
+    conv_b.save(update_fields=["whatsapp_phone_number", "customer_service_window_expires", "updated_at"])
 
     client = APIClient()
     client.force_authenticate(user=admin_user)
@@ -308,3 +312,91 @@ def test_conversation_filters_by_whatsapp_phone_number(admin_user):
     assert str(conv_b.id) not in ids
     row = next(item for item in body["results"] if item["id"] == str(conv_a.id))
     assert row["whatsapp_line_name"] == "Línea A"
+
+
+@pytest.mark.django_db
+def test_whatsapp_conversation_filters_only_real_whatsapp_origin_and_real_window_state(admin_user):
+    now = timezone.now()
+
+    contact_open = Contact.objects.create(
+        first_name="WA",
+        last_name="Open",
+        email="waopen@example.com",
+        whatsapp_number="573001230001",
+        created_by=admin_user,
+        source="whatsapp",
+    )
+    deal_open = Deal.objects.create(
+        title="WA Open",
+        contact=contact_open,
+        source="whatsapp",
+        assigned_to=admin_user,
+    )
+    conv_open, _ = Conversation.objects.get_or_create(contact=contact_open, deal=deal_open, channel="whatsapp")
+    conv_open.customer_service_window_expires = now + timedelta(hours=3)
+    conv_open.status = "active"
+    conv_open.save(update_fields=["customer_service_window_expires", "status", "updated_at"])
+
+    contact_closed = Contact.objects.create(
+        first_name="WA",
+        last_name="Closed",
+        email="waclosed@example.com",
+        whatsapp_number="573001230002",
+        created_by=admin_user,
+        source="whatsapp",
+    )
+    deal_closed = Deal.objects.create(
+        title="WA Closed",
+        contact=contact_closed,
+        source="whatsapp",
+        assigned_to=admin_user,
+    )
+    conv_closed, _ = Conversation.objects.get_or_create(contact=contact_closed, deal=deal_closed, channel="whatsapp")
+    conv_closed.customer_service_window_expires = now - timedelta(minutes=10)
+    conv_closed.status = "active"
+    conv_closed.save(update_fields=["customer_service_window_expires", "status", "updated_at"])
+
+    contact_workana = Contact.objects.create(
+        first_name="Workana",
+        last_name="Lead",
+        email="workana@example.com",
+        whatsapp_number="573001230003",
+        created_by=admin_user,
+        source="workana",
+    )
+    deal_workana = Deal.objects.create(
+        title="Workana via WhatsApp",
+        contact=contact_workana,
+        source="workana",
+        assigned_to=admin_user,
+    )
+    conv_workana, _ = Conversation.objects.get_or_create(contact=contact_workana, deal=deal_workana, channel="whatsapp")
+    conv_workana.customer_service_window_expires = now + timedelta(hours=2)
+    conv_workana.status = "active"
+    conv_workana.save(update_fields=["customer_service_window_expires", "status", "updated_at"])
+
+    client = APIClient()
+    client.force_authenticate(user=admin_user)
+
+    response_open = client.get("/api/v1/chat/conversations/", {"channel": "whatsapp", "whatsapp_window_status": "open"})
+    assert response_open.status_code == 200
+    body_open = _j(response_open)["data"]
+    open_ids = {row["id"] for row in body_open["results"]}
+    assert str(conv_open.id) in open_ids
+    assert str(conv_closed.id) not in open_ids
+    assert str(conv_workana.id) not in open_ids
+    open_row = next(row for row in body_open["results"] if row["id"] == str(conv_open.id))
+    assert open_row["is_whatsapp_origin"] is True
+    assert open_row["is_whatsapp_window_closed"] is False
+    assert open_row["latest_deal_source"] == "whatsapp"
+
+    response_closed = client.get("/api/v1/chat/conversations/", {"channel": "whatsapp", "whatsapp_window_status": "closed"})
+    assert response_closed.status_code == 200
+    body_closed = _j(response_closed)["data"]
+    closed_ids = {row["id"] for row in body_closed["results"]}
+    assert str(conv_open.id) not in closed_ids
+    assert str(conv_closed.id) in closed_ids
+    assert str(conv_workana.id) not in closed_ids
+    closed_row = next(row for row in body_closed["results"] if row["id"] == str(conv_closed.id))
+    assert closed_row["is_whatsapp_origin"] is True
+    assert closed_row["is_whatsapp_window_closed"] is True

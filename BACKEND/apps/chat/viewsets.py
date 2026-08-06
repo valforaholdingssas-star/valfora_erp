@@ -62,13 +62,29 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset().filter(deal__isnull=False)
         params = self.request.query_params
+        requested_channel = (params.get("channel") or "").strip().lower()
+        strict_whatsapp_origin = str(params.get("strict_whatsapp_origin", "true")).strip().lower() not in {"0", "false", "no"}
+
+        if requested_channel == "whatsapp" and strict_whatsapp_origin:
+            qs = qs.filter(deal__source="whatsapp")
 
         status_filter = (params.get("status") or "").strip().lower()
+        whatsapp_window_status = (params.get("whatsapp_window_status") or "").strip().lower()
         include_closed = str(params.get("include_closed") or "").strip().lower() in {"1", "true", "yes"}
-        if status_filter == "closed":
-            qs = qs.filter(status="archived")
-        elif status_filter == "open" or not include_closed:
-            qs = qs.exclude(status="archived")
+        if requested_channel == "whatsapp":
+            now = timezone.now()
+            if whatsapp_window_status == "closed":
+                qs = qs.filter(
+                    Q(customer_service_window_expires__isnull=True)
+                    | Q(customer_service_window_expires__lte=now)
+                )
+            elif whatsapp_window_status == "open" or not include_closed:
+                qs = qs.filter(customer_service_window_expires__gt=now)
+        else:
+            if status_filter == "closed":
+                qs = qs.filter(status="archived")
+            elif status_filter == "open" or not include_closed:
+                qs = qs.exclude(status="archived")
 
         stage = params.get("deal_stage")
         if stage:

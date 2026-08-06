@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+from unittest.mock import patch
+
 import pytest
+from django.core.management import call_command
+from django.utils import timezone
 
 from apps.ai_config.models import AIRuntimeSettings
 from apps.chat.models import Conversation, Message
 from apps.crm.lead_engine import LeadEngine
+from apps.crm.pipeline_automation import PipelineAutomationService
+from apps.crm.tasks import advance_closed_whatsapp_conversations
 from apps.crm.models import Activity, Contact, Deal, DealStageHistory, LeadEngineConfig
 from apps.whatsapp.models import WhatsAppBusinessAccount, WhatsAppPhoneNumber
-from unittest.mock import patch
 
 
 @pytest.fixture
@@ -138,3 +144,117 @@ def test_lead_engine_new_whatsapp_conversation_inherits_global_ai_mode(wa_phone,
     conversation = out["conversation"]
     conversation.refresh_from_db()
     assert conversation.ai_mode_enabled is True
+
+
+@pytest.mark.django_db
+@patch("apps.crm.tasks.generate_business_summary_for_deal.delay")
+def test_advance_closed_whatsapp_conversations_only_moves_real_whatsapp_origin_deals(mock_summary_delay, admin_user):
+    now = timezone.now()
+
+    contact_whatsapp = Contact.objects.create(
+        first_name="Closed",
+        last_name="WhatsApp",
+        email="closedwa@example.com",
+        whatsapp_number="573009990001",
+        created_by=admin_user,
+        source="whatsapp",
+    )
+    deal_whatsapp = Deal.objects.create(
+        title="Closed WA Deal",
+        contact=contact_whatsapp,
+        source="whatsapp",
+        stage="qualified",
+        assigned_to=admin_user,
+    )
+    conv_whatsapp, _ = Conversation.objects.get_or_create(contact=contact_whatsapp, deal=deal_whatsapp, channel="whatsapp")
+    conv_whatsapp.customer_service_window_expires = now - timedelta(hours=2)
+    conv_whatsapp.status = "active"
+    conv_whatsapp.save(update_fields=["customer_service_window_expires", "status", "updated_at"])
+
+    contact_manual = Contact.objects.create(
+        first_name="Closed",
+        last_name="Manual",
+        email="closedmanual@example.com",
+        whatsapp_number="573009990002",
+        created_by=admin_user,
+        source="manual",
+    )
+    deal_manual = Deal.objects.create(
+        title="Closed Manual Deal",
+        contact=contact_manual,
+        source="manual",
+        stage="qualified",
+        assigned_to=admin_user,
+    )
+    conv_manual, _ = Conversation.objects.get_or_create(contact=contact_manual, deal=deal_manual, channel="whatsapp")
+    conv_manual.customer_service_window_expires = now - timedelta(hours=2)
+    conv_manual.status = "active"
+    conv_manual.save(update_fields=["customer_service_window_expires", "status", "updated_at"])
+
+    moved = advance_closed_whatsapp_conversations()
+
+    target_stage = PipelineAutomationService.get_follow_up_stage_key()
+    deal_whatsapp.refresh_from_db()
+    deal_manual.refresh_from_db()
+    conv_whatsapp.refresh_from_db()
+    conv_manual.refresh_from_db()
+
+    assert moved == 1
+    assert deal_whatsapp.stage == target_stage
+    assert deal_manual.stage == "qualified"
+    assert conv_whatsapp.status == "archived"
+    assert conv_manual.status == "active"
+    assert DealStageHistory.objects.filter(deal=deal_whatsapp, trigger="chat_window_closed").exists()
+    assert not DealStageHistory.objects.filter(deal=deal_manual, trigger="chat_window_closed").exists()
+    mock_summary_delay.assert_called_once_with(str(deal_whatsapp.id))
+
+
+@pytest.mark.django_db
+@patch("apps.crm.tasks.generate_business_summary_for_deal.delay")
+def test_repair_non_whatsapp_closed_window_moves_reverts_only_wrong_auto_move(mock_summary_delay, admin_user):
+    now = timezone.now()
+    target_stage = PipelineAutomationService.get_follow_up_stage_key()
+
+    contact_manual = Contact.objects.create(
+        first_name="Repair",
+        last_name="Manual",
+        email="repairmanual@example.com",
+        whatsapp_number="573009990003",
+        created_by=admin_user,
+        source="manual",
+    )
+    deal_manual = Deal.objects.create(
+        title="Repair Manual Deal",
+        contact=contact_manual,
+        source="manual",
+        stage="qualified",
+        assigned_to=admin_user,
+    )
+    conv_manual, _ = Conversation.objects.get_or_create(contact=contact_manual, deal=deal_manual, channel="whatsapp")
+    conv_manual.customer_service_window_expires = now - timedelta(hours=3)
+    conv_manual.status = "archived"
+    conv_manual.closed_at = now - timedelta(hours=2)
+    conv_manual.save(update_fields=["customer_service_window_expires", "status", "closed_at", "updated_at"])
+
+    move_result = PipelineAutomationService.move_stage(
+        deal=deal_manual,
+        to_stage=target_stage,
+        trigger="chat_window_closed",
+        moved_by=None,
+        notes="Movimiento erróneo de prueba.",
+    )
+    assert move_result.moved is True
+
+    call_command("repair_non_whatsapp_closed_window_moves", "--apply")
+
+    deal_manual.refresh_from_db()
+    conv_manual.refresh_from_db()
+    latest_history = deal_manual.stage_history.order_by("-created_at").first()
+
+    assert deal_manual.stage == "qualified"
+    assert conv_manual.status == "active"
+    assert conv_manual.closed_at is None
+    assert latest_history is not None
+    assert latest_history.trigger == "manual"
+    assert latest_history.to_stage == "qualified"
+    assert "no era origen WhatsApp" in latest_history.notes

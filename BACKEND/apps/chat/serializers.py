@@ -1,5 +1,6 @@
 """Serializers for chat API."""
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.ai_config.models import AIConfiguration
@@ -70,6 +71,10 @@ class ConversationSerializer(serializers.ModelSerializer):
     latest_deal_stage = serializers.SerializerMethodField()
     latest_deal_created_at = serializers.SerializerMethodField()
     latest_deal_assigned_to = serializers.SerializerMethodField()
+    latest_deal_source = serializers.SerializerMethodField()
+    contact_source = serializers.SerializerMethodField()
+    is_whatsapp_origin = serializers.SerializerMethodField()
+    is_whatsapp_window_closed = serializers.SerializerMethodField()
     whatsapp_line_name = serializers.SerializerMethodField()
     whatsapp_line_display_phone = serializers.SerializerMethodField()
     ai_configuration = serializers.PrimaryKeyRelatedField(
@@ -109,6 +114,10 @@ class ConversationSerializer(serializers.ModelSerializer):
             "latest_deal_stage",
             "latest_deal_created_at",
             "latest_deal_assigned_to",
+            "latest_deal_source",
+            "contact_source",
+            "is_whatsapp_origin",
+            "is_whatsapp_window_closed",
             "created_at",
             "updated_at",
         )
@@ -166,6 +175,27 @@ class ConversationSerializer(serializers.ModelSerializer):
     def get_latest_deal_assigned_to(self, obj: Conversation):
         deal = self._latest_deal(obj)
         return str(deal.assigned_to_id) if deal and deal.assigned_to_id else None
+
+    def get_latest_deal_source(self, obj: Conversation):
+        deal = self._latest_deal(obj)
+        return deal.source if deal else None
+
+    def get_contact_source(self, obj: Conversation):
+        return obj.contact.source if obj.contact_id else None
+
+    def get_is_whatsapp_origin(self, obj: Conversation):
+        deal = self._latest_deal(obj)
+        if deal:
+            return deal.source == "whatsapp"
+        return bool(obj.contact_id and obj.contact.source == "whatsapp")
+
+    def get_is_whatsapp_window_closed(self, obj: Conversation):
+        if obj.channel != "whatsapp":
+            return False
+        expires = obj.customer_service_window_expires
+        if not expires:
+            return True
+        return expires <= timezone.now()
 
     def get_whatsapp_line_name(self, obj: Conversation):
         phone = getattr(obj, "whatsapp_phone_number", None)
