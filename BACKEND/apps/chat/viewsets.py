@@ -256,8 +256,11 @@ class ConversationViewSet(viewsets.ModelViewSet):
             else:
                 qs = Message.objects.filter(conversation=conv, is_active=True).order_by("created_at")
             page = self.paginate_queryset(qs)
-            ser = MessageSerializer(page, many=True, context={"request": request})
-            return self.get_paginated_response(ser.data)
+            if page is not None:
+                ser = MessageSerializer(page, many=True, context={"request": request})
+                return self.get_paginated_response(ser.data)
+            ser = MessageSerializer(qs, many=True, context={"request": request})
+            return Response({"count": qs.count(), "results": ser.data})
         ser = MessageCreateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         uploaded_file = request.FILES.get("file")
