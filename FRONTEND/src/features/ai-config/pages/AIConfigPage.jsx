@@ -354,92 +354,107 @@ const AIConfigPage = () => {
     }
   };
 
+  const saveRuntimeSettings = async () => {
+    const payload = {
+      openai_embedding_model: runtimeForm.openai_embedding_model.trim() || "text-embedding-3-small",
+      openai_moderation_disabled: Boolean(runtimeForm.openai_moderation_disabled),
+      global_ai_mode_enabled: Boolean(runtimeForm.global_ai_mode_enabled),
+      clear_openai_api_key: Boolean(runtimeForm.clear_openai_api_key),
+      google_calendar_enabled: Boolean(runtimeForm.google_calendar_enabled),
+      google_calendar_id: (runtimeForm.google_calendar_id || "").trim(),
+      google_calendar_timezone: (runtimeForm.google_calendar_timezone || "America/Bogota").trim() || "America/Bogota",
+      google_slot_minutes: Math.max(15, Math.min(180, Math.floor(toNumberOr(runtimeForm.google_slot_minutes, 30)))),
+      google_booking_window_days: Math.max(
+        1,
+        Math.min(30, Math.floor(toNumberOr(runtimeForm.google_booking_window_days, 7))),
+      ),
+      clear_google_service_account_json: Boolean(runtimeForm.clear_google_service_account_json),
+      unipile_api_base_url:
+        (runtimeForm.unipile_api_base_url || "").trim() || "https://api1.unipile.com:13111/api/v1",
+      unipile_link_callback_url: (runtimeForm.unipile_link_callback_url || "").trim(),
+      linkedin_max_invitations_per_day: Math.max(
+        1,
+        Math.min(1000, Math.floor(toNumberOr(runtimeForm.linkedin_max_invitations_per_day, 40))),
+      ),
+      linkedin_max_search_results_per_day: Math.max(
+        1,
+        Math.min(100000, Math.floor(toNumberOr(runtimeForm.linkedin_max_search_results_per_day, 1000))),
+      ),
+      linkedin_max_messages_per_day: Math.max(
+        1,
+        Math.min(5000, Math.floor(toNumberOr(runtimeForm.linkedin_max_messages_per_day, 50))),
+      ),
+      clear_unipile_api_key: Boolean(runtimeForm.clear_unipile_api_key),
+      clear_unipile_webhook_secret: Boolean(runtimeForm.clear_unipile_webhook_secret),
+    };
+    if ((runtimeForm.openai_api_key || "").trim()) {
+      payload.openai_api_key = runtimeForm.openai_api_key.trim();
+    }
+    const saJson = (runtimeForm.google_service_account_json || "").trim();
+    if (saJson) {
+      try {
+        JSON.parse(saJson);
+      } catch {
+        throw new Error("El JSON de la Service Account no es válido. Pega el archivo completo sin recortes.");
+      }
+      payload.google_service_account_json = saJson;
+    }
+    if ((runtimeForm.unipile_api_key || "").trim()) {
+      payload.unipile_api_key = runtimeForm.unipile_api_key.trim();
+    }
+    if ((runtimeForm.unipile_webhook_secret || "").trim()) {
+      payload.unipile_webhook_secret = runtimeForm.unipile_webhook_secret.trim();
+    }
+    const updated = await patchAiRuntimeSettings(payload);
+    setRuntimeForm((prev) => ({
+      ...prev,
+      openai_api_key: "",
+      clear_openai_api_key: false,
+      openai_embedding_model: updated.openai_embedding_model || "text-embedding-3-small",
+      openai_moderation_disabled: Boolean(updated.openai_moderation_disabled),
+      global_ai_mode_enabled: Boolean(updated.global_ai_mode_enabled),
+      has_openai_api_key: Boolean(updated.has_openai_api_key),
+      openai_api_key_masked: updated.openai_api_key_masked || "",
+      google_calendar_enabled: Boolean(updated.google_calendar_enabled),
+      google_calendar_id: updated.google_calendar_id || "",
+      google_calendar_timezone: updated.google_calendar_timezone || "America/Bogota",
+      google_slot_minutes: updated.google_slot_minutes ?? 30,
+      google_booking_window_days: updated.google_booking_window_days ?? 7,
+      has_google_service_account_json: Boolean(updated.has_google_service_account_json),
+      google_service_account_json: "",
+      clear_google_service_account_json: false,
+      unipile_api_base_url: updated.unipile_api_base_url || "https://api1.unipile.com:13111/api/v1",
+      unipile_link_callback_url: updated.unipile_link_callback_url || "",
+      linkedin_max_invitations_per_day: updated.linkedin_max_invitations_per_day ?? 40,
+      linkedin_max_search_results_per_day: updated.linkedin_max_search_results_per_day ?? 1000,
+      linkedin_max_messages_per_day: updated.linkedin_max_messages_per_day ?? 50,
+      has_unipile_api_key: Boolean(updated.has_unipile_api_key),
+      unipile_api_key_masked: updated.unipile_api_key_masked || "",
+      unipile_api_key: "",
+      clear_unipile_api_key: false,
+      has_unipile_webhook_secret: Boolean(updated.has_unipile_webhook_secret),
+      unipile_webhook_secret_masked: updated.unipile_webhook_secret_masked || "",
+      unipile_webhook_secret: "",
+      clear_unipile_webhook_secret: false,
+    }));
+    return updated;
+  };
+
   const handleSaveRuntime = async (e) => {
     e.preventDefault();
     setRuntimeSaving(true);
     setRuntimeError(null);
     setRuntimeSuccess(null);
     try {
-      const payload = {
-        openai_embedding_model: runtimeForm.openai_embedding_model.trim() || "text-embedding-3-small",
-        openai_moderation_disabled: Boolean(runtimeForm.openai_moderation_disabled),
-        global_ai_mode_enabled: Boolean(runtimeForm.global_ai_mode_enabled),
-        clear_openai_api_key: Boolean(runtimeForm.clear_openai_api_key),
-        google_calendar_enabled: Boolean(runtimeForm.google_calendar_enabled),
-        google_calendar_id: (runtimeForm.google_calendar_id || "").trim(),
-        google_calendar_timezone: (runtimeForm.google_calendar_timezone || "America/Bogota").trim() || "America/Bogota",
-        google_slot_minutes: Math.max(15, Math.min(180, Math.floor(toNumberOr(runtimeForm.google_slot_minutes, 30)))),
-        google_booking_window_days: Math.max(
-          1,
-          Math.min(30, Math.floor(toNumberOr(runtimeForm.google_booking_window_days, 7))),
-        ),
-        clear_google_service_account_json: Boolean(runtimeForm.clear_google_service_account_json),
-        unipile_api_base_url:
-          (runtimeForm.unipile_api_base_url || "").trim() || "https://api1.unipile.com:13111/api/v1",
-        unipile_link_callback_url: (runtimeForm.unipile_link_callback_url || "").trim(),
-        linkedin_max_invitations_per_day: Math.max(
-          1,
-          Math.min(1000, Math.floor(toNumberOr(runtimeForm.linkedin_max_invitations_per_day, 40))),
-        ),
-        linkedin_max_search_results_per_day: Math.max(
-          1,
-          Math.min(100000, Math.floor(toNumberOr(runtimeForm.linkedin_max_search_results_per_day, 1000))),
-        ),
-        linkedin_max_messages_per_day: Math.max(
-          1,
-          Math.min(5000, Math.floor(toNumberOr(runtimeForm.linkedin_max_messages_per_day, 50))),
-        ),
-        clear_unipile_api_key: Boolean(runtimeForm.clear_unipile_api_key),
-        clear_unipile_webhook_secret: Boolean(runtimeForm.clear_unipile_webhook_secret),
-      };
-      if ((runtimeForm.openai_api_key || "").trim()) {
-        payload.openai_api_key = runtimeForm.openai_api_key.trim();
-      }
-      if ((runtimeForm.google_service_account_json || "").trim()) {
-        payload.google_service_account_json = runtimeForm.google_service_account_json.trim();
-      }
-      if ((runtimeForm.unipile_api_key || "").trim()) {
-        payload.unipile_api_key = runtimeForm.unipile_api_key.trim();
-      }
-      if ((runtimeForm.unipile_webhook_secret || "").trim()) {
-        payload.unipile_webhook_secret = runtimeForm.unipile_webhook_secret.trim();
-      }
-      const updated = await patchAiRuntimeSettings(payload);
-      setRuntimeForm((prev) => ({
-        ...prev,
-        openai_api_key: "",
-        clear_openai_api_key: false,
-        openai_embedding_model: updated.openai_embedding_model || "text-embedding-3-small",
-        openai_moderation_disabled: Boolean(updated.openai_moderation_disabled),
-        global_ai_mode_enabled: Boolean(updated.global_ai_mode_enabled),
-        has_openai_api_key: Boolean(updated.has_openai_api_key),
-        openai_api_key_masked: updated.openai_api_key_masked || "",
-        google_calendar_enabled: Boolean(updated.google_calendar_enabled),
-        google_calendar_id: updated.google_calendar_id || "",
-        google_calendar_timezone: updated.google_calendar_timezone || "America/Bogota",
-        google_slot_minutes: updated.google_slot_minutes ?? 30,
-        google_booking_window_days: updated.google_booking_window_days ?? 7,
-        has_google_service_account_json: Boolean(updated.has_google_service_account_json),
-        google_service_account_json: "",
-        clear_google_service_account_json: false,
-        unipile_api_base_url: updated.unipile_api_base_url || "https://api1.unipile.com:13111/api/v1",
-        unipile_link_callback_url: updated.unipile_link_callback_url || "",
-        linkedin_max_invitations_per_day: updated.linkedin_max_invitations_per_day ?? 40,
-        linkedin_max_search_results_per_day: updated.linkedin_max_search_results_per_day ?? 1000,
-        linkedin_max_messages_per_day: updated.linkedin_max_messages_per_day ?? 50,
-        has_unipile_api_key: Boolean(updated.has_unipile_api_key),
-        unipile_api_key_masked: updated.unipile_api_key_masked || "",
-        unipile_api_key: "",
-        clear_unipile_api_key: false,
-        has_unipile_webhook_secret: Boolean(updated.has_unipile_webhook_secret),
-        unipile_webhook_secret_masked: updated.unipile_webhook_secret_masked || "",
-        unipile_webhook_secret: "",
-        clear_unipile_webhook_secret: false,
-      }));
+      await saveRuntimeSettings();
       setRuntimeSuccess("Credenciales/configuración runtime guardadas correctamente.");
     } catch (err) {
       const d = err?.response?.data;
-      const msg = d?.message || d?.detail || err?.message || "No se pudo guardar la configuración runtime.";
+      const msg =
+        err?.message ||
+        d?.message ||
+        d?.detail ||
+        "No se pudo guardar la configuración runtime.";
       setRuntimeError(typeof msg === "string" ? msg : "No se pudo guardar la configuración runtime.");
     } finally {
       setRuntimeSaving(false);
@@ -449,7 +464,40 @@ const AIConfigPage = () => {
   const handleTestGoogleCalendar = async () => {
     setGoogleTestLoading(true);
     setGoogleTestResult(null);
+    setRuntimeError(null);
     try {
+      const hasDraftJson = Boolean((runtimeForm.google_service_account_json || "").trim());
+      const hasSavedJson = Boolean(runtimeForm.has_google_service_account_json);
+      if (!hasDraftJson && !hasSavedJson) {
+        setGoogleTestResult({
+          ok: false,
+          message:
+            "Pega el JSON completo de la Service Account y pulsa Guardar runtime (o Probar de nuevo para guardar y probar).",
+        });
+        return;
+      }
+      if (!((runtimeForm.google_calendar_id || "").trim())) {
+        setGoogleTestResult({
+          ok: false,
+          message: "Indica el Calendar ID (tu email o el ID del calendario) antes de probar.",
+        });
+        return;
+      }
+
+      // Persist draft fields first: test reads credentials from the server, not the textarea.
+      setRuntimeSaving(true);
+      const updated = await saveRuntimeSettings();
+      setRuntimeSaving(false);
+      setRuntimeSuccess("Configuración guardada. Probando conexión…");
+
+      if (!updated?.has_google_service_account_json) {
+        setGoogleTestResult({
+          ok: false,
+          message: "No se pudo persistir el JSON. Vuelve a pegarlo completo y prueba otra vez.",
+        });
+        return;
+      }
+
       const result = await testGoogleCalendarConnection();
       setGoogleTestResult(result);
     } catch (err) {
@@ -458,15 +506,16 @@ const AIConfigPage = () => {
       setGoogleTestResult({
         ok: false,
         message:
+          err?.message ||
           (typeof inner?.message === "string" && inner.message) ||
           (typeof body?.message === "string" && body.message) ||
           (typeof body?.detail === "string" && body.detail) ||
-          err?.message ||
           "No se pudo probar la conexión con Google Calendar.",
         detail: typeof inner?.detail === "string" ? inner.detail : undefined,
         service_account_email: inner?.service_account_email,
       });
     } finally {
+      setRuntimeSaving(false);
       setGoogleTestLoading(false);
     }
   };
@@ -647,9 +696,10 @@ const AIConfigPage = () => {
               <h3 className="h6 mb-2">Google Calendar (agenda automática)</h3>
               <Alert variant="light" className="border small py-2 mb-3">
                 La IA consulta disponibilidad, propone 3 horarios y, al confirmar el cliente, crea el evento en Google
-                Calendar y una actividad de reunión en el CRM. Pasos: 1) crea una Service Account en Google Cloud con
-                Calendar API; 2) comparte tu calendario con el email de esa cuenta (permiso de editar eventos); 3)
-                pega el Calendar ID y el JSON aquí; 4) activa el switch y prueba la conexión.
+                Calendar y una actividad de reunión en el CRM. Pasos: 1) Service Account + Calendar API; 2) comparte el
+                calendario con el email de la SA (permiso de editar eventos); 3) pega Calendar ID y el JSON completo;
+                4) pulsa <strong>Guardar runtime</strong> o <strong>Probar conexión</strong> (guarda y prueba). Debe
+                aparecer el badge verde “Credencial guardada”.
               </Alert>
               <Form.Group className="mb-2">
                 <Form.Check
