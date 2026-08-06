@@ -41,6 +41,7 @@ const ChatThread = ({
   onToggleConversationStatus,
   senderLabel,
   statusWarning,
+  messageLoadError,
 }) => {
   const containerRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -186,6 +187,11 @@ const ChatThread = ({
           </button>
         </Alert>
       )}
+      {messageLoadError ? (
+        <Alert variant="warning" className="py-2 small mb-2">
+          {messageLoadError}
+        </Alert>
+      ) : null}
       <div className="position-relative app-chat-thread-wrap">
         <div
           ref={containerRef}
@@ -278,6 +284,7 @@ ChatThread.propTypes = {
   onToggleConversationStatus: PropTypes.func,
   senderLabel: PropTypes.func.isRequired,
   statusWarning: PropTypes.func.isRequired,
+  messageLoadError: PropTypes.string,
 };
 
 export default ChatThread;

@@ -234,6 +234,7 @@ const ChatView = () => {
   const [savingAiConfig, setSavingAiConfig] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [composerError, setComposerError] = useState("");
+  const [messageLoadError, setMessageLoadError] = useState("");
   const [showOnlyOverdue, setShowOnlyOverdue] = useState(false);
   const [dealDetail, setDealDetail] = useState(null);
   const [dealDraft, setDealDraft] = useState(null);
@@ -323,6 +324,8 @@ const ChatView = () => {
       channel: channelFilter || undefined,
       include_closed: channelFilter === "whatsapp" ? true : undefined,
       strict_whatsapp_origin: channelFilter === "whatsapp" ? true : undefined,
+      whatsapp_window_status: channelFilter === "whatsapp" ? conversationStatusFilter : undefined,
+      whatsapp_phone_number: channelFilter === "whatsapp" ? selectedWhatsAppLine || undefined : undefined,
       search_text: searchQuery || undefined,
       search: searchQuery || undefined,
       deal_stage: filters.dealStage || undefined,
@@ -345,7 +348,12 @@ const ChatView = () => {
                 String(row.id) === String(next?.id) &&
                 String(row.last_message_at || "") === String(next?.last_message_at || "") &&
                 String(row.ai_mode_enabled || false) === String(next?.ai_mode_enabled || false) &&
-                String(row.unread_count || 0) === String(next?.unread_count || 0)
+                String(row.unread_count || 0) === String(next?.unread_count || 0) &&
+                String(row.status || "") === String(next?.status || "") &&
+                String(row.whatsapp_phone_number || "") === String(next?.whatsapp_phone_number || "") &&
+                String(row.is_whatsapp_window_closed || false) === String(next?.is_whatsapp_window_closed || false) &&
+                String(row.customer_service_window_expires || "") === String(next?.customer_service_window_expires || "") &&
+                String(row.last_inbound_message_at || "") === String(next?.last_inbound_message_at || "")
               );
             });
           return isSame ? prev : data;
@@ -454,18 +462,24 @@ const ChatView = () => {
     if (!convId) {
       messagesRequestRef.current += 1;
       setMessages({ results: [], count: 0 });
+      setMessageLoadError("");
       setLoadingMsg(false);
       return;
     }
     const requestId = Date.now() + Math.random();
     messagesRequestRef.current = requestId;
+    setMessageLoadError("");
     if (!silent) setLoadingMsg(true);
     fetchMessages(convId, { page_size: 100 })
       .then((data) => {
         if (messagesRequestRef.current !== requestId) return;
         setMessages({ ...data, results: data.results || [] });
       })
-      .catch(() => {})
+      .catch((error) => {
+        if (messagesRequestRef.current !== requestId) return;
+        setMessages({ results: [], count: 0 });
+        setMessageLoadError(extractApiError(error, "No se pudo cargar el histórico de la conversación."));
+      })
       .finally(() => {
         if (!silent && messagesRequestRef.current === requestId) {
           setLoadingMsg(false);
@@ -478,12 +492,14 @@ const ChatView = () => {
     if (dealId && !activeId) {
       createOrOpenConversation({ deal: dealId, channel: "whatsapp" })
         .then((conv) => {
+          upsertConversationRow(conv);
           setActiveId(conv.id);
+          loadMessages(conv.id);
           loadConversations({ silent: true });
         })
         .catch(() => {});
     }
-  }, [dealId, activeId, loadConversations]);
+  }, [dealId, activeId, loadConversations, loadMessages, upsertConversationRow]);
 
   useEffect(() => {
     setChannelFilter("whatsapp");
@@ -799,6 +815,7 @@ const ChatView = () => {
 
   const selectConv = (id) => {
     setComposerError("");
+    setMessageLoadError("");
     if (String(id) !== String(activeId)) {
       setMessages({ results: [], count: 0 });
     }
@@ -869,8 +886,8 @@ const ChatView = () => {
     return counts;
   }, [statusScopedConversations]);
   const activeConv = useMemo(
-    () => filteredConversations.find((c) => String(c.id) === String(activeId)) || null,
-    [filteredConversations, activeId],
+    () => conversationsWithSla.find((c) => String(c.id) === String(activeId)) || null,
+    [conversationsWithSla, activeId],
   );
 
   const handleToggleConversationStatus = async (nextStatus) => {
@@ -1327,6 +1344,7 @@ const ChatView = () => {
                   onToggleConversationStatus={handleToggleConversationStatus}
                   senderLabel={senderLabel}
                   statusWarning={statusWarning}
+                  messageLoadError={messageLoadError}
                 />
                 <ChatComposer
                   value={input}

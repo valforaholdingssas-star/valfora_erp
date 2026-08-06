@@ -19,24 +19,53 @@ logger = logging.getLogger(__name__)
 
 def _build_fallback_business_summary(deal: Deal) -> str:
     conversations = deal.conversations.filter(is_active=True).prefetch_related("messages").order_by("-updated_at")
-    lines = [
-        f"Deal: {deal.title}",
-        f"Contacto: {deal.contact}",
-        f"Empresa: {deal.company.name if deal.company_id else 'Sin empresa'}",
-        f"Etapa actual: {deal.stage}",
-        f"Valor: {deal.value} {deal.currency}",
-    ]
-    last_messages = []
+    line_name = None
+    latest_inbound = None
+    latest_outbound = None
+    user_need = None
+    objections = None
+    next_step = None
+
     for conv in conversations[:2]:
-        for msg in conv.messages.filter(is_active=True).order_by("-created_at")[:6]:
-            label = "Cliente" if msg.sender_type == "contact" else "Equipo"
+        if conv.channel == "whatsapp" and conv.whatsapp_phone_number:
+            line_name = line_name or (
+                conv.whatsapp_phone_number.line_name
+                or conv.whatsapp_phone_number.internal_name
+                or conv.whatsapp_phone_number.display_phone_number
+            )
+        for msg in conv.messages.filter(is_active=True).order_by("-created_at")[:8]:
             content = (msg.content or "").strip()
             if not content:
                 continue
-            last_messages.append(f"- {label}: {content[:220]}")
-    if last_messages:
-        lines.append("Resumen de conversación reciente:")
-        lines.extend(reversed(last_messages[-8:]))
+            if msg.sender_type == "contact":
+                latest_inbound = latest_inbound or content[:280]
+                user_need = user_need or content[:220]
+                if not objections and len(content) > 35:
+                    objections = content[:220]
+            elif msg.sender_type in {"user", "ai_bot"}:
+                latest_outbound = latest_outbound or content[:280]
+                if not next_step and len(content) > 35:
+                    next_step = content[:220]
+
+    lines = [
+        f"Lead: {deal.title}",
+        f"Contacto: {deal.contact}",
+        f"Empresa: {deal.company.name if deal.company_id else 'Sin empresa'}",
+        f"Etapa actual: {deal.stage}",
+        f"Valor estimado: {deal.value} {deal.currency}",
+    ]
+    if line_name:
+        lines.append(f"Línea: {line_name}")
+    if user_need:
+        lines.append(f"Necesidad detectada: {user_need}")
+    if objections:
+        lines.append(f"Detalle u objeción: {objections}")
+    if latest_inbound:
+        lines.append(f"Último mensaje del cliente: {latest_inbound}")
+    if latest_outbound:
+        lines.append(f"Última respuesta enviada: {latest_outbound}")
+    if next_step:
+        lines.append(f"Próximo paso sugerido: {next_step}")
     return "\n".join(lines)
 
 
@@ -210,6 +239,7 @@ def advance_closed_whatsapp_conversations() -> int:
 
         deal = conversation.deal
         if PipelineAutomationService.normalize_stage(deal.stage) == target_stage:
+            generate_business_summary_for_deal.delay(str(deal.id))
             continue
         result = PipelineAutomationService.move_stage(
             deal=deal,

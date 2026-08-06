@@ -50,6 +50,7 @@ const DealDetailPage = () => {
     probability: 0,
     expected_close_date: "",
     description: "",
+    business_notes: "",
     lost_reason: "",
     company: "",
     assigned_to: "",
@@ -80,6 +81,7 @@ const DealDetailPage = () => {
         probability: dealRes.probability ?? 0,
         expected_close_date: dealRes.expected_close_date || "",
         description: dealRes.description || "",
+        business_notes: dealRes.business_notes || "",
         lost_reason: dealRes.lost_reason || "",
         company: dealRes.company || "",
         assigned_to: dealRes.assigned_to || "",
@@ -190,6 +192,7 @@ const DealDetailPage = () => {
         probability: Number(dealForm.probability || 0),
         expected_close_date: dealForm.expected_close_date || null,
         description: dealForm.description.trim(),
+        business_notes: dealForm.business_notes.trim(),
         lost_reason: dealForm.lost_reason.trim(),
         company: dealForm.company || null,
         assigned_to: dealForm.assigned_to || null,
@@ -252,6 +255,10 @@ const DealDetailPage = () => {
           <div className="small text-muted mb-2">Empresa: {deal.company_name || "Sin empresa"}</div>
           <div className="small text-muted mb-2">Asignado: {assignedToDisplay}</div>
           <div className="small text-muted mb-3">Valor: {formatDealValue(deal.value)} {deal.currency}</div>
+          <div className="small text-muted mb-1">Notas de negocio</div>
+          <div className="small mb-3" style={{ whiteSpace: "pre-wrap" }}>
+            {deal.business_notes || "Sin resumen comercial generado."}
+          </div>
           <div className="d-flex gap-2">
             <Button size="sm" onClick={advance}>Avanzar etapa</Button>
             <Button size="sm" variant="outline-primary" onClick={handleOpenWhatsappConversation}>
@@ -369,6 +376,15 @@ const DealDetailPage = () => {
                   rows={3}
                   value={dealForm.description}
                   onChange={(e) => setDealForm((p) => ({ ...p, description: e.target.value }))}
+                />
+              </div>
+              <div className="col-12">
+                <Form.Label>Notas de negocio</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={6}
+                  value={dealForm.business_notes}
+                  onChange={(e) => setDealForm((p) => ({ ...p, business_notes: e.target.value }))}
                 />
               </div>
             </div>

@@ -65,14 +65,15 @@ class ConversationViewSet(viewsets.ModelViewSet):
         requested_channel = (params.get("channel") or "").strip().lower()
         strict_whatsapp_origin = str(params.get("strict_whatsapp_origin", "false")).strip().lower() not in {"0", "false", "no"}
         closed_whatsapp_origin_only = str(params.get("closed_whatsapp_origin_only", "true")).strip().lower() not in {"0", "false", "no"}
+        is_list_action = self.action == "list"
 
-        if requested_channel == "whatsapp" and strict_whatsapp_origin:
+        if requested_channel == "whatsapp" and strict_whatsapp_origin and is_list_action:
             qs = qs.filter(deal__source="whatsapp")
 
         status_filter = (params.get("status") or "").strip().lower()
         whatsapp_window_status = (params.get("whatsapp_window_status") or "").strip().lower()
         include_closed = str(params.get("include_closed") or "").strip().lower() in {"1", "true", "yes"}
-        if requested_channel == "whatsapp":
+        if requested_channel == "whatsapp" and is_list_action:
             now = timezone.now()
             if whatsapp_window_status == "closed":
                 if closed_whatsapp_origin_only:
@@ -87,7 +88,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
                     Q(deal__source="whatsapp", customer_service_window_expires__gt=now)
                     | ~Q(deal__source="whatsapp")
                 )
-        else:
+        elif is_list_action:
             if status_filter == "closed":
                 qs = qs.filter(status="archived")
             elif status_filter == "open" or not include_closed:

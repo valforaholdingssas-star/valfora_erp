@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { Badge, Button, Form, Spinner } from "react-bootstrap";
+import { Button, Form, Spinner } from "react-bootstrap";
 
 const initials = (name = "") =>
   name
@@ -142,37 +142,30 @@ const ChatSidebar = ({
                     )}
                   </div>
                   <div className="app-chat-sidebar-item-meta">
-                    {Number(c.unread_count || 0) > 0 && (
-                      <Badge pill className="app-chat-sidebar-flag app-chat-sidebar-flag-unread">
-                        No leido {Number(c.unread_count || 0)}
-                      </Badge>
+                    {c.__sla?.label && (
+                      <span className="app-chat-sidebar-sla-inline">SLA: {c.__sla.label}</span>
                     )}
-                    {c.__sla?.awaitingReply && (
-                      <Badge
-                        pill
-                        className={`app-chat-sidebar-flag ${
-                          c.__sla?.isOverdue ? "app-chat-sidebar-flag-reply-late" : "app-chat-sidebar-flag-reply"
+                  </div>
+                  <div className="app-chat-sidebar-item-submeta">
+                    {c.whatsapp_line_name ? <span className="app-chat-sidebar-meta-text">{c.whatsapp_line_name}</span> : null}
+                    {c.__remainingWindowLabel ? <span className="app-chat-sidebar-meta-text">{c.__remainingWindowLabel}</span> : null}
+                    {Number(c.unread_count || 0) > 0 ? (
+                      <span className="app-chat-sidebar-inline-status app-chat-sidebar-inline-status--unread">
+                        {Number(c.unread_count || 0)} sin leer
+                      </span>
+                    ) : null}
+                    {c.__sla?.awaitingReply ? (
+                      <span
+                        className={`app-chat-sidebar-inline-status ${
+                          c.__sla?.isOverdue
+                            ? "app-chat-sidebar-inline-status--late"
+                            : "app-chat-sidebar-inline-status--pending"
                         }`}
                       >
                         {c.__sla?.isOverdue ? "Sin responder" : "Pendiente"}
-                      </Badge>
-                    )}
-                    {c.__sla?.label && (
-                      <Badge bg="light" text="success" pill className="app-chat-sidebar-sla">
-                        SLA: {c.__sla.label}
-                      </Badge>
-                    )}
-                    {c.whatsapp_line_name && (
-                      <span className="app-chat-sidebar-meta-text">{c.whatsapp_line_name}</span>
-                    )}
-                    {c.__remainingWindowLabel && (
-                      <span className="app-chat-sidebar-window-pill">{c.__remainingWindowLabel}</span>
-                    )}
-                    {c.status === "archived" && (
-                      <Badge pill bg="secondary" className="app-chat-sidebar-flag">
-                        Cerrado
-                      </Badge>
-                    )}
+                      </span>
+                    ) : null}
+                    {c.status === "archived" ? <span className="app-chat-sidebar-inline-closed">Cerrado</span> : null}
                   </div>
                 </div>
               </div>
