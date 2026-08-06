@@ -150,6 +150,43 @@ const computeRemainingWindowLabel = (conversation) => {
   return `${hours}h ${minutes}m`;
 };
 
+const fetchAllPages = async (fetcher, params = {}, pageSize = 100) => {
+  let page = 1;
+  let expectedCount = null;
+  const results = [];
+
+  while (true) {
+    const payload = await fetcher({ ...params, page, page_size: pageSize });
+    const rows = payload?.results || [];
+    if (expectedCount === null) {
+      expectedCount = Number(payload?.count || rows.length || 0);
+    }
+    results.push(...rows);
+    if (!rows.length || results.length >= expectedCount) break;
+    page += 1;
+  }
+
+  return { count: expectedCount ?? results.length, results };
+};
+
+const isWhatsAppOriginConversation = (conversation) => (
+  Boolean(conversation?.is_whatsapp_origin)
+  || conversation?.latest_deal_source === "whatsapp"
+  || conversation?.contact_source === "whatsapp"
+);
+
+const isClosedWhatsAppConversation = (conversation) => {
+  if (!conversation || conversation.channel !== "whatsapp") return conversation?.status === "archived";
+  if (!isWhatsAppOriginConversation(conversation)) return false;
+  if (conversation.status === "archived") return true;
+  if (typeof conversation.is_whatsapp_window_closed === "boolean") {
+    return conversation.is_whatsapp_window_closed;
+  }
+  const expiresAt = new Date(conversation.customer_service_window_expires || "").getTime();
+  if (Number.isNaN(expiresAt)) return false;
+  return expiresAt <= Date.now();
+};
+
 const ChatView = () => {
   const WHATSAPP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
   const WHATSAPP_DOCUMENT_MAX_BYTES = 100 * 1024 * 1024;
@@ -283,31 +320,17 @@ const ChatView = () => {
     conversationsRequestRef.current = requestId;
     if (!silent) setLoadingList(true);
     const params = {
-      page_size: 50,
       channel: channelFilter || undefined,
-      status:
-        channelFilter === "whatsapp"
-          ? undefined
-          : undefined,
-      whatsapp_window_status:
-        channelFilter === "whatsapp"
-          ? conversationStatusFilter === "closed"
-            ? "closed"
-            : conversationStatusFilter === "open"
-              ? "open"
-              : undefined
-          : undefined,
-      closed_whatsapp_origin_only:
-        channelFilter === "whatsapp" && conversationStatusFilter === "closed" ? true : undefined,
+      include_closed: channelFilter === "whatsapp" ? true : undefined,
+      strict_whatsapp_origin: channelFilter === "whatsapp" ? true : undefined,
       search_text: searchQuery || undefined,
       search: searchQuery || undefined,
       deal_stage: filters.dealStage || undefined,
       deal_opened_from: filters.dealOpenedFrom || undefined,
       deal_opened_to: filters.dealOpenedTo || undefined,
       responsible: filters.responsible || undefined,
-      whatsapp_phone_number: selectedWhatsAppLine || undefined,
     };
-    fetchConversations(params)
+    fetchAllPages(fetchConversations, params, 100)
       .then((data) => {
         if (conversationsRequestRef.current !== requestId) return;
         setConversations((prev) => {
@@ -487,17 +510,24 @@ const ChatView = () => {
   }, [activeId, loadMessages]);
 
   const handleWsMessageCreated = useCallback((incoming) => {
-    setMessages((prev) => ({
-      ...prev,
-      results: mergeIncomingMessage(prev.results || [], incoming),
-    }));
-    if (!activeId) return;
-    upsertConversationRow({
-      id: activeId,
-      last_message_at: incoming.created_at || null,
-      last_message_preview: incoming.content || "",
-    });
-  }, [mergeIncomingMessage, activeId, upsertConversationRow]);
+    const incomingConversationId = incoming?.conversation ? String(incoming.conversation) : null;
+    if (incomingConversationId && String(activeId || "") === incomingConversationId) {
+      setMessages((prev) => ({
+        ...prev,
+        results: mergeIncomingMessage(prev.results || [], incoming),
+      }));
+    }
+    if (incomingConversationId) {
+      upsertConversationRow({
+        id: incomingConversationId,
+        last_message_at: incoming.created_at || null,
+        last_message_preview: incoming.content || "",
+      });
+    }
+    if (incomingConversationId && String(activeId || "") !== incomingConversationId) {
+      loadConversations({ silent: true });
+    }
+  }, [mergeIncomingMessage, activeId, upsertConversationRow, loadConversations]);
 
   const handleWsMessageUpdated = useCallback((incoming) => {
     setMessages((prev) => ({
@@ -799,9 +829,24 @@ const ChatView = () => {
       return bDate - aDate;
     });
   }, [conversationsWithSla]);
+  const statusScopedConversations = useMemo(() => {
+    if (channelFilter !== "whatsapp") return sortedConversations;
+    return sortedConversations.filter((conversation) => {
+      const isClosed = isClosedWhatsAppConversation(conversation);
+      return conversationStatusFilter === "closed" ? isClosed : !isClosed;
+    });
+  }, [sortedConversations, channelFilter, conversationStatusFilter]);
+
+  const lineScopedConversations = useMemo(() => {
+    if (channelFilter !== "whatsapp" || !selectedWhatsAppLine) return statusScopedConversations;
+    return statusScopedConversations.filter(
+      (conversation) => String(conversation.whatsapp_phone_number || "") === String(selectedWhatsAppLine),
+    );
+  }, [statusScopedConversations, channelFilter, selectedWhatsAppLine]);
+
   const filteredConversations = useMemo(
-    () => (showOnlyOverdue ? sortedConversations.filter((c) => c.__sla?.isOverdue) : sortedConversations),
-    [showOnlyOverdue, sortedConversations],
+    () => (showOnlyOverdue ? lineScopedConversations.filter((c) => c.__sla?.isOverdue) : lineScopedConversations),
+    [showOnlyOverdue, lineScopedConversations],
   );
 
   useEffect(() => {
@@ -817,12 +862,12 @@ const ChatView = () => {
   }, [filteredConversations, activeId, dealId]);
   const whatsappLineCounts = useMemo(() => {
     const counts = {};
-    sortedConversations.forEach((conv) => {
+    statusScopedConversations.forEach((conv) => {
       const key = conv.whatsapp_phone_number || "__none__";
       counts[key] = (counts[key] || 0) + 1;
     });
     return counts;
-  }, [sortedConversations]);
+  }, [statusScopedConversations]);
   const activeConv = useMemo(
     () => filteredConversations.find((c) => String(c.id) === String(activeId)) || null,
     [filteredConversations, activeId],
@@ -832,21 +877,10 @@ const ChatView = () => {
     if (!activeId) return;
     try {
       const updated = await patchConversation(activeId, { status: nextStatus });
-      const isClosedList = conversationStatusFilter === "closed";
-      if (nextStatus === "archived" && !isClosedList) {
-        setConversations((prev) => ({
-          ...prev,
-          count: Math.max(0, (prev.count || 1) - 1),
-          results: (prev.results || []).filter((row) => String(row.id) !== String(activeId)),
-        }));
-        const nextConversation = filteredConversations.find((row) => String(row.id) !== String(activeId));
-        setActiveId(nextConversation?.id || null);
-      } else {
-        setConversations((prev) => ({
-          ...prev,
-          results: (prev.results || []).map((row) => (String(row.id) === String(activeId) ? { ...row, ...updated } : row)),
-        }));
-      }
+      setConversations((prev) => ({
+        ...prev,
+        results: (prev.results || []).map((row) => (String(row.id) === String(activeId) ? { ...row, ...updated } : row)),
+      }));
       setComposerError("");
     } catch (error) {
       setComposerError(extractApiError(error, "No se pudo actualizar el estado de la conversación."));
@@ -1255,7 +1289,7 @@ const ChatView = () => {
           <ChatSidebar
             loading={loadingList}
             conversations={filteredConversations}
-            totalCount={Number(conversations?.count || filteredConversations.length || 0)}
+            totalCount={filteredConversations.length}
             activeId={activeId}
             onSelect={selectConv}
             query={searchQuery}

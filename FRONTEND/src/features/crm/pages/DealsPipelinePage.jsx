@@ -60,6 +60,25 @@ const slugifyStageName = (value) =>
     .replace(/^_+|_+$/g, "")
     .slice(0, 50);
 
+const fetchAllPages = async (fetcher, params = {}, pageSize = 100) => {
+  let page = 1;
+  let expectedCount = null;
+  const results = [];
+
+  while (true) {
+    const payload = await fetcher({ ...params, page, page_size: pageSize });
+    const rows = payload?.results || [];
+    if (expectedCount === null) {
+      expectedCount = Number(payload?.count || rows.length || 0);
+    }
+    results.push(...rows);
+    if (!rows.length || results.length >= expectedCount) break;
+    page += 1;
+  }
+
+  return { count: expectedCount ?? results.length, results };
+};
+
 const DealsPipelinePage = () => {
   const [stages, setStages] = useState([]);
   const [byStage, setByStage] = useState({});
@@ -119,15 +138,15 @@ const DealsPipelinePage = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = { page_size: 200 };
+    const params = {};
     if (companyFilter) params.company = companyFilter;
     if (assignedToFilter) params.assigned_to = assignedToFilter;
     try {
       const [stagesData, dealsData, contactsData, companiesData, usersData] = await Promise.all([
-        fetchPipelineStages({ page_size: 200 }),
-        fetchDeals(params),
-        fetchContacts({ page_size: 200 }),
-        fetchCompanies({ page_size: 200 }),
+        fetchAllPages(fetchPipelineStages, {}, 200),
+        fetchAllPages(fetchDeals, params, 100),
+        fetchAllPages(fetchContacts, {}, 200),
+        fetchAllPages(fetchCompanies, {}, 200),
         fetchUsers({ page_size: 200, is_active: true }),
       ]);
 
