@@ -423,7 +423,21 @@ const ChatView = () => {
   useEffect(() => {
     if (!chatEventVersion) return;
     loadConversations({ silent: true });
-  }, [chatEventVersion, loadConversations]);
+    // AI replies are created in Celery; conversation WS can miss them. Soft-merge
+    // the active thread when inbox events arrive so agents see IA without reload.
+    const active = activeIdRef.current;
+    if (!active) return undefined;
+    const eventConvId = String(
+      lastChatEvent?.conversation_id
+        || lastChatEvent?.conversation?.id
+        || "",
+    );
+    if (eventConvId && eventConvId !== String(active)) return undefined;
+    const timer = window.setTimeout(() => {
+      loadMessages(active, { silent: true, merge: true });
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [chatEventVersion, lastChatEvent, loadConversations, loadMessages]);
 
   useEffect(() => {
     const incomingConversation = lastChatEvent?.conversation;
@@ -479,7 +493,7 @@ const ChatView = () => {
       .catch(() => {});
   }, [canManageAiConfigs]);
 
-  const loadMessages = useCallback((convId, { silent = false } = {}) => {
+  const loadMessages = useCallback((convId, { silent = false, merge = false } = {}) => {
     if (!convId) {
       messagesRequestRef.current += 1;
       setMessages({ results: [], count: 0 });
@@ -495,10 +509,21 @@ const ChatView = () => {
       .then((data) => {
         if (messagesRequestRef.current !== requestId) return;
         const normalized = normalizeMessagesPayload(data);
+        if (merge) {
+          setMessages((prev) => {
+            let next = [...(prev.results || [])];
+            for (const msg of normalized.results || []) {
+              next = mergeIncomingMessage(next, msg);
+            }
+            return { ...prev, results: next, count: Math.max(prev.count || 0, normalized.count || 0) };
+          });
+          return;
+        }
         setMessages(normalized);
       })
       .catch((error) => {
         if (messagesRequestRef.current !== requestId) return;
+        if (merge) return;
         setMessages({ results: [], count: 0 });
         setMessageLoadError(extractApiError(error, "No se pudo cargar el histórico de la conversación."));
       })
@@ -507,8 +532,10 @@ const ChatView = () => {
           setLoadingMsg(false);
         }
       });
-    markRead(convId).catch(() => {});
-  }, []);
+    if (!merge) {
+      markRead(convId).catch(() => {});
+    }
+  }, [mergeIncomingMessage]);
 
   const activateConversation = useCallback((conversationId, { openChatOnMobile = true } = {}) => {
     const nextId = conversationId ? String(conversationId) : null;

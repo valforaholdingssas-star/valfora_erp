@@ -178,6 +178,14 @@ def _merge_interpretations(primary: dict[str, Any], hint: dict[str, Any]) -> dic
         and not hint.get("period")
     ):
         out["period"] = None
+    # pending_period answers: prefer provide_period over mañana→tomorrow day
+    if hint.get("action") == "provide_period" and hint.get("period"):
+        out["action"] = "provide_period"
+        out["period"] = hint["period"]
+        out["related"] = True
+        if not hint.get("weekday") and not hint.get("date_iso"):
+            out["weekday"] = None
+            out["date_iso"] = None
     try:
         out["confidence"] = float(out.get("confidence") or 0.0)
     except (TypeError, ValueError):
@@ -232,7 +240,9 @@ def _llm_interpret(
         "'no puedo el miércoles, el jueves', 'espera mejor reunámonos el domingo') "
         "→ action=provide_day con el NUEVO weekday y period=null "
         "salvo que diga mañana/tarde explícitamente. "
-        "Si draft_status=pending_email y cambia día/hora → provide_day (NO provide_email).\n"
+        "Si draft_status=pending_period y el cliente dice solo 'mañana'/'tarde'/"
+        "'en la mañana' → action=provide_period (period=morning|afternoon). "
+        "NUNCA interpretes 'mañana' como el día siguiente cuando draft_status=pending_period.\n"
         "Si hay invitación reciente a reunirse y el cliente afirma (dale/ok/sí) → action=start_booking, related=true.\n"
         "Acciones válidas: none, start_booking, provide_day, provide_period, provide_datetime, "
         "choose_slot, defer_week, provide_email, cancel, clarify."

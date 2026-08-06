@@ -62,6 +62,9 @@ def broadcast_new_chat_message(sender, instance: Message, created: bool, **kwarg
         )
 
     payload = _to_channel_safe(MessageSerializer(instance).data)
+    # Keep live payloads lean — large ai_context_used has broken Redis/msgpack pushes before.
+    if isinstance(payload, dict):
+        payload.pop("ai_context_used", None)
     evt = "message.created" if created else "message.updated"
     event = {
         "type": "chat.event",

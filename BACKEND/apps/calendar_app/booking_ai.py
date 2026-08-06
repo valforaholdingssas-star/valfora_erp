@@ -397,6 +397,27 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
     return None
 
 
+def _is_bare_period_utterance(text: str) -> bool:
+    """True when the message is only morning/afternoon (not a day change)."""
+    low = (text or "").strip().lower()
+    if not low:
+        return False
+    if _find_weekday_in_text(low):
+        return False
+    if re.search(r"\b\d{1,2}[/-]\d{1,2}\b", low):
+        return False
+    if re.search(r"\b(hoy|pasado\s+mañana|pasado\s+manana)\b", low):
+        return False
+    # "mañana" alone / "en la mañana" / "tarde" — period, not "tomorrow"
+    return bool(
+        re.fullmatch(
+            r"(?:en\s+la\s+)?(?:mañana|manana|tarde|morning|afternoon)\s*[!?.]*",
+            low,
+        )
+        or re.fullmatch(r"(?:por\s+la\s+)?(?:mañana|manana|tarde)\s*[!?.]*", low)
+    )
+
+
 def _deterministic_booking_hint(
     *,
     text: str,
@@ -418,7 +439,12 @@ def _deterministic_booking_hint(
         hint.update({"related": True, "action": "provide_email", "email": email})
 
     period = _parse_day_period(text)
-    if period and draft_status in {"pending_period", "pending_day", "pending_selection", "idle"}:
+    bare_period = bool(period) and _is_bare_period_utterance(text)
+
+    # While waiting for morning/afternoon, "mañana" means morning — NEVER tomorrow.
+    if period and (draft_status == "pending_period" or bare_period):
+        hint.update({"related": True, "action": "provide_period", "period": period})
+    elif period and draft_status in {"pending_day", "pending_selection", "idle"}:
         hint.setdefault("related", True)
         hint.setdefault("action", "provide_period")
         hint["period"] = period
@@ -434,11 +460,13 @@ def _deterministic_booking_hint(
                 "weekday": _WEEKDAYS_ES[preferred.weekday()],
             }
         )
-    else:
+    elif not (draft_status == "pending_period" and (bare_period or period)):
+        # Skip mañana→tomorrow when the funnel is asking for period of day.
         day = _parse_preferred_day(
             text,
             tz_name=tz_name,
             week_offset_days=int((draft.metadata or {}).get("week_offset_days") or 0) if draft else 0,
+            interpret_manana_as_tomorrow=draft_status != "pending_period",
         )
         if day:
             hint.update(
@@ -669,13 +697,25 @@ def _dispatch_booking_interpretation(
                     slot_iso=matched,
                 )
 
+    # Period answers first while pending_period ("Mañana" ≠ tomorrow).
+    if status == "pending_period" and (
+        action == "provide_period"
+        or interp.get("period") in {"morning", "afternoon"}
+        or _is_bare_period_utterance(inbound.content or "")
+    ):
+        if not interp.get("period"):
+            parsed = _parse_day_period(inbound.content or "")
+            if parsed:
+                interp = {**interp, "period": parsed, "action": "provide_period"}
+        return _apply_provide_period(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
+
     # Day change mid-funnel (including pending_email escape leftovers).
-    if (interp.get("weekday") or interp.get("date_iso")) and action not in {
-        "choose_slot",
-        "provide_email",
-        "cancel",
-        "provide_datetime",
-    }:
+    # Never treat bare "mañana"/"tarde" as a new calendar day while asking for period.
+    if (
+        (interp.get("weekday") or interp.get("date_iso"))
+        and action not in {"choose_slot", "provide_email", "cancel", "provide_datetime", "provide_period"}
+        and not (status == "pending_period" and _is_bare_period_utterance(inbound.content or ""))
+    ):
         new_day = _day_from_interpretation(interp, tz_name=tz_name, draft=draft)
         old_day = (draft.metadata or {}).get("preferred_day")
         if new_day and (
@@ -1792,7 +1832,13 @@ def _resolve_weekday_date(weekday_idx: int, *, now: datetime) -> datetime:
     return target.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def _parse_preferred_day(text: str, *, tz_name: str, week_offset_days: int = 0):
+def _parse_preferred_day(
+    text: str,
+    *,
+    tz_name: str,
+    week_offset_days: int = 0,
+    interpret_manana_as_tomorrow: bool = True,
+):
     """Parse a day preference into a date (no required time)."""
     from datetime import date
 
@@ -1804,7 +1850,20 @@ def _parse_preferred_day(text: str, *, tz_name: str, week_offset_days: int = 0):
 
     if re.search(r"\bhoy\b", low) and week_offset_days <= 0:
         return now.date()
-    if re.search(r"\b(mañana|manana)\b", low) and week_offset_days <= 0:
+    # Ambiguous Spanish: "mañana" = tomorrow OR morning. Callers in pending_period
+    # must pass interpret_manana_as_tomorrow=False.
+    if (
+        interpret_manana_as_tomorrow
+        and re.search(r"\b(mañana|manana)\b", low)
+        and week_offset_days <= 0
+        and not re.search(r"\b(en\s+la\s+|por\s+la\s+)(mañana|manana)\b", low)
+        and not re.search(r"\b(mañana|manana)\s+(temprano|en\s+la\s+mañana)\b", low)
+    ):
+        # Bare "mañana" / "pasado mañana" as calendar day — only when not clearly period.
+        if re.search(r"\bpasado\s+(mañana|manana)\b", low):
+            return (now + timedelta(days=2)).date()
+        if _is_bare_period_utterance(low):
+            return None
         return (now + timedelta(days=1)).date()
 
     date_match = re.search(r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b", low)
