@@ -3056,12 +3056,26 @@ a {
   animation: valfora-login-rise 0.85s ease-out 0.08s both;
 }
 
+.valfora-login-mark-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(112px, 28vw, 148px);
+  height: clamp(112px, 28vw, 148px);
+  margin: 0 auto 1rem;
+  padding: 0.85rem;
+  border-radius: 1.35rem;
+  background: #ffffff;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
 .valfora-login-mark {
-  width: 56px;
-  height: 56px;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
-  margin-bottom: 0.85rem;
-  filter: drop-shadow(0 10px 24px rgba(40, 110, 255, 0.35));
+  display: block;
 }
 
 .valfora-login-brand-name {
@@ -3076,13 +3090,13 @@ a {
 }
 
 .valfora-login-wordmark {
-  margin: 0.35rem 0 0;
+  margin: 0.15rem 0 0;
   font-family: "Syne", "Manrope", sans-serif;
   font-size: clamp(1.05rem, 2.8vw, 1.25rem);
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: #7ea6ff;
+  color: #c9a46a;
 }
 
 .valfora-login-lede {
@@ -3140,10 +3154,35 @@ a {
 .valfora-input-icon {
   position: absolute;
   top: 50%;
-  left: 0.95rem;
+  left: 1rem;
   transform: translateY(-50%);
   color: #3b74cd;
   z-index: 2;
+  pointer-events: none;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.valfora-login-form .form-control.valfora-input {
+  min-height: 52px;
+  border-radius: 0.9rem;
+  border: 1px solid #c4d5f2;
+  background: #f5f8ff;
+  color: var(--login-ink);
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  padding-left: 2.85rem;
+  padding-right: 1rem;
+}
+
+.valfora-login-form .form-control.valfora-input.pe-5 {
+  padding-right: 2.85rem;
+}
+
+.valfora-login-form .form-control.valfora-input:focus {
+  background: #fff;
+  border-color: #4a87e8;
+  box-shadow: 0 0 0 0.2rem rgba(74, 135, 232, 0.18);
 }
 
 .valfora-input {
@@ -3151,7 +3190,7 @@ a {
   border-radius: 0.9rem;
   border: 1px solid #c4d5f2;
   background: #f5f8ff;
-  padding-left: 2.6rem;
+  padding-left: 2.85rem;
   color: var(--login-ink);
 }
 

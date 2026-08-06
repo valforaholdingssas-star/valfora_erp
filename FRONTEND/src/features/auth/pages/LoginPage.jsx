@@ -47,9 +47,10 @@ const LoginPage = () => {
 
       <main className="valfora-login-stage">
         <header className="valfora-login-hero">
-          <img src={valforaLogo} alt="" className="valfora-login-mark" />
-          <p className="valfora-login-brand-name">Valfora Holdings</p>
-          <h1 className="valfora-login-wordmark">Seeds ERP</h1>
+          <div className="valfora-login-mark-wrap">
+            <img src={valforaLogo} alt="Valfora Holdings" className="valfora-login-mark" />
+          </div>
+          <h1 className="valfora-login-wordmark">ERP</h1>
           <p className="valfora-login-lede">
             Operación comercial, WhatsApp y CRM en un solo workspace.
           </p>
