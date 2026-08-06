@@ -1034,6 +1034,10 @@ const ChatView = () => {
     () => pipelineStages.map((stage) => [stage.value, stage.label]),
     [pipelineStages],
   );
+  const stageLabels = useMemo(
+    () => Object.fromEntries(pipelineStages.map((stage) => [stage.value, stage.label])),
+    [pipelineStages],
+  );
   const orderedStageKeys = useMemo(() => pipelineStages.map((stage) => stage.value), [pipelineStages]);
 
   useEffect(() => {
@@ -1255,7 +1259,7 @@ const ChatView = () => {
         <div className="app-chat-headline-copy">
           <div className="app-chat-breadcrumb">General / Conversaciones</div>
           <h1 className="h4 mb-1">Conversaciones</h1>
-          <p className="text-muted mb-0 app-chat-headline-subtitle">Gestión centralizada de WhatsApp, IA y seguimiento comercial.</p>
+          <p className="text-muted mb-0 app-chat-headline-subtitle">Bandeja WhatsApp con IA y seguimiento comercial.</p>
         </div>
         <div className="app-chat-headline-actions">
           {canManageAiConfigs && (
@@ -1338,14 +1342,13 @@ const ChatView = () => {
             onSelect={selectConv}
             query={searchQuery}
             onQueryChange={setSearchQuery}
-            channelFilter={channelFilter}
-            onChannelFilterChange={setChannelFilter}
             whatsAppLines={whatsAppLines}
             selectedWhatsAppLine={selectedWhatsAppLine}
             onSelectWhatsAppLine={setSelectedWhatsAppLine}
             whatsAppLineCounts={whatsappLineCounts}
             statusFilter={conversationStatusFilter}
             onStatusFilterChange={setConversationStatusFilter}
+            stageLabels={stageLabels}
             className={mobileSection !== "conversations" ? "d-none d-lg-flex" : ""}
           />
         )}
@@ -1372,6 +1375,7 @@ const ChatView = () => {
                   senderLabel={senderLabel}
                   statusWarning={statusWarning}
                   messageLoadError={messageLoadError}
+                  stageLabels={stageLabels}
                 />
                 <ChatComposer
                   value={input}
@@ -1419,34 +1423,23 @@ const ChatView = () => {
         <Modal.Header closeButton><Modal.Title>Filtros de bandeja</Modal.Title></Modal.Header>
         <Modal.Body className="d-flex flex-column gap-2">
           <Form.Group>
-            <Form.Label>Canal</Form.Label>
-            <Form.Select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}>
-              <option value="whatsapp">WhatsApp</option>
-              <option value="">Todos</option>
+            <Form.Label>Línea de WhatsApp</Form.Label>
+            <Form.Select value={selectedWhatsAppLine} onChange={(e) => setSelectedWhatsAppLine(e.target.value)}>
+              <option value="">Todas</option>
+              {whatsAppLines.map((line) => (
+                <option key={line.id} value={line.id}>
+                  {line.line_name || line.internal_name || line.verified_name || line.display_phone_number}
+                </option>
+              ))}
             </Form.Select>
           </Form.Group>
-          {channelFilter === "whatsapp" && (
-            <Form.Group>
-              <Form.Label>Línea de WhatsApp</Form.Label>
-              <Form.Select value={selectedWhatsAppLine} onChange={(e) => setSelectedWhatsAppLine(e.target.value)}>
-                <option value="">Todas</option>
-                {whatsAppLines.map((line) => (
-                  <option key={line.id} value={line.id}>
-                    {line.line_name || line.internal_name || line.verified_name || line.display_phone_number}
-                  </option>
-                ))}
-              </Form.Select>
-            </Form.Group>
-          )}
-          {channelFilter === "whatsapp" && (
-            <Form.Group>
-              <Form.Label>Estado de conversación</Form.Label>
-              <Form.Select value={conversationStatusFilter} onChange={(e) => setConversationStatusFilter(e.target.value)}>
-                <option value="open">Abiertas</option>
-                <option value="closed">Cerradas</option>
-              </Form.Select>
-            </Form.Group>
-          )}
+          <Form.Group>
+            <Form.Label>Estado de conversación</Form.Label>
+            <Form.Select value={conversationStatusFilter} onChange={(e) => setConversationStatusFilter(e.target.value)}>
+              <option value="open">Abiertas</option>
+              <option value="closed">Cerradas</option>
+            </Form.Select>
+          </Form.Group>
           <Form.Group>
             <Form.Label>Etapa del deal</Form.Label>
             <Form.Select value={filters.dealStage} onChange={(e) => setFilters((p) => ({ ...p, dealStage: e.target.value }))}>

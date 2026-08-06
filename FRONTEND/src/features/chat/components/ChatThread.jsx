@@ -26,6 +26,12 @@ const formatMessageHour = (value) => {
   });
 };
 
+const resolveStageLabel = (conversation, stageLabels = {}) => {
+  const stageKey = conversation?.deal_stage || conversation?.latest_deal_stage || "";
+  if (!stageKey) return "";
+  return stageLabels[stageKey] || stageKey;
+};
+
 const ChatThread = ({
   loading,
   messages,
@@ -42,7 +48,9 @@ const ChatThread = ({
   senderLabel,
   statusWarning,
   messageLoadError,
+  stageLabels = {},
 }) => {
+  const stageLabel = resolveStageLabel(activeConv, stageLabels);
   const containerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const prevMessagesLengthRef = useRef(0);
@@ -98,10 +106,19 @@ const ChatThread = ({
           <div className="app-chat-topbar-main">
             <div className="app-chat-topbar-name-row">
               <strong className="app-chat-topbar-name">{activeConv.contact_name || "Chat"}</strong>
-              <span className="app-chat-topbar-chip is-channel">{activeConv.channel}</span>
+              <span className="app-chat-topbar-chip is-channel">
+                <i className="bi bi-whatsapp me-1" aria-hidden="true" />
+                WhatsApp
+              </span>
               {activeConv.whatsapp_line_name && (
                 <span className="app-chat-topbar-chip is-line">{activeConv.whatsapp_line_name}</span>
               )}
+              {stageLabel ? (
+                <span className="app-chat-topbar-chip is-stage" title="Etapa del embudo">
+                  <i className="bi bi-funnel me-1" aria-hidden="true" />
+                  {stageLabel}
+                </span>
+              ) : null}
               <span
                 className={`app-chat-topbar-chip ${
                   wsStatus === "connected"
@@ -123,13 +140,16 @@ const ChatThread = ({
                 </span>
               )}
             </div>
-            {(activeConv.deal_title || activeConv.contact) && (
+            {(activeConv.deal_title || stageLabel || activeConv.contact) && (
               <div className="app-chat-topbar-subrow">
-                {activeConv.deal_title && (
+                {activeConv.deal_title ? (
                   <span className="app-chat-topbar-subdeal">
                     Deal: {activeConv.deal_title}
+                    {stageLabel ? ` · ${stageLabel}` : ""}
                   </span>
-                )}
+                ) : stageLabel ? (
+                  <span className="app-chat-topbar-subdeal">Etapa: {stageLabel}</span>
+                ) : null}
                 {activeConv.contact && (
                   <a className="app-chat-topbar-link" href={`/crm/contacts/${activeConv.contact}`}>
                     Ver contacto
@@ -285,6 +305,7 @@ ChatThread.propTypes = {
   senderLabel: PropTypes.func.isRequired,
   statusWarning: PropTypes.func.isRequired,
   messageLoadError: PropTypes.string,
+  stageLabels: PropTypes.objectOf(PropTypes.string),
 };
 
 export default ChatThread;

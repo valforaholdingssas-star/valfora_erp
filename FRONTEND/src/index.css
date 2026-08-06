@@ -2093,8 +2093,9 @@ a {
 }
 
 .app-chat-topbar-chip.is-channel {
-  background: #f3f5f8;
-  color: #4c5b73;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
 }
 
 .app-chat-topbar-chip.is-online {
@@ -2654,6 +2655,112 @@ a {
   gap: 0.55rem;
 }
 
+.app-chat-sidebar-search.form-control {
+  border-radius: 10px;
+  border-color: #d7deea;
+  min-height: 38px;
+}
+
+.app-chat-sidebar-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  padding: 0 0.15rem;
+}
+
+.app-chat-sidebar-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 38px;
+  width: 100%;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid #d5deec;
+  background: #ffffff;
+  color: #64728a;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.app-chat-sidebar-chip:hover,
+.app-chat-sidebar-chip:focus-visible {
+  border-color: #9fb4df;
+  color: #24324d;
+  outline: none;
+}
+
+.app-chat-sidebar-chip.is-channel {
+  cursor: default;
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+  grid-column: 1 / -1;
+  max-width: 100%;
+  justify-self: start;
+  width: auto;
+  min-width: 132px;
+  padding-inline: 1rem;
+}
+
+.app-chat-sidebar-chip.is-channel .bi-whatsapp {
+  font-size: 0.95rem;
+}
+
+.app-chat-sidebar-chip.is-active.is-dark {
+  background: #111827;
+  border-color: #111827;
+  color: #ffffff;
+}
+
+.app-chat-sidebar-chip--count {
+  justify-content: center;
+}
+
+.app-chat-sidebar-chip--count span:last-child {
+  opacity: 0.84;
+  font-weight: 600;
+}
+
+.app-chat-sidebar-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70%;
+}
+
+.app-chat-sidebar-item-preview {
+  margin-top: 0.18rem;
+  color: #70819e;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-chat-sidebar-item-deal {
+  margin-top: 0.18rem;
+  color: #5b6b86;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-chat-sidebar-item-meta-token.is-stage {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
+}
+
 .app-chat-sidebar-switch-btn.btn {
   border-radius: 999px;
   min-height: 36px;
@@ -2676,8 +2783,8 @@ a {
 .app-chat-sidebar-switch-btn.btn-primary,
 .app-chat-sidebar-switch-btn.btn-primary:hover,
 .app-chat-sidebar-switch-btn.btn-primary:focus-visible {
-  background: linear-gradient(135deg, #2b6bf0 0%, #2557d8 100%);
-  border-color: #2557d8;
+  background: #2563eb;
+  border-color: #2563eb;
   color: #fff;
 }
 
@@ -2711,6 +2818,12 @@ a {
   background: rgba(241, 245, 249, 0.92);
   border-color: rgba(148, 163, 184, 0.34);
   color: #475569;
+}
+
+.app-chat-topbar-chip.is-stage {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
 }
 
 .app-chat-action-btn {
