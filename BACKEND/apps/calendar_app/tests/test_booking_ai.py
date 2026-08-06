@@ -655,6 +655,58 @@ def test_nlu_layer_handles_colloquial_next_week(admin_user, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_pending_email_day_change_escapes_email_loop(admin_user, monkeypatch):
+    """Client can reschedule while waiting for email instead of being nagged for correo."""
+    from apps.ai_config.models import AIConfiguration
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Camilo", last_name="C")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    bogota = ZoneInfo("America/Bogota")
+    slot = datetime(2026, 8, 7, 10, 30, tzinfo=bogota)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_email",
+        offered_slots=[slot.isoformat()],
+        selected_slot=slot,
+        timezone="America/Bogota",
+        duration_minutes=30,
+        metadata={
+            "preferred_day": "2026-08-07",
+            "preferred_period": "morning",
+            "pending_slot_iso": slot.isoformat(),
+            "preferred_day_label": "viernes 07/08",
+        },
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="No espera mejor reunamonos el domingo",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    fake_now = datetime(2026, 8, 6, 18, 36, tzinfo=bogota)
+    with patch("apps.calendar_app.booking_ai._now_in_calendar_tz", return_value=fake_now):
+        reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is not None
+    assert "correo" not in reply.content.lower()
+    assert "lunes a viernes" in reply.content.lower() or "laborable" in reply.content.lower()
+    draft = CalendarBookingDraft.objects.get(conversation=conv)
+    assert draft.status in {"pending_day", "pending_period"}
+    assert not (draft.metadata or {}).get("pending_slot_iso")
+
+
+@pytest.mark.django_db
 def test_day_change_from_pending_selection_asks_period_for_new_day(admin_user, monkeypatch):
     """Changing day must clear stale Tuesday slots and ask morning/afternoon for Thursday."""
     from apps.ai_config.models import AIConfiguration

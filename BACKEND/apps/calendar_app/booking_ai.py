@@ -561,13 +561,15 @@ def _dispatch_booking_interpretation(
         offset = int(interp.get("week_offset_days") or 7)
         draft.status = "pending_day"
         draft.offered_slots = []
+        draft.selected_slot = None
         draft.metadata = {
             **(draft.metadata or {}),
             "week_offset_days": offset,
             "preferred_day": None,
             "preferred_period": None,
+            "pending_slot_iso": None,
         }
-        draft.save(update_fields=["status", "offered_slots", "metadata", "updated_at"])
+        draft.save(update_fields=["status", "offered_slots", "selected_slot", "metadata", "updated_at"])
         # If they also gave a weekday ("el martes de la otra semana"), continue.
         if interp.get("weekday") or interp.get("date_iso"):
             return _apply_provide_day(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
@@ -580,6 +582,39 @@ def _dispatch_booking_interpretation(
             is_ai_generated=True,
             ai_context_used={"calendar_waiting_day": True, "nlu": interp},
         )
+
+    # Escape pending_email when client changes day / reschedules (before email nag).
+    if status == "pending_email" and (
+        action in {"provide_day", "provide_datetime", "provide_period", "defer_week", "start_booking", "cancel"}
+        or interp.get("weekday")
+        or interp.get("date_iso")
+        or interp.get("period")
+        or interp.get("time_hhmm")
+    ):
+        draft.offered_slots = []
+        draft.selected_slot = None
+        meta = {**(draft.metadata or {})}
+        meta.pop("pending_slot_iso", None)
+        draft.metadata = meta
+        draft.status = "pending_day"
+        draft.save(update_fields=["status", "offered_slots", "selected_slot", "metadata", "updated_at"])
+        status = draft.status
+        if action == "cancel":
+            _abandon_draft(draft, reason="nlu_cancel_from_email")
+            return Message.objects.create(
+                conversation=inbound.conversation,
+                sender_type="ai_bot",
+                content="Listo, cancelamos esa cita. Cuando quieras agendar de nuevo, me avisas.",
+                message_type="text",
+                status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+                is_ai_generated=True,
+                ai_context_used={"calendar_cancelled": True, "nlu": interp},
+            )
+        if interp.get("weekday") or interp.get("date_iso") or action in {"provide_day", "provide_datetime"}:
+            return _apply_provide_day(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
+        if action == "provide_period" or interp.get("period"):
+            return _apply_provide_period(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
+        return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
 
     if status == "pending_email" or action == "provide_email":
         email = _inviteable_attendee_email(interp.get("email")) or _parse_email_from_text(inbound.content or "")
@@ -634,7 +669,7 @@ def _dispatch_booking_interpretation(
                     slot_iso=matched,
                 )
 
-    # Day change mid-funnel (pending_selection included): never keep stale day/slots.
+    # Day change mid-funnel (including pending_email escape leftovers).
     if (interp.get("weekday") or interp.get("date_iso")) and action not in {
         "choose_slot",
         "provide_email",
@@ -645,7 +680,7 @@ def _dispatch_booking_interpretation(
         old_day = (draft.metadata or {}).get("preferred_day")
         if new_day and (
             action == "provide_day"
-            or status in {"pending_day", "pending_period", "pending_selection"}
+            or status in {"pending_day", "pending_period", "pending_selection", "pending_email"}
             or not old_day
             or str(old_day) != new_day.isoformat()
         ):
@@ -842,7 +877,28 @@ def _is_calendar_flow_message(text: str, *, draft_status: str) -> bool:
     if not low:
         return False
     if draft_status == "pending_email":
-        return bool(_parse_email_from_text(text) or _inviteable_attendee_email(low) or "@" in low)
+        if _parse_email_from_text(text) or _inviteable_attendee_email(low) or "@" in low:
+            return True
+        # Reschedule / change day while waiting for email
+        if _find_weekday_in_text(low) or _parse_day_period(text) or _parse_week_offset_days(text):
+            return True
+        if any(
+            p in low
+            for p in (
+                "espera",
+                "mejor",
+                "camb",
+                "otro día",
+                "otro dia",
+                "no quiero",
+                "cancel",
+                "reunamon",
+                "reúnamon",
+                "reagend",
+            )
+        ):
+            return True
+        return False
     if _has_schedule_intent(text) or _message_has_explicit_time(text) or _looks_like_slot_choice(text):
         return True
     if _parse_week_offset_days(text) is not None:
