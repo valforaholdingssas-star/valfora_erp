@@ -9,6 +9,33 @@ const initials = (name = "") =>
     .map((x) => x[0]?.toUpperCase() || "")
     .join("") || "C";
 
+const buildSidebarTags = (conversation) => {
+  const tags = [];
+  if (conversation?.__sla?.label) {
+    tags.push({ key: "sla", label: `SLA: ${conversation.__sla.label}`, tone: "sla" });
+  }
+  if (conversation?.whatsapp_line_name) {
+    tags.push({ key: "line", label: conversation.whatsapp_line_name, tone: "line" });
+  }
+  if (conversation?.__remainingWindowLabel) {
+    tags.push({ key: "window", label: conversation.__remainingWindowLabel, tone: "window" });
+  }
+  if (conversation?.status === "archived") {
+    tags.push({ key: "status", label: "Cerrado", tone: "closed" });
+  }
+  if (Number(conversation?.unread_count || 0) > 0) {
+    tags.push({ key: "unread", label: `${Number(conversation.unread_count)} sin leer`, tone: "unread" });
+  }
+  if (conversation?.__sla?.awaitingReply) {
+    tags.push({
+      key: "reply",
+      label: conversation.__sla?.isOverdue ? "Respuesta vencida" : "Respuesta pendiente",
+      tone: conversation.__sla?.isOverdue ? "critical" : "pending",
+    });
+  }
+  return tags;
+};
+
 const ChatSidebar = ({
   loading,
   conversations,
@@ -141,17 +168,15 @@ const ChatSidebar = ({
                       </span>
                     )}
                   </div>
-                  <div className="app-chat-sidebar-item-statusline">
-                    {[
-                      c.__sla?.label ? `SLA ${c.__sla.label}` : "SLA sin dato",
-                      c.whatsapp_line_name || null,
-                      c.__remainingWindowLabel || null,
-                      c.status === "archived" ? "Chat cerrado" : null,
-                      Number(c.unread_count || 0) > 0 ? `${Number(c.unread_count || 0)} sin leer` : null,
-                      c.__sla?.awaitingReply ? (c.__sla?.isOverdue ? "Respuesta vencida" : "Respuesta pendiente") : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                  <div className="app-chat-sidebar-item-statusline app-chat-sidebar-item-tags">
+                    {buildSidebarTags(c).map((tag) => (
+                      <span
+                        key={`${c.id}-${tag.key}`}
+                        className={`app-chat-sidebar-item-tag is-${tag.tone}`}
+                      >
+                        {tag.label}
+                      </span>
+                    ))}
                   </div>
                 </div>
               </div>
