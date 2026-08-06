@@ -9,28 +9,32 @@ const initials = (name = "") =>
     .map((x) => x[0]?.toUpperCase() || "")
     .join("") || "C";
 
+const formatWindowTagLabel = (conversation) => {
+  if (conversation?.status === "archived" || conversation?.is_whatsapp_window_closed) {
+    return "24h vencidas";
+  }
+  if (conversation?.__remainingWindowLabel) {
+    return conversation.__remainingWindowLabel;
+  }
+  return null;
+};
+
 const buildSidebarTags = (conversation) => {
   const tags = [];
-  if (conversation?.__sla?.label) {
-    tags.push({ key: "sla", label: `SLA: ${conversation.__sla.label}`, tone: "sla" });
-  }
+  tags.push({
+    key: "status",
+    label: conversation?.status === "archived" || conversation?.is_whatsapp_window_closed ? "Cerrado" : "Abierto",
+    tone: conversation?.status === "archived" || conversation?.is_whatsapp_window_closed ? "status-closed" : "status-open",
+  });
   if (conversation?.whatsapp_line_name) {
     tags.push({ key: "line", label: conversation.whatsapp_line_name, tone: "line" });
   }
-  if (conversation?.__remainingWindowLabel) {
-    tags.push({ key: "window", label: conversation.__remainingWindowLabel, tone: "window" });
-  }
-  if (conversation?.status === "archived") {
-    tags.push({ key: "status", label: "Cerrado", tone: "closed" });
-  }
-  if (Number(conversation?.unread_count || 0) > 0) {
-    tags.push({ key: "unread", label: `${Number(conversation.unread_count)} sin leer`, tone: "unread" });
-  }
-  if (conversation?.__sla?.awaitingReply) {
+  const windowLabel = formatWindowTagLabel(conversation);
+  if (windowLabel) {
     tags.push({
-      key: "reply",
-      label: conversation.__sla?.isOverdue ? "Respuesta vencida" : "Respuesta pendiente",
-      tone: conversation.__sla?.isOverdue ? "critical" : "pending",
+      key: "window",
+      label: windowLabel,
+      tone: conversation?.is_whatsapp_window_closed || conversation?.status === "archived" ? "window-closed" : "window",
     });
   }
   return tags;
@@ -162,11 +166,16 @@ const ChatSidebar = ({
                 <div className="app-chat-sidebar-item-body">
                   <div className="app-chat-sidebar-item-top">
                     <span className="app-chat-sidebar-item-name">{c.contact_name}</span>
-                    {c.last_message_at && (
-                      <span className="app-chat-sidebar-item-time">
-                        {new Date(c.last_message_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    )}
+                    <div className="app-chat-sidebar-item-timecluster">
+                      {Number(c.unread_count || 0) > 0 ? (
+                        <span className="app-chat-sidebar-item-unread">{Number(c.unread_count)}</span>
+                      ) : null}
+                      {c.last_message_at && (
+                        <span className="app-chat-sidebar-item-time">
+                          {new Date(c.last_message_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="app-chat-sidebar-item-statusline app-chat-sidebar-item-tags">
                     {buildSidebarTags(c).map((tag) => (

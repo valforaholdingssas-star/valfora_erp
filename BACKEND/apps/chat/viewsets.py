@@ -64,37 +64,23 @@ class ConversationViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset().filter(deal__isnull=False)
         params = self.request.query_params
         requested_channel = (params.get("channel") or "").strip().lower()
-        closed_whatsapp_origin_only = str(params.get("closed_whatsapp_origin_only", "true")).strip().lower() not in {"0", "false", "no"}
         is_list_action = self.action == "list"
 
         status_filter = (params.get("status") or "").strip().lower()
         whatsapp_window_status = (params.get("whatsapp_window_status") or "").strip().lower()
         include_closed = str(params.get("include_closed") or "").strip().lower() in {"1", "true", "yes"}
         if requested_channel == "whatsapp" and is_list_action:
+            qs = qs.filter(channel="whatsapp", deal__source="whatsapp")
             now = timezone.now()
-            has_whatsapp_signal = (
-                Q(customer_service_window_expires__isnull=False)
-                | Q(last_inbound_message_at__isnull=False)
-                | Q(last_message_at__isnull=False)
-                | Q(messages__is_active=True)
-            )
-            real_whatsapp_origin = Q(deal__source="whatsapp") | Q(deal__isnull=True, contact__source="whatsapp")
-            has_real_history = (
-                Q(messages__is_active=True)
-                | Q(last_inbound_message_at__isnull=False)
-                | Q(last_message_at__isnull=False)
-            )
             closed_window_q = Q(
                 customer_service_window_expires__isnull=False,
                 customer_service_window_expires__lte=now,
             )
             if whatsapp_window_status == "closed":
-                if closed_whatsapp_origin_only:
-                    qs = qs.filter(real_whatsapp_origin)
-                qs = qs.filter(has_whatsapp_signal).filter(Q(status="archived") | closed_window_q)
+                qs = qs.filter(Q(status="archived") | closed_window_q)
             elif whatsapp_window_status == "open" or not include_closed:
-                qs = qs.filter(has_whatsapp_signal).exclude(
-                    Q(status="archived") | (real_whatsapp_origin & closed_window_q)
+                qs = qs.exclude(
+                    Q(status="archived") | closed_window_q
                 )
         elif is_list_action:
             if status_filter == "closed":
@@ -260,27 +246,35 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def messages(self, request, pk=None):
         """List or create messages in a conversation."""
         conv = self.get_object()
-        if request.method == "GET" and conv.channel == "whatsapp" and conv.contact_id:
-            canonical_conv, _ = resolve_whatsapp_conversation(
-                conv.contact,
-                deal=conv.deal,
-                assigned_to=conv.assigned_to,
-                whatsapp_phone_number=conv.whatsapp_phone_number,
-                ai_mode_enabled=conv.ai_mode_enabled,
-                status=conv.status,
-                ai_configuration=conv.ai_configuration,
-            )
-            conv = canonical_conv
         if request.method == "GET":
-            if conv.channel == "whatsapp" and conv.contact_id:
-                related_conversation_ids = list(
-                    Conversation.objects.filter(
+            if conv.channel == "whatsapp":
+                if conv.deal_id:
+                    related_conversations = Conversation.objects.filter(
+                        channel="whatsapp",
+                    ).filter(
+                        Q(deal_id=conv.deal_id)
+                        | Q(
+                            deal__isnull=True,
+                            contact_id=conv.contact_id,
+                        )
+                    )
+                    if conv.whatsapp_phone_number_id:
+                        related_conversations = related_conversations.filter(
+                            Q(whatsapp_phone_number_id=conv.whatsapp_phone_number_id)
+                            | Q(whatsapp_phone_number_id__isnull=True)
+                        )
+                elif conv.contact_id:
+                    related_conversations = Conversation.objects.filter(
                         contact_id=conv.contact_id,
                         channel="whatsapp",
                     )
-                    .filter(Q(deal_id=conv.deal_id) | Q(deal__isnull=True))
-                    .values_list("id", flat=True)
-                )
+                    if conv.whatsapp_phone_number_id:
+                        related_conversations = related_conversations.filter(
+                            whatsapp_phone_number_id=conv.whatsapp_phone_number_id
+                        )
+                else:
+                    related_conversations = Conversation.objects.filter(id=conv.id)
+                related_conversation_ids = list(related_conversations.values_list("id", flat=True))
                 qs = Message.objects.filter(
                     conversation_id__in=related_conversation_ids or [conv.id],
                     is_active=True,

@@ -273,7 +273,8 @@ const ChatView = () => {
     });
   }, []);
 
-  const mergeConversationCollections = useCallback((currentRows, incomingRows, preservedConversationId = null) => {
+  const mergeConversationCollections = useCallback((currentRows, incomingRows, options = {}) => {
+    const { preserveConversationId = null } = options;
     const orderedRows = [];
     const seen = new Set();
 
@@ -285,10 +286,10 @@ const ChatView = () => {
       orderedRows.push(row);
     });
 
-    if (preservedConversationId) {
-      const preservedKey = String(preservedConversationId);
-      if (!seen.has(preservedKey)) {
-        const preservedRow = currentRows.find((row) => String(row.id) === preservedKey);
+    if (preserveConversationId) {
+      const preserveKey = String(preserveConversationId);
+      if (!seen.has(preserveKey)) {
+        const preservedRow = (currentRows || []).find((row) => String(row.id) === preserveKey);
         if (preservedRow) {
           orderedRows.unshift(preservedRow);
         }
@@ -344,7 +345,9 @@ const ChatView = () => {
         if (conversationsRequestRef.current !== requestId) return;
         setConversations((prev) => {
           const prevRows = prev?.results || [];
-          const nextRows = mergeConversationCollections(prevRows, data?.results || [], activeId);
+          const nextRows = mergeConversationCollections(prevRows, data?.results || [], {
+            preserveConversationId: dealId ? activeId : null,
+          });
           const isSame =
             prev?.count === Math.max(data?.count || 0, nextRows.length) &&
             prevRows.length === nextRows.length &&
@@ -371,7 +374,7 @@ const ChatView = () => {
           setLoadingList(false);
         }
       });
-  }, [searchQuery, filters, channelFilter, selectedWhatsAppLine, conversationStatusFilter, mergeConversationCollections, activeId]);
+  }, [searchQuery, filters, channelFilter, selectedWhatsAppLine, conversationStatusFilter, mergeConversationCollections, dealId, activeId]);
 
   const extractApiError = (error, fallback = "No fue posible completar la operación.") => {
     const payload = error?.response?.data?.data ?? error?.response?.data ?? {};
@@ -860,10 +863,19 @@ const ChatView = () => {
     );
   }, [sortedConversations, channelFilter, selectedWhatsAppLine]);
 
-  const filteredConversations = useMemo(
-    () => (showOnlyOverdue ? lineScopedConversations.filter((c) => c.__sla?.isOverdue) : lineScopedConversations),
-    [showOnlyOverdue, lineScopedConversations],
-  );
+  const filteredConversations = useMemo(() => {
+    let rows = lineScopedConversations;
+    if (channelFilter === "whatsapp" && !dealId) {
+      rows = rows.filter((conversation) => {
+        const isClosed = conversation.status === "archived" || Boolean(conversation.is_whatsapp_window_closed);
+        return conversationStatusFilter === "closed" ? isClosed : !isClosed;
+      });
+    }
+    if (showOnlyOverdue) {
+      rows = rows.filter((conversation) => conversation.__sla?.isOverdue);
+    }
+    return rows;
+  }, [showOnlyOverdue, lineScopedConversations, channelFilter, conversationStatusFilter, dealId]);
 
   useEffect(() => {
     if (dealId) return;

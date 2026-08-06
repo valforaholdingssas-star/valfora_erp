@@ -466,16 +466,12 @@ def test_whatsapp_conversation_filters_only_real_whatsapp_origin_and_real_window
     open_ids = {row["id"] for row in body_open["results"]}
     assert str(conv_open.id) in open_ids
     assert str(conv_closed.id) not in open_ids
-    assert str(conv_workana.id) in open_ids
+    assert str(conv_workana.id) not in open_ids
     assert str(conv_manual.id) not in open_ids
     open_row = next(row for row in body_open["results"] if row["id"] == str(conv_open.id))
-    open_workana_row = next(row for row in body_open["results"] if row["id"] == str(conv_workana.id))
     assert open_row["is_whatsapp_origin"] is True
     assert open_row["is_whatsapp_window_closed"] is False
     assert open_row["latest_deal_source"] == "whatsapp"
-    assert open_workana_row["is_whatsapp_origin"] is False
-    assert open_workana_row["is_whatsapp_window_closed"] is False
-    assert open_workana_row["latest_deal_source"] == "workana"
 
     response_closed = client.get("/api/v1/chat/conversations/", {"channel": "whatsapp", "whatsapp_window_status": "closed"})
     assert response_closed.status_code == 200
@@ -512,7 +508,7 @@ def test_whatsapp_closed_conversation_uses_historical_thread_messages_when_legac
         deal=None,
         channel="whatsapp",
         status="archived",
-        is_active=True,
+        is_active=False,
         customer_service_window_expires=now - timedelta(hours=2),
         last_inbound_message_at=now - timedelta(hours=3),
         last_message_at=now - timedelta(hours=2, minutes=50),
@@ -542,5 +538,46 @@ def test_whatsapp_closed_conversation_uses_historical_thread_messages_when_legac
     assert body["count"] == 1
     assert body["results"][0]["content"] == "Necesito más información del servicio"
 
-    history_conv.refresh_from_db()
-    assert history_conv.deal_id == deal.id
+
+@pytest.mark.django_db
+def test_whatsapp_conversation_messages_do_not_mix_histories_between_deals_for_same_contact(admin_user):
+    contact = Contact.objects.create(
+        first_name="Same",
+        last_name="Contact",
+        email="same-contact@example.com",
+        whatsapp_number="573001230199",
+        created_by=admin_user,
+        source="whatsapp",
+    )
+    deal_a = Deal.objects.create(
+        title="Deal A",
+        contact=contact,
+        source="whatsapp",
+        assigned_to=admin_user,
+    )
+    deal_b = Deal.objects.create(
+        title="Deal B",
+        contact=contact,
+        source="whatsapp",
+        assigned_to=admin_user,
+    )
+    conv_a, _ = Conversation.objects.get_or_create(contact=contact, deal=deal_a, channel="whatsapp")
+    conv_b, _ = Conversation.objects.get_or_create(contact=contact, deal=deal_b, channel="whatsapp")
+    conv_a.status = "archived"
+    conv_a.customer_service_window_expires = timezone.now() - timedelta(hours=2)
+    conv_a.save(update_fields=["status", "customer_service_window_expires", "updated_at"])
+
+    Message.objects.create(conversation=conv_a, sender_type="contact", content="Historial A1", status="delivered")
+    Message.objects.create(conversation=conv_a, sender_type="user", content="Historial A2", status="sent")
+    Message.objects.create(conversation=conv_b, sender_type="contact", content="Historial B1", status="delivered")
+
+    client = APIClient()
+    client.force_authenticate(user=admin_user)
+    response = client.get(f"/api/v1/chat/conversations/{conv_a.id}/messages/", {"page_size": 100})
+
+    assert response.status_code == 200
+    body = _j(response)["data"]
+    contents = [row["content"] for row in body["results"]]
+    assert "Historial A1" in contents
+    assert "Historial A2" in contents
+    assert "Historial B1" not in contents
