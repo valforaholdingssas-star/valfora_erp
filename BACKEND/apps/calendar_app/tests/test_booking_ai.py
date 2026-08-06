@@ -92,9 +92,11 @@ def test_parse_preferred_datetime_spanish_phrases():
 
 
 @pytest.mark.django_db
-def test_affirmation_asks_for_day_not_slots(admin_user):
+def test_affirmation_asks_for_day_not_slots(admin_user, monkeypatch):
     from apps.ai_config.models import AIConfiguration
 
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
     AIRuntimeSettings.objects.create(
         google_calendar_enabled=True,
         google_calendar_id="team@example.com",
@@ -132,10 +134,11 @@ def test_affirmation_asks_for_day_not_slots(admin_user):
 
 
 @pytest.mark.django_db
-def test_pending_day_friday_asks_morning_or_afternoon(admin_user):
+def test_pending_day_friday_asks_morning_or_afternoon(admin_user, monkeypatch):
     from apps.ai_config.models import AIConfiguration
     from zoneinfo import ZoneInfo
 
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
     AIRuntimeSettings.objects.create(
         google_calendar_enabled=True,
         google_calendar_id="team@example.com",
@@ -173,10 +176,12 @@ def test_pending_day_friday_asks_morning_or_afternoon(admin_user):
 
 
 @pytest.mark.django_db
-def test_day_and_time_free_asks_email(admin_user):
+def test_day_and_time_free_asks_email(admin_user, monkeypatch):
     from apps.ai_config.models import AIConfiguration
     from zoneinfo import ZoneInfo
 
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
     AIRuntimeSettings.objects.create(
         google_calendar_enabled=True,
         google_calendar_id="team@example.com",
@@ -221,11 +226,13 @@ def test_day_and_time_free_asks_email(admin_user):
 
 
 @pytest.mark.django_db
-def test_pending_selection_weekend_request_reoffers_weekdays(admin_user):
+def test_pending_selection_weekend_request_reoffers_weekdays(admin_user, monkeypatch):
     from apps.ai_config.models import AIConfiguration
     from apps.calendar_app.booking_ai import maybe_handle_calendar_booking
     from zoneinfo import ZoneInfo
 
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
     runtime = AIRuntimeSettings.objects.create(
         google_calendar_enabled=True,
         google_calendar_id="team@example.com",
@@ -420,11 +427,13 @@ def test_create_event_retries_without_attendees_on_sa_403(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_request_email_before_confirm_when_contact_has_placeholder(admin_user):
+def test_request_email_before_confirm_when_contact_has_placeholder(admin_user, monkeypatch):
     from apps.ai_config.models import AIConfiguration
     from apps.calendar_app.booking_ai import maybe_handle_calendar_booking
     from zoneinfo import ZoneInfo
 
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
     AIRuntimeSettings.objects.create(
         google_calendar_enabled=True,
         google_calendar_id="team@example.com",
@@ -455,10 +464,7 @@ def test_request_email_before_confirm_when_contact_has_placeholder(admin_user):
         status="delivered",
     )
     config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
-    with patch(
-        "apps.calendar_app.booking_ai._infer_calendar_intent",
-        return_value={"intent": "book_slot", "slot_iso": None},
-    ):
+    with patch("apps.calendar_app.booking_ai._is_preferred_slot_free", return_value=True):
         reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
 
     assert reply is not None
@@ -468,9 +474,11 @@ def test_request_email_before_confirm_when_contact_has_placeholder(admin_user):
 
 
 @pytest.mark.django_db
-def test_info_request_does_not_start_calendar(admin_user):
+def test_info_request_does_not_start_calendar(admin_user, monkeypatch):
     from apps.ai_config.models import AIConfiguration
 
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
     AIRuntimeSettings.objects.create(
         google_calendar_enabled=True,
         google_calendar_id="team@example.com",
@@ -492,10 +500,12 @@ def test_info_request_does_not_start_calendar(admin_user):
 
 
 @pytest.mark.django_db
-def test_pending_selection_other_week_asks_day(admin_user):
+def test_pending_selection_other_week_asks_day(admin_user, monkeypatch):
     from apps.ai_config.models import AIConfiguration
     from zoneinfo import ZoneInfo
 
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
     AIRuntimeSettings.objects.create(
         google_calendar_enabled=True,
         google_calendar_id="team@example.com",
@@ -530,6 +540,28 @@ def test_pending_selection_other_week_asks_day(admin_user):
     assert draft.status == "pending_day"
 
 
+def test_nlu_merge_prefers_llm_datetime_and_fills_gaps():
+    from apps.calendar_app.booking_nlu import _merge_interpretations
+
+    llm = {
+        "related": True,
+        "action": "provide_day",
+        "weekday": "martes",
+        "date_iso": None,
+        "period": None,
+        "time_hhmm": None,
+        "week_offset_days": 0,
+        "email": None,
+        "slot_iso": None,
+        "confidence": 0.9,
+    }
+    hint = {"time_hhmm": "15:00", "related": True, "action": "provide_datetime"}
+    merged = _merge_interpretations(llm, hint)
+    assert merged["weekday"] == "martes"
+    assert merged["time_hhmm"] == "15:00"
+    assert merged["action"] == "provide_datetime"
+
+
 def test_looks_like_invented_slot_offer():
     from apps.calendar_app.booking_ai import looks_like_invented_slot_offer
 
@@ -537,6 +569,61 @@ def test_looks_like_invented_slot_offer():
         "Perfecto, te propongo estos horarios disponibles:\n- viernes 07/08 09:00\n- viernes 07/08 09:30"
     )
     assert not looks_like_invented_slot_offer("¡Hola! ¿En qué puedo ayudarte hoy?")
+
+
+@pytest.mark.django_db
+def test_nlu_layer_handles_colloquial_next_week(admin_user, monkeypatch):
+    """LLM interprets colloquial phrasing; state machine only sees structured params."""
+    from apps.ai_config.models import AIConfiguration
+    from zoneinfo import ZoneInfo
+
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Camilo", last_name="C")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    bogota = ZoneInfo("America/Bogota")
+    slot = datetime(2026, 8, 7, 9, 0, tzinfo=bogota)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_selection",
+        offered_slots=[slot.isoformat()],
+        timezone="America/Bogota",
+        duration_minutes=30,
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="mejor la semanita que viene si se puede",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+
+    def fake_interpret(**kwargs):
+        return {
+            "related": True,
+            "action": "defer_week",
+            "weekday": None,
+            "date_iso": None,
+            "period": None,
+            "time_hhmm": None,
+            "week_offset_days": 7,
+            "email": None,
+            "slot_iso": None,
+            "confidence": 0.95,
+            "source": "llm",
+        }
+
+    monkeypatch.setattr("apps.calendar_app.booking_ai.interpret_booking_utterance", fake_interpret)
+    reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is not None
+    assert "semana" in reply.content.lower()
+    assert CalendarBookingDraft.objects.get(conversation=conv).status == "pending_day"
 
 
 @pytest.mark.django_db

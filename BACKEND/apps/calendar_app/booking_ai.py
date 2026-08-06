@@ -14,6 +14,7 @@ from openai import OpenAI
 
 from apps.ai_config.models import AIRuntimeSettings, AIConfiguration
 from apps.ai_config.runtime import resolve_openai_api_key
+from apps.calendar_app.booking_nlu import interpret_booking_utterance
 from apps.calendar_app.google_client import (
     GOOGLE_CAL_SCOPE,
     GOOGLE_EVENT_SCOPES,
@@ -180,10 +181,9 @@ def google_calendar_system_policy() -> str:
         "NUNCA envíes ni inventes links de Calendly, Cal.com ni ningún enlace externo de reserva.\n"
         "NUNCA digas “te paso el link” ni menciones herramientas externas de agenda.\n"
         "NUNCA inventes horarios ni listas de disponibilidad: el backend consulta el calendario real.\n"
-        "Flujo conversacional (el backend lo ejecuta): 1) si el cliente acepta reunirse, se le pregunta "
-        "qué día le queda bien; 2) luego si prefiere mañana o tarde; 3) recién ahí se proponen slots; "
-        "4) al confirmar horario se pide el correo para la invitación.\n"
-        "Si el cliente ya dio día y hora concretos, el backend valida disponibilidad solo."
+        "Hay una capa NLU: el cliente puede hablar en lenguaje natural; el backend interpreta y agenda.\n"
+        "Flujo: 1) si acepta reunirse, se pregunta el día; 2) mañana o tarde; 3) slots reales; "
+        "4) correo para invitación Meet. No adelantes pasos ni inventes opciones."
     )
 
 
@@ -202,10 +202,16 @@ def _google_token(runtime: AIRuntimeSettings, *, for_events: bool = False) -> st
 
 MORNING_END_HOUR = 13  # 09:00–13:00
 AFTERNOON_START_HOUR = 13  # 13:00–18:00
+_ACTIVE_BOOKING_STATUSES = {"pending_day", "pending_period", "pending_selection", "pending_email"}
 
 
 def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) -> Message | None:
-    """Handle scheduling flow before standard AI response."""
+    """Handle scheduling flow before standard AI response.
+
+    Architecture:
+      user text → NLU interpreter (LLM + deterministic fallback) → structured params
+      → booking state machine (day → period → slots → email).
+    """
     runtime = AIRuntimeSettings.objects.order_by("-updated_at").first()
     if not is_google_calendar_ready(runtime):
         return None
@@ -215,44 +221,468 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
     if not text:
         return None
 
-    intent = _infer_calendar_intent(user_text=text, model=config.llm_model)
     draft = CalendarBookingDraft.objects.filter(conversation=conv).first()
+    status = draft.status if draft and draft.status in _ACTIVE_BOOKING_STATUSES else "idle"
+    tz_name = _calendar_tz_name(runtime, draft)
+    now_local = _now_in_calendar_tz(tz_name)
+    offered = []
+    if draft and draft.offered_slots:
+        offered = [
+            {"iso": str(s), "label": _format_slot_label(datetime.fromisoformat(str(s)), tz_name)}
+            for s in draft.offered_slots[:6]
+        ]
 
-    # Stale/active drafts must not hijack unrelated chat (info questions, complaints, etc.).
-    if draft and draft.status in {"pending_day", "pending_period", "pending_selection", "pending_email"}:
-        if not _is_calendar_flow_message(text, draft_status=draft.status):
-            if draft.status != "pending_email":
-                _abandon_draft(draft, reason="unrelated_message")
+    hint = _deterministic_booking_hint(
+        text=text,
+        draft_status=status,
+        tz_name=tz_name,
+        draft=draft,
+        offered_slots=[str(x) for x in (draft.offered_slots or [])] if draft else [],
+        model=config.llm_model,
+        recent_invite=_recent_assistant_invited_meeting(conv),
+    )
+    interp = interpret_booking_utterance(
+        text=text,
+        draft_status=status,
+        tz_name=tz_name,
+        now_local=now_local,
+        offered_slots=offered,
+        draft_metadata=(draft.metadata if draft else None),
+        model=config.llm_model,
+        recent_meeting_invite=_recent_assistant_invited_meeting(conv),
+        deterministic_hint=hint,
+    )
+
+    if status in _ACTIVE_BOOKING_STATUSES:
+        if not interp.get("related") and interp.get("action") not in {
+            "provide_day",
+            "provide_period",
+            "provide_datetime",
+            "choose_slot",
+            "defer_week",
+            "provide_email",
+            "clarify",
+            "start_booking",
+        }:
+            if status != "pending_email":
+                _abandon_draft(draft, reason="nlu_unrelated")
             return None
-
-    if draft and draft.status == "pending_email":
-        return _handle_pending_email(inbound=inbound, runtime=runtime, draft=draft, text=text)
-
-    if draft and draft.status == "pending_day":
-        return _handle_pending_day(inbound=inbound, runtime=runtime, draft=draft, text=text)
-
-    if draft and draft.status == "pending_period":
-        return _handle_pending_period(inbound=inbound, runtime=runtime, draft=draft, text=text)
-
-    if draft and draft.status == "pending_selection":
-        return _handle_pending_selection(
+        return _dispatch_booking_interpretation(
             inbound=inbound,
             runtime=runtime,
             draft=draft,
-            text=text,
-            intent=intent,
+            interp=interp,
             model=config.llm_model,
         )
 
-    should_start = (
-        intent.get("intent") == "check_availability"
-        or _has_schedule_intent(text)
-        or (_is_scheduling_affirmation(text) and _recent_assistant_invited_meeting(conv))
-    )
-    if not should_start:
+    # Idle: only start when NLU says so (or strong deterministic start).
+    if interp.get("action") == "start_booking" or (
+        interp.get("related") and interp.get("action") in {"provide_day", "provide_datetime", "defer_week"}
+    ):
+        draft = draft if draft and draft.status in _ACTIVE_BOOKING_STATUSES else None
+        ask = _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
+        draft = CalendarBookingDraft.objects.filter(conversation=conv).first()
+        if interp.get("action") in {"provide_day", "provide_datetime", "defer_week"} and draft:
+            return _dispatch_booking_interpretation(
+                inbound=inbound,
+                runtime=runtime,
+                draft=draft,
+                interp=interp,
+                model=config.llm_model,
+            )
+        return ask
+
+    return None
+
+
+def _deterministic_booking_hint(
+    *,
+    text: str,
+    draft_status: str,
+    tz_name: str,
+    draft: CalendarBookingDraft | None,
+    offered_slots: list[str],
+    model: str,
+    recent_invite: bool,
+) -> dict:
+    """Legacy parsers as soft hints for the NLU merger (not the primary gate)."""
+    hint: dict = {}
+    week = _parse_week_offset_days(text)
+    if week:
+        hint.update({"related": True, "action": "defer_week", "week_offset_days": week})
+
+    email = _parse_email_from_text(text)
+    if email:
+        hint.update({"related": True, "action": "provide_email", "email": email})
+
+    period = _parse_day_period(text)
+    if period and draft_status in {"pending_period", "pending_day", "pending_selection", "idle"}:
+        hint.setdefault("related", True)
+        hint.setdefault("action", "provide_period")
+        hint["period"] = period
+
+    preferred = _parse_preferred_datetime(text, tz_name=tz_name)
+    if preferred and _message_has_explicit_time(text):
+        hint.update(
+            {
+                "related": True,
+                "action": "provide_datetime",
+                "date_iso": preferred.date().isoformat(),
+                "time_hhmm": preferred.strftime("%H:%M"),
+                "weekday": _WEEKDAYS_ES[preferred.weekday()],
+            }
+        )
+    else:
+        day = _parse_preferred_day(
+            text,
+            tz_name=tz_name,
+            week_offset_days=int((draft.metadata or {}).get("week_offset_days") or 0) if draft else 0,
+        )
+        if day:
+            hint.update(
+                {
+                    "related": True,
+                    "action": "provide_day",
+                    "date_iso": day.isoformat(),
+                    "weekday": _WEEKDAYS_ES[day.weekday()],
+                }
+            )
+
+    if offered_slots:
+        chosen = _pick_slot_from_text(
+            user_text=text,
+            offered_slots=offered_slots,
+            model=model,
+            tz_name=tz_name,
+        )
+        if chosen:
+            hint.update({"related": True, "action": "choose_slot", "slot_iso": chosen})
+
+    if draft_status == "idle" and (
+        _has_schedule_intent(text) or (_is_scheduling_affirmation(text) and recent_invite)
+    ):
+        hint.update({"related": True, "action": "start_booking"})
+
+    if draft_status in _ACTIVE_BOOKING_STATUSES and _is_calendar_flow_message(text, draft_status=draft_status):
+        hint.setdefault("related", True)
+
+    return hint
+
+
+def _datetime_from_interpretation(interp: dict, *, tz_name: str, draft: CalendarBookingDraft | None) -> datetime | None:
+    zone = _tz(tz_name)
+    now = _now_in_calendar_tz(tz_name)
+    week_offset = int(interp.get("week_offset_days") or 0)
+    if draft and not week_offset:
+        week_offset = int((draft.metadata or {}).get("week_offset_days") or 0)
+
+    date_iso = interp.get("date_iso")
+    time_hhmm = interp.get("time_hhmm")
+    weekday = interp.get("weekday")
+
+    day = None
+    if date_iso:
+        try:
+            day = datetime.fromisoformat(str(date_iso)).date()
+        except ValueError:
+            day = None
+    elif weekday and weekday in _WEEKDAYS_ES:
+        idx = _WEEKDAYS_ES.index(weekday)
+        base = now + timedelta(days=max(0, week_offset))
+        day = _resolve_weekday_date(idx, now=base).date()
+    elif draft and (draft.metadata or {}).get("preferred_day") and time_hhmm:
+        try:
+            day = datetime.fromisoformat(str(draft.metadata["preferred_day"])).date()
+        except ValueError:
+            day = None
+
+    if not day or not time_hhmm:
+        return None
+    try:
+        hour_s, minute_s = str(time_hhmm).split(":")[:2]
+        hour, minute = int(hour_s), int(minute_s)
+    except (TypeError, ValueError):
+        return None
+    try:
+        return datetime(day.year, day.month, day.day, hour, minute, tzinfo=zone)
+    except ValueError:
         return None
 
-    return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
+
+def _day_from_interpretation(interp: dict, *, tz_name: str, draft: CalendarBookingDraft | None):
+    preferred = _datetime_from_interpretation(interp, tz_name=tz_name, draft=draft)
+    if preferred:
+        return preferred.date()
+    date_iso = interp.get("date_iso")
+    if date_iso:
+        try:
+            return datetime.fromisoformat(str(date_iso)).date()
+        except ValueError:
+            pass
+    weekday = interp.get("weekday")
+    if weekday and weekday in _WEEKDAYS_ES:
+        now = _now_in_calendar_tz(tz_name)
+        week_offset = int(interp.get("week_offset_days") or 0)
+        if draft and not week_offset:
+            week_offset = int((draft.metadata or {}).get("week_offset_days") or 0)
+        base = now + timedelta(days=max(0, week_offset))
+        return _resolve_weekday_date(_WEEKDAYS_ES.index(weekday), now=base).date()
+    return None
+
+
+def _dispatch_booking_interpretation(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft,
+    interp: dict,
+    model: str,
+) -> Message | None:
+    """Apply structured NLU params onto the booking state machine."""
+    action = interp.get("action") or "none"
+    tz_name = _calendar_tz_name(runtime, draft)
+    status = draft.status
+
+    if action == "cancel":
+        _abandon_draft(draft, reason="nlu_cancel")
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content="Listo, dejamos la agenda en pausa. Cuando quieras retomar, me avisas.",
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_cancelled": True, "nlu": interp},
+        )
+
+    if action == "defer_week" or int(interp.get("week_offset_days") or 0) >= 7:
+        offset = int(interp.get("week_offset_days") or 7)
+        draft.status = "pending_day"
+        draft.offered_slots = []
+        draft.metadata = {
+            **(draft.metadata or {}),
+            "week_offset_days": offset,
+            "preferred_day": None,
+            "preferred_period": None,
+        }
+        draft.save(update_fields=["status", "offered_slots", "metadata", "updated_at"])
+        # If they also gave a weekday ("el martes de la otra semana"), continue.
+        if interp.get("weekday") or interp.get("date_iso"):
+            return _apply_provide_day(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content="Perfecto, entonces para la próxima semana: ¿qué día te queda bien?",
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_day": True, "nlu": interp},
+        )
+
+    if status == "pending_email" or action == "provide_email":
+        email = _inviteable_attendee_email(interp.get("email")) or _parse_email_from_text(inbound.content or "")
+        if email:
+            return _handle_pending_email(
+                inbound=inbound,
+                runtime=runtime,
+                draft=draft,
+                text=email,
+            )
+        if status == "pending_email":
+            return _handle_pending_email(
+                inbound=inbound,
+                runtime=runtime,
+                draft=draft,
+                text=inbound.content or "",
+            )
+
+    if action == "provide_datetime" or (interp.get("time_hhmm") and (interp.get("date_iso") or interp.get("weekday") or status in {"pending_day", "pending_period", "pending_selection"})):
+        preferred = _datetime_from_interpretation(interp, tz_name=tz_name, draft=draft)
+        if preferred:
+            preferred = _snap_to_slot_grid(
+                preferred,
+                minutes=int(runtime.google_slot_minutes or draft.duration_minutes or 30),
+            )
+            return _try_book_or_suggest(
+                inbound=inbound,
+                runtime=runtime,
+                draft=draft,
+                preferred=preferred,
+            )
+
+    if action == "choose_slot" or (status == "pending_selection" and interp.get("slot_iso")):
+        slot_iso = interp.get("slot_iso")
+        offered = [str(x) for x in (draft.offered_slots or [])]
+        if slot_iso and slot_iso in offered:
+            return _request_email_or_confirm(
+                inbound=inbound,
+                runtime=runtime,
+                draft=draft,
+                slot_iso=slot_iso,
+            )
+        # Try match by interpreted datetime against offered
+        preferred = _datetime_from_interpretation(interp, tz_name=tz_name, draft=draft)
+        if preferred:
+            matched = _match_offered_slot(preferred, offered, tz_name=tz_name)
+            if matched:
+                return _request_email_or_confirm(
+                    inbound=inbound,
+                    runtime=runtime,
+                    draft=draft,
+                    slot_iso=matched,
+                )
+
+    if action == "provide_period" or (status == "pending_period" and interp.get("period")):
+        return _apply_provide_period(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
+
+    if action == "provide_day" or (status == "pending_day" and (interp.get("weekday") or interp.get("date_iso"))):
+        return _apply_provide_day(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
+
+    if action == "start_booking":
+        return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
+
+    # Clarify according to current step (conversational, not keyword loop).
+    if status == "pending_day":
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content="¿Qué día te queda mejor? Puede ser un día de la semana, por ejemplo martes o viernes.",
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_day": True, "nlu": interp},
+        )
+    if status == "pending_period":
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content="¿Te acomoda mejor en la mañana o en la tarde?",
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_period": True, "nlu": interp},
+        )
+    if status == "pending_selection":
+        draft.status = "pending_day"
+        draft.offered_slots = []
+        draft.save(update_fields=["status", "offered_slots", "updated_at"])
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content="Entendido. ¿Qué día te queda mejor para la reunión?",
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_day": True, "nlu": interp},
+        )
+    if status == "pending_email":
+        return _handle_pending_email(inbound=inbound, runtime=runtime, draft=draft, text=inbound.content or "")
+    return None
+
+
+def _apply_provide_day(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft,
+    interp: dict,
+) -> Message:
+    tz_name = _calendar_tz_name(runtime, draft)
+    day = _day_from_interpretation(interp, tz_name=tz_name, draft=draft)
+    if not day:
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content="¿Qué día te queda bien? Por ejemplo: martes, viernes o el 12/08.",
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_day": True, "nlu": interp},
+        )
+    if day.weekday() >= 5:
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content="Agendamos de lunes a viernes. ¿Qué día laborable te queda mejor?",
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_day": True, "nlu": interp},
+        )
+
+    # Day + period in one utterance
+    if interp.get("period") and not interp.get("time_hhmm"):
+        draft.metadata = {
+            **(draft.metadata or {}),
+            "preferred_day": day.isoformat(),
+            "preferred_day_label": f"{_WEEKDAYS_ES[day.weekday()]} {day.strftime('%d/%m')}",
+            "week_offset_days": 0,
+        }
+        draft.status = "pending_period"
+        draft.save(update_fields=["status", "metadata", "updated_at"])
+        return _apply_provide_period(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
+
+    draft.status = "pending_period"
+    draft.metadata = {
+        **(draft.metadata or {}),
+        "preferred_day": day.isoformat(),
+        "preferred_day_label": f"{_WEEKDAYS_ES[day.weekday()]} {day.strftime('%d/%m')}",
+        "week_offset_days": 0,
+    }
+    draft.save(update_fields=["status", "metadata", "updated_at"])
+    label = draft.metadata["preferred_day_label"]
+    return Message.objects.create(
+        conversation=inbound.conversation,
+        sender_type="ai_bot",
+        content=f"Claro que sí, para el {label}: ¿te sirve en la mañana o en la tarde?",
+        message_type="text",
+        status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+        is_ai_generated=True,
+        ai_context_used={"calendar_waiting_period": True, "preferred_day": day.isoformat(), "nlu": interp},
+    )
+
+
+def _apply_provide_period(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft,
+    interp: dict,
+) -> Message:
+    tz_name = _calendar_tz_name(runtime, draft)
+    day_iso = (draft.metadata or {}).get("preferred_day")
+    if not day_iso:
+        return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
+    day = datetime.fromisoformat(day_iso).date()
+    period = interp.get("period")
+    if period not in {"morning", "afternoon"}:
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content="¿Te acomoda mejor en la mañana o en la tarde?",
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_period": True, "nlu": interp},
+        )
+    hour_start, hour_end = (
+        (WORKDAY_START_HOUR, MORNING_END_HOUR) if period == "morning" else (AFTERNOON_START_HOUR, WORKDAY_END_HOUR)
+    )
+    draft.metadata = {**(draft.metadata or {}), "preferred_period": period}
+    draft.save(update_fields=["metadata", "updated_at"])
+    period_label = "mañana" if period == "morning" else "tarde"
+    day_label = (draft.metadata or {}).get("preferred_day_label") or day.isoformat()
+    return offer_availability_slots(
+        inbound=inbound,
+        runtime=runtime,
+        draft=draft,
+        target_date=datetime(day.year, day.month, day.day, tzinfo=_tz(tz_name)),
+        period_start_hour=hour_start,
+        period_end_hour=hour_end,
+        prefer_around=datetime(day.year, day.month, day.day, hour_start + 1, 0, tzinfo=_tz(tz_name)),
+        intro=f"Perfecto, para el {day_label} en la {period_label} tengo estos horarios:",
+        fallback_next_days=True,
+    )
 
 
 def _abandon_draft(draft: CalendarBookingDraft, *, reason: str) -> None:

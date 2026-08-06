@@ -118,6 +118,8 @@ def test_scheduling_affirmation_after_meeting_invite_asks_day(monkeypatch, admin
     from apps.calendar_app.booking_ai import maybe_handle_calendar_booking
     from apps.crm.models import Contact, Deal
 
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
     AIRuntimeSettings.objects.create(
         google_calendar_enabled=True,
         google_calendar_id="team@example.com",
