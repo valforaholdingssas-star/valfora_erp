@@ -1608,10 +1608,18 @@ def _confirm_booking(
     if guest_email and invited:
         parts.append(f"Te enviamos la invitación a {guest_email} para que quede en tu calendario.")
     elif guest_email and not invited:
-        parts.append(
-            f"Registré tu correo ({guest_email}). "
-            "Si no te llega la invitación automática, entra con el enlace de Meet de arriba."
-        )
+        if meet_uri:
+            parts.append(
+                f"Registré tu correo ({guest_email}). "
+                "En este momento la invitación automática de Google no pudo enviarse; "
+                "usa el enlace de Meet de arriba para entrar a la reunión."
+            )
+        else:
+            parts.append(
+                f"Registré tu correo ({guest_email}). "
+                "La cita quedó en nuestro calendario; el enlace de Meet se te compartirá "
+                "en cuanto esté disponible."
+            )
     parts.append("Si necesitas reagendar, avísame.")
 
     return Message.objects.create(

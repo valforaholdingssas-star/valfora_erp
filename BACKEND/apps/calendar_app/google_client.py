@@ -129,6 +129,50 @@ def create_meet_space(*, access_token: str) -> dict[str, Any] | None:
     return response.json()
 
 
+def patch_event_with_meet(
+    *,
+    access_token: str,
+    calendar_id: str,
+    event_id: str,
+    meet_uri: str,
+) -> dict[str, Any]:
+    """Attach an existing Meet URI onto a Calendar event (location + conferenceData)."""
+    cal_id = quote(calendar_id, safe="@")
+    ev_id = quote(event_id, safe="")
+    conference_id = meet_uri.rstrip("/").split("/")[-1]
+    body = {
+        "location": meet_uri,
+        "conferenceData": {
+            "conferenceId": conference_id,
+            "conferenceSolution": {
+                "key": {"type": "hangoutsMeet"},
+                "name": "Google Meet",
+            },
+            "entryPoints": [
+                {
+                    "entryPointType": "video",
+                    "uri": meet_uri,
+                    "label": meet_uri.replace("https://", ""),
+                }
+            ],
+        },
+    }
+    url = (
+        f"https://www.googleapis.com/calendar/v3/calendars/{cal_id}/events/{ev_id}"
+        f"?conferenceDataVersion=1"
+    )
+    response = requests.patch(
+        url,
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+        json=body,
+        timeout=30,
+    )
+    response.raise_for_status()
+    event = response.json()
+    event["_meet_uri"] = meet_uri
+    return event
+
+
 def _extract_meet_uri(event: dict[str, Any]) -> str | None:
     hangout = (event.get("hangoutLink") or "").strip()
     if hangout:

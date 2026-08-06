@@ -778,9 +778,10 @@ const AIConfigPage = () => {
                   }
                 />
                 <Form.Text className="text-muted">
-                  Requerido para invitar al cliente por correo y generar Meet como ese usuario
-                  (Domain-Wide Delegation en Google Workspace). Con Gmail personal las invitaciones
-                  automáticas están limitadas; igual pedimos el correo y adjuntamos Meet cuando sea posible.
+                  Solo aplica con Google Workspace + Domain-Wide Delegation. Con Gmail personal
+                  (`@gmail.com`) Google no deja que la Service Account invite invitados ni cree Meet
+                  en el calendario: la cita se crea, pero sin invitación ni botón Join. Para invitaciones
+                  reales usa un correo Workspace aquí y habilita Meet API en el proyecto GCP.
                 </Form.Text>
               </Form.Group>
               <Form.Group className="mb-2">
