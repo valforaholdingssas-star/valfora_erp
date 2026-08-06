@@ -13,7 +13,7 @@ from apps.ai_config.runtime import get_or_create_runtime_settings, resolve_globa
 from apps.common.audit import write_audit_log
 from apps.chat.models import Conversation, Message, MessageAttachment
 from apps.chat.permissions import IsChatUser
-from apps.chat.services import resolve_whatsapp_conversation
+from apps.chat.services import get_whatsapp_history_conversation_ids, resolve_whatsapp_conversation
 from apps.crm.pipeline_automation import PipelineAutomationService
 from apps.chat.serializers import (
     ConversationCreateSerializer,
@@ -248,33 +248,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
         conv = self.get_object()
         if request.method == "GET":
             if conv.channel == "whatsapp":
-                if conv.deal_id:
-                    related_conversations = Conversation.objects.filter(
-                        channel="whatsapp",
-                    ).filter(
-                        Q(deal_id=conv.deal_id)
-                        | Q(
-                            deal__isnull=True,
-                            contact_id=conv.contact_id,
-                        )
-                    )
-                    if conv.whatsapp_phone_number_id:
-                        related_conversations = related_conversations.filter(
-                            Q(whatsapp_phone_number_id=conv.whatsapp_phone_number_id)
-                            | Q(whatsapp_phone_number_id__isnull=True)
-                        )
-                elif conv.contact_id:
-                    related_conversations = Conversation.objects.filter(
-                        contact_id=conv.contact_id,
-                        channel="whatsapp",
-                    )
-                    if conv.whatsapp_phone_number_id:
-                        related_conversations = related_conversations.filter(
-                            whatsapp_phone_number_id=conv.whatsapp_phone_number_id
-                        )
-                else:
-                    related_conversations = Conversation.objects.filter(id=conv.id)
-                related_conversation_ids = list(related_conversations.values_list("id", flat=True))
+                related_conversation_ids = get_whatsapp_history_conversation_ids(conv)
                 qs = Message.objects.filter(
                     conversation_id__in=related_conversation_ids or [conv.id],
                     is_active=True,

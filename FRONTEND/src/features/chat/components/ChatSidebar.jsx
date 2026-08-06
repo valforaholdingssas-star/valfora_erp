@@ -19,25 +19,41 @@ const formatWindowTagLabel = (conversation) => {
   return null;
 };
 
-const buildSidebarTags = (conversation) => {
-  const tags = [];
-  tags.push({
-    key: "status",
-    label: conversation?.status === "archived" || conversation?.is_whatsapp_window_closed ? "Cerrado" : "Abierto",
-    tone: conversation?.status === "archived" || conversation?.is_whatsapp_window_closed ? "status-closed" : "status-open",
-  });
+const computePendingReplyLabel = (conversation) => {
+  const label = conversation?.__sla?.label || "";
+  if (!label || label === "Sin inbound" || label === "Sin dato") return null;
+  return (
+    <span className={`app-chat-sidebar-item-meta-chip is-sla is-${conversation?.__sla?.status || "none"}`}>
+      SLA: {label}
+    </span>
+  );
+};
+
+const buildSidebarMeta = (conversation) => {
+  const parts = [];
   if (conversation?.whatsapp_line_name) {
-    tags.push({ key: "line", label: conversation.whatsapp_line_name, tone: "line" });
+    parts.push({
+      key: "line",
+      label: conversation.whatsapp_line_name,
+      tone: "line",
+    });
   }
   const windowLabel = formatWindowTagLabel(conversation);
   if (windowLabel) {
-    tags.push({
+    parts.push({
       key: "window",
       label: windowLabel,
       tone: conversation?.is_whatsapp_window_closed || conversation?.status === "archived" ? "window-closed" : "window",
     });
   }
-  return tags;
+  if (conversation?.status === "archived" || conversation?.is_whatsapp_window_closed) {
+    parts.push({
+      key: "closed",
+      label: "Cerrado",
+      tone: "status-closed",
+    });
+  }
+  return parts;
 };
 
 const ChatSidebar = ({
@@ -177,11 +193,12 @@ const ChatSidebar = ({
                       )}
                     </div>
                   </div>
-                  <div className="app-chat-sidebar-item-statusline app-chat-sidebar-item-tags">
-                    {buildSidebarTags(c).map((tag) => (
+                  <div className="app-chat-sidebar-item-statusline">
+                    {computePendingReplyLabel(c)}
+                    {buildSidebarMeta(c).map((tag) => (
                       <span
                         key={`${c.id}-${tag.key}`}
-                        className={`app-chat-sidebar-item-tag is-${tag.tone}`}
+                        className={`app-chat-sidebar-item-meta-chip is-${tag.tone}`}
                       >
                         {tag.label}
                       </span>

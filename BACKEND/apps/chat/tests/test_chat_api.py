@@ -581,3 +581,70 @@ def test_whatsapp_conversation_messages_do_not_mix_histories_between_deals_for_s
     assert "Historial A1" in contents
     assert "Historial A2" in contents
     assert "Historial B1" not in contents
+
+
+@pytest.mark.django_db
+def test_whatsapp_conversation_messages_do_not_mix_histories_between_lines(admin_user):
+    account = WhatsAppBusinessAccount.objects.create(
+        name="Main",
+        waba_id="waba-history-lines",
+        access_token="token-history-lines",
+        webhook_verify_token="verify-history-lines",
+    )
+    phone_a = WhatsAppPhoneNumber.objects.create(
+        account=account,
+        phone_number_id="pn-history-a",
+        display_phone_number="+57 300 000 0101",
+        internal_name="Linea A",
+        status="connected",
+        is_default=True,
+    )
+    phone_b = WhatsAppPhoneNumber.objects.create(
+        account=account,
+        phone_number_id="pn-history-b",
+        display_phone_number="+57 300 000 0102",
+        internal_name="Linea B",
+        status="connected",
+    )
+    contact = Contact.objects.create(
+        first_name="Same",
+        last_name="Lines",
+        email="same-lines@example.com",
+        whatsapp_number="573001239999",
+        created_by=admin_user,
+        source="whatsapp",
+    )
+    deal = Deal.objects.create(
+        title="Deal line",
+        contact=contact,
+        source="whatsapp",
+        assigned_to=admin_user,
+    )
+    conv_a = Conversation.objects.create(
+        contact=contact,
+        deal=deal,
+        channel="whatsapp",
+        whatsapp_phone_number=phone_a,
+        status="archived",
+        customer_service_window_expires=timezone.now() - timedelta(hours=1),
+    )
+    conv_b = Conversation.objects.create(
+        contact=contact,
+        deal=None,
+        channel="whatsapp",
+        whatsapp_phone_number=phone_b,
+        status="archived",
+        customer_service_window_expires=timezone.now() - timedelta(hours=1),
+    )
+    Message.objects.create(conversation=conv_a, sender_type="contact", content="Linea A msg", status="delivered")
+    Message.objects.create(conversation=conv_b, sender_type="contact", content="Linea B msg", status="delivered")
+
+    client = APIClient()
+    client.force_authenticate(user=admin_user)
+    response = client.get(f"/api/v1/chat/conversations/{conv_a.id}/messages/", {"page_size": 100})
+
+    assert response.status_code == 200
+    body = _j(response)["data"]
+    contents = [row["content"] for row in body["results"]]
+    assert "Linea A msg" in contents
+    assert "Linea B msg" not in contents

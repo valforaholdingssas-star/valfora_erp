@@ -12,7 +12,7 @@ from typing import Any
 
 import requests
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.ai_config.runtime import resolve_global_ai_mode_enabled
@@ -53,6 +53,53 @@ def _conversation_has_history(conversation: Conversation) -> bool:
     if conversation.last_inbound_message_at or conversation.last_message_at:
         return True
     return conversation.messages.filter(is_active=True).exists()
+
+
+def get_whatsapp_history_conversation_ids(conversation: Conversation) -> list[str]:
+    """Return the ordered set of WhatsApp conversation ids that belong to the same real thread.
+
+    Rules:
+    - Never mix histories across different deals for the same contact.
+    - Allow legacy contact-only conversations (`deal is null`) to contribute history.
+    - Respect WhatsApp line when the current conversation is tied to a specific number.
+    """
+    if not conversation or conversation.channel != "whatsapp":
+        return [str(conversation.id)] if conversation else []
+
+    if not conversation.contact_id:
+        return [str(conversation.id)]
+
+    siblings = Conversation.objects.filter(
+        channel="whatsapp",
+        contact_id=conversation.contact_id,
+    )
+
+    if conversation.whatsapp_phone_number_id:
+        siblings = siblings.filter(
+            whatsapp_phone_number_id=conversation.whatsapp_phone_number_id
+        )
+    else:
+        siblings = siblings.filter(whatsapp_phone_number_id__isnull=True)
+
+    if conversation.deal_id:
+        siblings = siblings.filter(
+            Q(deal_id=conversation.deal_id) | Q(deal__isnull=True)
+        )
+    else:
+        siblings = siblings.filter(deal__isnull=True)
+
+    ordered = siblings.order_by("created_at", "id").values_list("id", flat=True)
+    ids = []
+    seen = set()
+    for raw_id in ordered:
+        key = str(raw_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        ids.append(key)
+    if str(conversation.id) not in seen:
+        ids.append(str(conversation.id))
+    return ids
 
 
 def resolve_whatsapp_conversation(
