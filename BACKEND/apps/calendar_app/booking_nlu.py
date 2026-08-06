@@ -159,6 +159,25 @@ def _merge_interpretations(primary: dict[str, Any], hint: dict[str, Any]) -> dic
             .replace("sabado", "sábado")
         )
         out["weekday"] = norm if norm in _WEEKDAYS else None
+    # Prefer deterministic weekday/date when LLM echoes a stale draft day
+    if hint.get("weekday") and out.get("weekday") and hint.get("weekday") != out.get("weekday"):
+        # If parsers found an explicit weekday in the utterance, trust it
+        out["weekday"] = hint["weekday"]
+        if hint.get("date_iso"):
+            out["date_iso"] = hint["date_iso"]
+        if out.get("action") in {"provide_period", "clarify", "none", "start_booking", "choose_slot"}:
+            out["action"] = "provide_day"
+            out["related"] = True
+            out["period"] = hint.get("period")  # only if parsers saw it in same text
+    if hint.get("date_iso") and not out.get("date_iso"):
+        out["date_iso"] = hint["date_iso"]
+    # Changing day without saying mañana/tarde: drop echoed draft period
+    if (
+        out.get("action") == "provide_day"
+        and (hint.get("weekday") or hint.get("date_iso"))
+        and not hint.get("period")
+    ):
+        out["period"] = None
     try:
         out["confidence"] = float(out.get("confidence") or 0.0)
     except (TypeError, ValueError):
@@ -205,8 +224,13 @@ def _llm_interpret(
         "si dice martes → el próximo martes (siguiente ocurrencia futura). "
         "Si pide 'otra/próxima/siguiente semana' → week_offset_days=7.\n"
         "period: morning=mañana laboral, afternoon=tarde laboral.\n"
-        "related=false si el mensaje NO habla de agendar/reunión/día/hora/correo "
-        "(ej: 'quiero más información', saludos genéricos).\n"
+        "related=false para saludos/ruido ('hola', '?', 'qué hablas', 'puedes?') "
+        "y para mensajes que NO hablan de agendar/reunión/día/hora/correo "
+        "(ej: 'quiero más información').\n"
+        "NUNCA copies preferred_period/preferred_day del draft_metadata si el cliente "
+        "no los mencionó en ESTE mensaje. Si cambia de día ('mejor el jueves', "
+        "'no puedo el miércoles, el jueves') → action=provide_day con el NUEVO weekday "
+        "y period=null salvo que diga mañana/tarde explícitamente.\n"
         "Si hay invitación reciente a reunirse y el cliente afirma (dale/ok/sí) → action=start_booking, related=true.\n"
         "Acciones válidas: none, start_booking, provide_day, provide_period, provide_datetime, "
         "choose_slot, defer_week, provide_email, cancel, clarify."

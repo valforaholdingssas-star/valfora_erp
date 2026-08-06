@@ -655,6 +655,98 @@ def test_nlu_layer_handles_colloquial_next_week(admin_user, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_day_change_from_pending_selection_asks_period_for_new_day(admin_user, monkeypatch):
+    """Changing day must clear stale Tuesday slots and ask morning/afternoon for Thursday."""
+    from apps.ai_config.models import AIConfiguration
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Camilo", last_name="C")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    bogota = ZoneInfo("America/Bogota")
+    slot = datetime(2026, 8, 11, 14, 0, tzinfo=bogota)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_selection",
+        offered_slots=[slot.isoformat()],
+        timezone="America/Bogota",
+        duration_minutes=30,
+        metadata={
+            "preferred_day": "2026-08-11",
+            "preferred_period": "afternoon",
+            "preferred_day_label": "martes 11/08",
+        },
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="No ya no puedo el miercoles. El jueves",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    fake_now = datetime(2026, 8, 6, 18, 30, tzinfo=bogota)
+    with patch("apps.calendar_app.booking_ai._now_in_calendar_tz", return_value=fake_now):
+        reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is not None
+    assert "jueves" in reply.content.lower()
+    assert "martes" not in reply.content.lower()
+    assert "14:00" not in reply.content
+    draft = CalendarBookingDraft.objects.get(conversation=conv)
+    assert draft.status == "pending_period"
+    assert draft.metadata.get("preferred_day") == "2026-08-13"  # Thursday after Thu Aug 6
+    assert draft.metadata.get("preferred_period") is None
+    assert draft.offered_slots == []
+
+
+@pytest.mark.django_db
+def test_hola_does_not_redump_pending_selection_slots(admin_user, monkeypatch):
+    from apps.ai_config.models import AIConfiguration
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Camilo", last_name="C")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    bogota = ZoneInfo("America/Bogota")
+    slot = datetime(2026, 8, 11, 14, 0, tzinfo=bogota)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_selection",
+        offered_slots=[slot.isoformat()],
+        timezone="America/Bogota",
+        duration_minutes=30,
+        metadata={"preferred_day": "2026-08-11", "preferred_period": "afternoon"},
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Hola",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is None
+    draft = CalendarBookingDraft.objects.get(conversation=conv)
+    assert draft.status == "cancelled"
+
+
+@pytest.mark.django_db
 def test_idle_reuses_cancelled_draft_for_day_and_period(admin_user, monkeypatch):
     """Regression: cancelled OneToOne draft must be reused, not INSERT-duplicated."""
     from apps.ai_config.models import AIConfiguration

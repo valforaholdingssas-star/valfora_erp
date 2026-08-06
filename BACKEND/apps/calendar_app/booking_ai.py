@@ -98,6 +98,75 @@ _WEEKDAYS_ES = (
     "domingo",
 )
 
+_WEEKDAY_ALIASES = {
+    "lunes": "lunes",
+    "martes": "martes",
+    "miercoles": "miércoles",
+    "miércoles": "miércoles",
+    "jueves": "jueves",
+    "viernes": "viernes",
+    "sabado": "sábado",
+    "sábado": "sábado",
+    "domingo": "domingo",
+}
+
+# Greetings / noise that must never re-trigger slot dumps mid-funnel.
+_BOOKING_NOISE_RE = re.compile(
+    r"^(hola+\s*[!?.]*|buenas?\s*[!?.]*|buenos\s+d[ií]as\s*[!?.]*|hey\s*[!?.]*|hi\s*[!?.]*|"
+    r"\?+|ok\s*[!?.]*|listo\s*[!?.]*|puedes\??|me\s+escuchas\??|"
+    r"qu[eé]\s+hablas\??|qu[eé]\s+dices\??)$",
+    re.I,
+)
+
+
+def _fold_es(text: str) -> str:
+    return (
+        (text or "")
+        .lower()
+        .replace("á", "a")
+        .replace("é", "e")
+        .replace("í", "i")
+        .replace("ó", "o")
+        .replace("ú", "u")
+    )
+
+
+def _normalize_weekday_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    key = _fold_es(str(name)).strip()
+    return _WEEKDAY_ALIASES.get(key) or _WEEKDAY_ALIASES.get(str(name).lower().strip())
+
+
+def _find_weekday_in_text(text: str) -> str | None:
+    """Return the last weekday mentioned (corrections like 'no el miércoles, el jueves')."""
+    folded = f" {_fold_es(text)} "
+    last: str | None = None
+    last_pos = -1
+    for alias, canonical in _WEEKDAY_ALIASES.items():
+        start = 0
+        while True:
+            pos = folded.find(f" {alias} ", start)
+            if pos < 0:
+                break
+            if pos >= last_pos:
+                last_pos = pos
+                last = canonical
+            start = pos + 1
+    return last
+
+
+def _is_booking_noise(text: str) -> bool:
+    low = (text or "").strip().lower()
+    if not low:
+        return True
+    if _BOOKING_NOISE_RE.match(low):
+        return True
+    # Single punctuation / emoji-like stubs
+    if len(low) <= 2 and not any(ch.isalnum() for ch in low):
+        return True
+    return False
+
 
 def _calendar_tz_name(runtime: AIRuntimeSettings | None = None, draft: CalendarBookingDraft | None = None) -> str:
     if runtime and (runtime.google_calendar_timezone or "").strip():
@@ -153,15 +222,24 @@ def looks_like_invented_slot_offer(text: str) -> bool:
         for p in (
             "horarios disponibles",
             "te propongo estos horarios",
+            "tengo estos horarios",
             "estos horarios",
             "elige uno de estos",
             "dime cuál prefieres",
             "dime cual prefieres",
+            "dime cuál te queda mejor",
+            "dime cual te queda mejor",
         )
     )
     time_hits = len(re.findall(r"\b\d{1,2}:\d{2}\b", low))
-    weekday_hits = sum(1 for d in _WEEKDAYS_ES if d in low)
-    return bool(has_offer_phrase and (time_hits >= 2 or (time_hits >= 1 and weekday_hits >= 1)))
+    weekday_hits = sum(1 for d in _WEEKDAYS_ES if d in low) + sum(
+        1 for alias in ("miercoles", "sabado") if alias in _fold_es(low)
+    )
+    bullet_times = len(re.findall(r"(?:^|\n)\s*[-•]\s*.*\d{1,2}:\d{2}", low))
+    return bool(
+        (has_offer_phrase and (time_hits >= 2 or (time_hits >= 1 and weekday_hits >= 1)))
+        or (bullet_times >= 2 and weekday_hits >= 1)
+    )
 
 
 def start_booking_by_asking_day(*, inbound: Message, runtime: AIRuntimeSettings | None = None) -> Message | None:
@@ -223,6 +301,13 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
 
     draft = CalendarBookingDraft.objects.filter(conversation=conv).first()
     status = draft.status if draft and draft.status in _ACTIVE_BOOKING_STATUSES else "idle"
+
+    # Greetings / "?" / "qué hablas" must not re-dump the same slots.
+    if _is_booking_noise(text):
+        if draft and status in _ACTIVE_BOOKING_STATUSES and status != "pending_email":
+            _abandon_draft(draft, reason="noise_pause")
+        return None
+
     tz_name = _calendar_tz_name(runtime, draft)
     now_local = _now_in_calendar_tz(tz_name)
     offered = []
@@ -436,7 +521,7 @@ def _day_from_interpretation(interp: dict, *, tz_name: str, draft: CalendarBooki
             return datetime.fromisoformat(str(date_iso)).date()
         except ValueError:
             pass
-    weekday = interp.get("weekday")
+    weekday = _normalize_weekday_name(interp.get("weekday"))
     if weekday and weekday in _WEEKDAYS_ES:
         now = _now_in_calendar_tz(tz_name)
         week_offset = int(interp.get("week_offset_days") or 0)
@@ -549,13 +634,38 @@ def _dispatch_booking_interpretation(
                     slot_iso=matched,
                 )
 
-    # Day+period in one phrase ("martes en la tarde"): resolve day first (chains to slots).
-    if action == "provide_day" or (status == "pending_day" and (interp.get("weekday") or interp.get("date_iso"))):
-        return _apply_provide_day(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
-
-    if action == "provide_period" or (status == "pending_period" and interp.get("period")):
-        if (interp.get("weekday") or interp.get("date_iso")) and not (draft.metadata or {}).get("preferred_day"):
+    # Day change mid-funnel (pending_selection included): never keep stale day/slots.
+    if (interp.get("weekday") or interp.get("date_iso")) and action not in {
+        "choose_slot",
+        "provide_email",
+        "cancel",
+        "provide_datetime",
+    }:
+        new_day = _day_from_interpretation(interp, tz_name=tz_name, draft=draft)
+        old_day = (draft.metadata or {}).get("preferred_day")
+        if new_day and (
+            action == "provide_day"
+            or status in {"pending_day", "pending_period", "pending_selection"}
+            or not old_day
+            or str(old_day) != new_day.isoformat()
+        ):
             return _apply_provide_day(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
+
+    # Period only after a day is locked — never re-dump slots from greetings/echoed period.
+    if action == "provide_period" or (status == "pending_period" and interp.get("period")):
+        if status == "pending_selection" and not interp.get("weekday") and not interp.get("date_iso"):
+            return Message.objects.create(
+                conversation=inbound.conversation,
+                sender_type="ai_bot",
+                content=(
+                    "¿Quieres que busque otros horarios ese mismo día "
+                    "(mañana o tarde), o prefieres otro día?"
+                ),
+                message_type="text",
+                status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+                is_ai_generated=True,
+                ai_context_used={"calendar_waiting_day_or_period": True, "nlu": interp},
+            )
         return _apply_provide_period(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
 
     if action == "start_booking":
@@ -585,7 +695,13 @@ def _dispatch_booking_interpretation(
     if status == "pending_selection":
         draft.status = "pending_day"
         draft.offered_slots = []
-        draft.save(update_fields=["status", "offered_slots", "updated_at"])
+        draft.metadata = {
+            **(draft.metadata or {}),
+            "preferred_day": None,
+            "preferred_day_label": None,
+            "preferred_period": None,
+        }
+        draft.save(update_fields=["status", "offered_slots", "metadata", "updated_at"])
         return Message.objects.create(
             conversation=inbound.conversation,
             sender_type="ai_bot",
@@ -630,27 +746,36 @@ def _apply_provide_day(
             ai_context_used={"calendar_waiting_day": True, "nlu": interp},
         )
 
-    # Day + period in one utterance
-    if interp.get("period") and not interp.get("time_hhmm"):
+    # Always clear previous offer when the day changes — never reuse stale slots.
+    draft.offered_slots = []
+    draft.selected_slot = None
+    label = f"{_WEEKDAYS_ES[day.weekday()]} {day.strftime('%d/%m')}"
+    period_in_utterance = interp.get("period") if not interp.get("time_hhmm") else None
+
+    # Day + period in the SAME utterance only (do not inherit old afternoon/morning).
+    if period_in_utterance in {"morning", "afternoon"}:
         draft.metadata = {
             **(draft.metadata or {}),
             "preferred_day": day.isoformat(),
-            "preferred_day_label": f"{_WEEKDAYS_ES[day.weekday()]} {day.strftime('%d/%m')}",
-            "week_offset_days": 0,
+            "preferred_day_label": label,
+            "preferred_period": None,
+            "week_offset_days": int(interp.get("week_offset_days") or 0)
+            or int((draft.metadata or {}).get("week_offset_days") or 0),
         }
         draft.status = "pending_period"
-        draft.save(update_fields=["status", "metadata", "updated_at"])
+        draft.save(update_fields=["status", "offered_slots", "selected_slot", "metadata", "updated_at"])
         return _apply_provide_period(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
 
     draft.status = "pending_period"
     draft.metadata = {
         **(draft.metadata or {}),
         "preferred_day": day.isoformat(),
-        "preferred_day_label": f"{_WEEKDAYS_ES[day.weekday()]} {day.strftime('%d/%m')}",
-        "week_offset_days": 0,
+        "preferred_day_label": label,
+        "preferred_period": None,
+        "week_offset_days": int(interp.get("week_offset_days") or 0)
+        or int((draft.metadata or {}).get("week_offset_days") or 0),
     }
-    draft.save(update_fields=["status", "metadata", "updated_at"])
-    label = draft.metadata["preferred_day_label"]
+    draft.save(update_fields=["status", "offered_slots", "selected_slot", "metadata", "updated_at"])
     return Message.objects.create(
         conversation=inbound.conversation,
         sender_type="ai_bot",
@@ -725,7 +850,7 @@ def _is_calendar_flow_message(text: str, *, draft_status: str) -> bool:
     if _parse_day_period(text):
         return True
     # Day names / hoy / mañana — without requiring full datetime
-    if any(d in low for d in _WEEKDAYS_ES) or re.search(r"\b(hoy|mañana|manana)\b", low):
+    if _find_weekday_in_text(low) or re.search(r"\b(hoy|mañana|manana)\b", low):
         return True
     if re.search(r"\b\d{1,2}[/-]\d{1,2}\b", low):
         return True
@@ -733,7 +858,21 @@ def _is_calendar_flow_message(text: str, *, draft_status: str) -> bool:
         return True
     # Frustration while mid-booking still counts as in-flow if short
     if draft_status == "pending_selection" and any(
-        p in low for p in ("ya te dije", "te dije", "otra semana", "siguiente semana", "proxima semana", "próxima semana")
+        p in low
+        for p in (
+            "ya te dije",
+            "te dije",
+            "otra semana",
+            "siguiente semana",
+            "proxima semana",
+            "próxima semana",
+            "no puedo",
+            "mejor el",
+            "mejor la",
+            "cambialo",
+            "cámbialo",
+            "cambio",
+        )
     ):
         return True
     return False
@@ -1621,9 +1760,9 @@ def _parse_preferred_day(text: str, *, tz_name: str, week_offset_days: int = 0):
                 return None
         return candidate
 
-    for idx, name in enumerate(_WEEKDAYS_ES):
-        if name in low:
-            return _resolve_weekday_date(idx, now=base).date()
+    found = _find_weekday_in_text(low)
+    if found:
+        return _resolve_weekday_date(_WEEKDAYS_ES.index(found), now=base).date()
     return None
 
 
