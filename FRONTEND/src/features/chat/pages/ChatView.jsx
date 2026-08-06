@@ -16,7 +16,7 @@ import {
   setGlobalAiMode,
   toggleAi,
 } from "../../../api/chat.js";
-import { fetchCompanies, fetchDeal, fetchPipelineStages, moveDealStage, updateDeal } from "../../../api/crm.js";
+import { createDeal, fetchCompanies, fetchDeal, fetchPipelineStages, moveDealStage, updateDeal } from "../../../api/crm.js";
 import { fetchUsers } from "../../../api/users.js";
 import { fetchWhatsAppPhoneNumbers } from "../../../api/whatsapp.js";
 import { useAuth } from "../../../contexts/AuthContext.jsx";
@@ -203,6 +203,7 @@ const ChatView = () => {
   const [loadingDeal, setLoadingDeal] = useState(false);
   const [savingDeal, setSavingDeal] = useState(false);
   const [dealSaveError, setDealSaveError] = useState("");
+  const [dealCreateError, setDealCreateError] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSection, setMobileSection] = useState("chat");
   const [quickDealModalOpen, setQuickDealModalOpen] = useState(false);
@@ -917,8 +918,18 @@ const ChatView = () => {
     const dealId = activeConv?.deal || activeConv?.latest_deal_id;
     if (!dealId) {
       setDealDetail(null);
-      setDealDraft(null);
+      setDealDraft({
+        title: activeConv?.deal_title || `Lead WhatsApp - ${activeConv?.contact_name || "Nuevo contacto"}`,
+        stage: pipelineStages[0]?.value || "new_lead",
+        value: 0,
+        probability: 10,
+        expected_close_date: "",
+        assigned_to: activeConv?.assigned_to || activeConv?.latest_deal_assigned_to || "",
+        company: "",
+        business_notes: "",
+      });
       setDealSaveError("");
+      setDealCreateError("");
       return;
     }
     setLoadingDeal(true);
@@ -943,7 +954,15 @@ const ChatView = () => {
         setDealSaveError("No se pudo cargar el deal asociado.");
       })
       .finally(() => setLoadingDeal(false));
-  }, [activeConv?.deal, activeConv?.latest_deal_id]);
+  }, [
+    activeConv?.assigned_to,
+    activeConv?.contact_name,
+    activeConv?.deal,
+    activeConv?.deal_title,
+    activeConv?.latest_deal_assigned_to,
+    activeConv?.latest_deal_id,
+    pipelineStages,
+  ]);
 
   const handleDealDraftChange = (field, value) => {
     setDealDraft((prev) => ({
@@ -994,6 +1013,65 @@ const ChatView = () => {
       }));
     } catch (error) {
       setDealSaveError(extractApiError(error, "No se pudo guardar el deal."));
+    } finally {
+      setSavingDeal(false);
+    }
+  };
+
+  const handleCreateDealFromChat = async () => {
+    if (!activeConv?.contact || !dealDraft) return;
+    setSavingDeal(true);
+    setDealCreateError("");
+    setDealSaveError("");
+    try {
+      const created = await createDeal({
+        title: dealDraft.title?.trim() || `Lead WhatsApp - ${activeConv.contact_name || "Nuevo contacto"}`,
+        contact: activeConv.contact,
+        stage: dealDraft.stage || pipelineStages[0]?.value || "new_lead",
+        value: Number(dealDraft.value || 0),
+        probability: Number(dealDraft.probability || 0),
+        expected_close_date: dealDraft.expected_close_date || null,
+        assigned_to: dealDraft.assigned_to || null,
+        company: dealDraft.company || null,
+        business_notes: dealDraft.business_notes || "",
+        description: "",
+        currency: dealDetail?.currency || "USD",
+      });
+      const linkedConversation = await patchConversation(activeId, {
+        deal: created.id,
+        assigned_to: created.assigned_to || activeConv.assigned_to || null,
+        status: activeConv.status || "active",
+      });
+      setDealDetail(created);
+      setDealDraft({
+        title: created.title || "",
+        stage: created.stage || pipelineStages[0]?.value || "new_lead",
+        value: created.value ?? 0,
+        probability: created.probability ?? 0,
+        expected_close_date: created.expected_close_date || "",
+        assigned_to: created.assigned_to || "",
+        company: created.company || "",
+        business_notes: created.business_notes || "",
+      });
+      setConversations((prev) => ({
+        ...prev,
+        results:
+          prev.results?.map((c) =>
+            c.id === activeId
+              ? {
+                  ...c,
+                  ...linkedConversation,
+                  deal: created.id,
+                  deal_title: created.title,
+                  latest_deal_id: created.id,
+                  latest_deal_stage: created.stage,
+                  latest_deal_assigned_to: created.assigned_to,
+                }
+              : c,
+          ) ?? [],
+      }));
+    } catch (error) {
+      setDealCreateError(extractApiError(error, "No se pudo crear el deal desde el chat."));
     } finally {
       setSavingDeal(false);
     }
@@ -1339,9 +1417,14 @@ const ChatView = () => {
             </button>
           </div>
           {loadingDeal ? <p className="small text-muted mb-0">Cargando deal...</p> : null}
-          {!loadingDeal && !dealDetail ? <p className="small text-muted mb-0">Este chat no tiene deal asociado.</p> : null}
-          {!loadingDeal && dealDetail && dealDraft ? (
+          {!loadingDeal && !dealDetail && !dealDraft ? <p className="small text-muted mb-0">Este chat no tiene deal asociado.</p> : null}
+          {!loadingDeal && dealDraft ? (
             <div className="d-flex flex-column gap-3">
+              {!dealDetail ? (
+                <Alert variant="info" className="py-2 px-3 small mb-0">
+                  Esta conversación aún no tiene deal. Puedes crearlo y asociarlo desde este panel.
+                </Alert>
+              ) : null}
               <Form.Group>
                 <Form.Label>Título</Form.Label>
                 <Form.Control value={dealDraft.title || ""} onChange={(e) => handleDealDraftChange("title", e.target.value)} />
@@ -1388,14 +1471,23 @@ const ChatView = () => {
                 <Form.Label>Notas de negocio</Form.Label>
                 <Form.Control as="textarea" rows={8} value={dealDraft.business_notes || ""} onChange={(e) => handleDealDraftChange("business_notes", e.target.value)} />
               </Form.Group>
+              {dealCreateError ? <Alert variant="warning" className="py-2 px-3 small mb-0">{dealCreateError}</Alert> : null}
               {dealSaveError ? <Alert variant="warning" className="py-2 px-3 small mb-0">{dealSaveError}</Alert> : null}
               <div className="d-flex flex-wrap gap-2 pt-2">
-                <Button variant="outline-primary" onClick={() => { void handleAdvanceDealStage(); }} disabled={savingDeal || !dealDraft || orderedStageKeys.indexOf(dealDraft.stage) >= orderedStageKeys.length - 1}>
-                  Siguiente etapa
-                </Button>
-                <Button variant="primary" onClick={() => { void handleSaveDealQuickEdit(); }} disabled={savingDeal || !dealDetail}>
-                  {savingDeal ? "Guardando..." : "Guardar cambios"}
-                </Button>
+                {dealDetail ? (
+                  <>
+                    <Button variant="outline-primary" onClick={() => { void handleAdvanceDealStage(); }} disabled={savingDeal || !dealDraft || orderedStageKeys.indexOf(dealDraft.stage) >= orderedStageKeys.length - 1}>
+                      Siguiente etapa
+                    </Button>
+                    <Button variant="primary" onClick={() => { void handleSaveDealQuickEdit(); }} disabled={savingDeal || !dealDetail}>
+                      {savingDeal ? "Guardando..." : "Guardar cambios"}
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="primary" onClick={() => { void handleCreateDealFromChat(); }} disabled={savingDeal || !activeConv?.contact}>
+                    {savingDeal ? "Creando..." : "Crear y asociar deal"}
+                  </Button>
+                )}
                 {dealDetail?.id ? (
                   <Button as="a" href={`/crm/deals/${dealDetail.id}`} variant="outline-secondary">
                     Abrir deal
