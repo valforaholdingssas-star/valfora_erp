@@ -283,7 +283,7 @@ const ChatView = () => {
     const params = {
       page_size: 50,
       channel: channelFilter || undefined,
-      status: conversationStatusFilter || undefined,
+      status: conversationStatusFilter === "closed" ? "archived" : conversationStatusFilter === "open" ? "active" : undefined,
       search_text: searchQuery || undefined,
       search: searchQuery || undefined,
       deal_stage: filters.dealStage || undefined,
