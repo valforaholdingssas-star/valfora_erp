@@ -168,8 +168,9 @@ def test_advance_closed_whatsapp_conversations_only_moves_real_whatsapp_origin_d
     )
     conv_whatsapp, _ = Conversation.objects.get_or_create(contact=contact_whatsapp, deal=deal_whatsapp, channel="whatsapp")
     conv_whatsapp.customer_service_window_expires = now - timedelta(hours=2)
+    conv_whatsapp.last_inbound_message_at = now - timedelta(hours=3)
     conv_whatsapp.status = "active"
-    conv_whatsapp.save(update_fields=["customer_service_window_expires", "status", "updated_at"])
+    conv_whatsapp.save(update_fields=["customer_service_window_expires", "last_inbound_message_at", "status", "updated_at"])
 
     contact_manual = Contact.objects.create(
         first_name="Closed",
@@ -188,8 +189,9 @@ def test_advance_closed_whatsapp_conversations_only_moves_real_whatsapp_origin_d
     )
     conv_manual, _ = Conversation.objects.get_or_create(contact=contact_manual, deal=deal_manual, channel="whatsapp")
     conv_manual.customer_service_window_expires = now - timedelta(hours=2)
+    conv_manual.last_inbound_message_at = now - timedelta(hours=3)
     conv_manual.status = "active"
-    conv_manual.save(update_fields=["customer_service_window_expires", "status", "updated_at"])
+    conv_manual.save(update_fields=["customer_service_window_expires", "last_inbound_message_at", "status", "updated_at"])
 
     moved = advance_closed_whatsapp_conversations()
 
@@ -207,6 +209,95 @@ def test_advance_closed_whatsapp_conversations_only_moves_real_whatsapp_origin_d
     assert DealStageHistory.objects.filter(deal=deal_whatsapp, trigger="chat_window_closed").exists()
     assert not DealStageHistory.objects.filter(deal=deal_manual, trigger="chat_window_closed").exists()
     mock_summary_delay.assert_called_once_with(str(deal_whatsapp.id))
+
+
+@pytest.mark.django_db
+@patch("apps.crm.tasks.generate_business_summary_for_deal.delay")
+def test_advance_closed_whatsapp_conversations_requires_real_inbound_message(mock_summary_delay, admin_user):
+    now = timezone.now()
+
+    contact = Contact.objects.create(
+        first_name="Silent",
+        last_name="Window",
+        email="silentwindow@example.com",
+        whatsapp_number="573009990004",
+        created_by=admin_user,
+        source="whatsapp",
+    )
+    deal = Deal.objects.create(
+        title="Silent Window Deal",
+        contact=contact,
+        source="whatsapp",
+        stage="qualified",
+        assigned_to=admin_user,
+    )
+    conversation, _ = Conversation.objects.get_or_create(contact=contact, deal=deal, channel="whatsapp")
+    conversation.customer_service_window_expires = now - timedelta(hours=2)
+    conversation.last_inbound_message_at = None
+    conversation.status = "active"
+    conversation.save(update_fields=["customer_service_window_expires", "last_inbound_message_at", "status", "updated_at"])
+
+    moved = advance_closed_whatsapp_conversations()
+
+    deal.refresh_from_db()
+    conversation.refresh_from_db()
+
+    assert moved == 0
+    assert deal.stage == "qualified"
+    assert conversation.status == "active"
+    assert not DealStageHistory.objects.filter(deal=deal, trigger="chat_window_closed").exists()
+    mock_summary_delay.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_repair_invalid_closed_window_moves_reverts_whatsapp_deals_without_inbound(admin_user):
+    now = timezone.now()
+    target_stage = PipelineAutomationService.get_follow_up_stage_key()
+
+    contact = Contact.objects.create(
+        first_name="Repair",
+        last_name="Silent",
+        email="repairsilent@example.com",
+        whatsapp_number="573009990005",
+        created_by=admin_user,
+        source="whatsapp",
+    )
+    deal = Deal.objects.create(
+        title="Repair Silent Deal",
+        contact=contact,
+        source="whatsapp",
+        stage="qualified",
+        assigned_to=admin_user,
+    )
+    conversation, _ = Conversation.objects.get_or_create(contact=contact, deal=deal, channel="whatsapp")
+    conversation.customer_service_window_expires = now - timedelta(hours=4)
+    conversation.last_inbound_message_at = None
+    conversation.status = "archived"
+    conversation.closed_at = now - timedelta(hours=3)
+    conversation.save(update_fields=["customer_service_window_expires", "last_inbound_message_at", "status", "closed_at", "updated_at"])
+
+    move_result = PipelineAutomationService.move_stage(
+        deal=deal,
+        to_stage=target_stage,
+        trigger="chat_window_closed",
+        moved_by=None,
+        notes="Movimiento erróneo de prueba por cierre automático.",
+    )
+    assert move_result.moved is True
+
+    call_command("repair_invalid_closed_window_moves", "--apply")
+
+    deal.refresh_from_db()
+    conversation.refresh_from_db()
+    latest_history = deal.stage_history.order_by("-created_at").first()
+
+    assert deal.stage == "qualified"
+    assert conversation.status == "active"
+    assert conversation.closed_at is None
+    assert latest_history is not None
+    assert latest_history.trigger == "manual"
+    assert latest_history.to_stage == "qualified"
+    assert "no tiene inbound real" in latest_history.notes
 
 
 @pytest.mark.django_db

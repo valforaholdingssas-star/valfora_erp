@@ -2579,25 +2579,63 @@ a {
 }
 
 .app-chat-sidebar-switches {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 0.55rem;
 }
 
 .app-chat-sidebar-switch-btn.btn {
   border-radius: 999px;
-  min-height: 34px;
-  padding: 0.45rem 0.88rem;
-  font-size: 0.88rem;
+  min-height: 38px;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.84rem;
   font-weight: 700;
+  border: 1px solid #d6e1f4;
+  background: #fff;
+  color: #5c6880;
   box-shadow: none;
 }
 
+.app-chat-sidebar-switch-btn.btn:hover,
+.app-chat-sidebar-switch-btn.btn:focus-visible {
+  border-color: #9fb8eb;
+  color: #22324f;
+  box-shadow: 0 0 0 3px rgba(38, 103, 223, 0.08);
+}
+
+.app-chat-sidebar-switch-btn.btn-primary,
+.app-chat-sidebar-switch-btn.btn-primary:hover,
+.app-chat-sidebar-switch-btn.btn-primary:focus-visible {
+  background: linear-gradient(135deg, #2b6bf0 0%, #2557d8 100%);
+  border-color: #2557d8;
+  color: #fff;
+}
+
+.app-chat-sidebar-switch-btn.btn-dark,
+.app-chat-sidebar-switch-btn.btn-dark:hover,
+.app-chat-sidebar-switch-btn.btn-dark:focus-visible {
+  background: #202733;
+  border-color: #202733;
+  color: #fff;
+}
+
+.app-chat-sidebar-switch-btn.btn-outline-secondary,
+.app-chat-sidebar-switch-btn.btn-outline-secondary:hover,
+.app-chat-sidebar-switch-btn.btn-outline-secondary:focus-visible {
+  background: #fff;
+  border-color: #aebbd4;
+  color: #6a768c;
+}
+
 .app-chat-sidebar-switch-btn--count.btn span {
-  opacity: 0.72;
-  font-weight: 700;
+  opacity: 0.82;
+  font-weight: 600;
 }
 
 .app-chat-sidebar-line-switches .btn {
   border-radius: 999px;
+  max-width: 100%;
 }
 
 .app-chat-action-btn {

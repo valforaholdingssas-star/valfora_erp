@@ -192,7 +192,9 @@ def advance_closed_whatsapp_conversations() -> int:
         Conversation.objects.filter(
             is_active=True,
             channel="whatsapp",
+            status="active",
             customer_service_window_expires__lt=now,
+            last_inbound_message_at__isnull=False,
             deal__isnull=False,
             deal__is_active=True,
             deal__source="whatsapp",

@@ -219,6 +219,7 @@ const ChatView = () => {
   const typingTimerRef = useRef(null);
   const typingStopRef = useRef(null);
   const conversationsRequestRef = useRef(0);
+  const messagesRequestRef = useRef(0);
 
   const currentUserId = useMemo(() => (user?.id ? String(user.id) : null), [user?.id]);
   const canManageAiConfigs = user && ["admin", "super_admin"].includes(user.role);
@@ -426,15 +427,27 @@ const ChatView = () => {
       .catch(() => {});
   }, [canManageAiConfigs]);
 
-  const loadMessages = useCallback((convId) => {
-    if (!convId) return;
-    setLoadingMsg(true);
+  const loadMessages = useCallback((convId, { silent = false } = {}) => {
+    if (!convId) {
+      messagesRequestRef.current += 1;
+      setMessages({ results: [], count: 0 });
+      setLoadingMsg(false);
+      return;
+    }
+    const requestId = Date.now() + Math.random();
+    messagesRequestRef.current = requestId;
+    if (!silent) setLoadingMsg(true);
     fetchMessages(convId, { page_size: 100 })
       .then((data) => {
+        if (messagesRequestRef.current !== requestId) return;
         setMessages({ ...data, results: data.results || [] });
       })
       .catch(() => {})
-      .finally(() => setLoadingMsg(false));
+      .finally(() => {
+        if (!silent && messagesRequestRef.current === requestId) {
+          setLoadingMsg(false);
+        }
+      });
     markRead(convId).catch(() => {});
   }, []);
 
@@ -467,8 +480,10 @@ const ChatView = () => {
 
   useEffect(() => {
     if (activeId) {
-      loadMessages(activeId);
+      loadMessages(activeId, { silent: true });
+      return;
     }
+    loadMessages(null);
   }, [activeId, loadMessages]);
 
   const handleWsMessageCreated = useCallback((incoming) => {
@@ -517,7 +532,7 @@ const ChatView = () => {
   useEffect(() => {
     if (!activeId || wsStatus === "connected") return undefined;
     const timer = window.setInterval(() => {
-      loadMessages(activeId);
+      loadMessages(activeId, { silent: true });
     }, 8000);
     return () => window.clearInterval(timer);
   }, [activeId, wsStatus, loadMessages]);
@@ -753,17 +768,15 @@ const ChatView = () => {
   };
 
   const selectConv = (id) => {
+    setComposerError("");
+    if (String(id) !== String(activeId)) {
+      setMessages({ results: [], count: 0 });
+    }
     setActiveId(id);
     if (isMobileViewport) {
       setMobileSection("chat");
     }
   };
-
-  useEffect(() => {
-    if (conversations.results?.length && !activeId && !dealId) {
-      setActiveId(conversations.results[0].id);
-    }
-  }, [conversations, activeId, dealId]);
 
   const conversationsWithSla = useMemo(
     () =>
@@ -790,6 +803,18 @@ const ChatView = () => {
     () => (showOnlyOverdue ? sortedConversations.filter((c) => c.__sla?.isOverdue) : sortedConversations),
     [showOnlyOverdue, sortedConversations],
   );
+
+  useEffect(() => {
+    if (dealId) return;
+    if (!filteredConversations.length) {
+      if (activeId) setActiveId(null);
+      return;
+    }
+    const activeStillVisible = filteredConversations.some((row) => String(row.id) === String(activeId));
+    if (!activeId || !activeStillVisible) {
+      setActiveId(filteredConversations[0].id);
+    }
+  }, [filteredConversations, activeId, dealId]);
   const whatsappLineCounts = useMemo(() => {
     const counts = {};
     sortedConversations.forEach((conv) => {
@@ -799,8 +824,8 @@ const ChatView = () => {
     return counts;
   }, [sortedConversations]);
   const activeConv = useMemo(
-    () => (conversations.results || []).find((c) => c.id === activeId),
-    [conversations.results, activeId],
+    () => filteredConversations.find((c) => String(c.id) === String(activeId)) || null,
+    [filteredConversations, activeId],
   );
 
   const handleToggleConversationStatus = async (nextStatus) => {
