@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Button, Form } from "react-bootstrap";
+import { Alert, Button, Form, Spinner } from "react-bootstrap";
 import { Navigate, useLocation } from "react-router-dom";
 
 import valforaLogo from "../../../assets/valfora-logo-transparent.png";
@@ -30,7 +30,7 @@ const LoginPage = () => {
       const msg =
         err.response?.data?.message ||
         err.response?.data?.detail ||
-        "No se pudo iniciar sesión.";
+        "No se pudo iniciar sesión. Revisa tu conexión e inténtalo de nuevo.";
       setError(typeof msg === "string" ? msg : "Error de autenticación.");
     } finally {
       setSubmitting(false);
@@ -39,80 +39,94 @@ const LoginPage = () => {
 
   return (
     <div className="valfora-login-shell">
-      <section className="valfora-login-form-panel">
-        <div className="valfora-login-form-wrap">
-          <div className="valfora-login-brand">
-            <img
-              src={valforaLogo}
-              alt="Valfora Holdings"
-              className="valfora-login-brand-logo"
-            />
-            <span className="valfora-login-brand-name">Valfora ERP</span>
-          </div>
-          <div className="valfora-login-headline">
-            <div className="valfora-login-eyebrow">Workspace</div>
-            <h1 className="valfora-login-title">Inicia sesión</h1>
-            <p className="valfora-login-subtitle">Plataforma de gestión financiera y contable.</p>
-          </div>
+      <div className="valfora-login-atmosphere" aria-hidden="true">
+        <span className="valfora-login-orb valfora-login-orb-a" />
+        <span className="valfora-login-orb valfora-login-orb-b" />
+        <span className="valfora-login-grid" />
+      </div>
 
+      <main className="valfora-login-stage">
+        <header className="valfora-login-hero">
+          <img src={valforaLogo} alt="" className="valfora-login-mark" />
+          <p className="valfora-login-brand-name">Valfora Holdings</p>
+          <h1 className="valfora-login-wordmark">Seeds ERP</h1>
+          <p className="valfora-login-lede">
+            Operación comercial, WhatsApp y CRM en un solo workspace.
+          </p>
+        </header>
+
+        <section className="valfora-login-form-panel" aria-label="Acceso">
           <div className="valfora-login-form-card">
+            <h2 className="valfora-login-title">Inicia sesión</h2>
+            <p className="valfora-login-subtitle">Usa tu correo corporativo para entrar.</p>
+
             {error && (
-              <Alert variant="danger" className="py-2 mb-3">
+              <Alert variant="danger" className="py-2 mb-3 valfora-login-alert">
                 {error}
               </Alert>
             )}
 
             <Form onSubmit={handleSubmit} className="valfora-login-form">
-              <Form.Group className="mb-3 valfora-input-group" controlId="loginEmail">
-                <i className="bi bi-at valfora-input-icon" />
-                <Form.Control
-                  type="email"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  placeholder="Correo corporativo"
-                  className="valfora-input"
-                />
+              <Form.Group className="mb-3" controlId="loginEmail">
+                <Form.Label>Correo corporativo</Form.Label>
+                <div className="valfora-input-group">
+                  <i className="bi bi-envelope valfora-input-icon" aria-hidden="true" />
+                  <Form.Control
+                    type="email"
+                    autoComplete="username"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder="nombre@valforaholdings.com"
+                    className="valfora-input"
+                  />
+                </div>
               </Form.Group>
-              <Form.Group className="mb-2 valfora-input-group" controlId="loginPassword">
-                <i className="bi bi-key valfora-input-icon" />
-                <Form.Control
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="Contraseña"
-                  className="valfora-input pe-5"
-                />
-                <button
-                  type="button"
-                  className="valfora-password-toggle"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                >
-                  <i className={`bi ${showPassword ? "bi-eye-slash" : "bi-eye"}`} />
-                </button>
+
+              <Form.Group className="mb-4" controlId="loginPassword">
+                <Form.Label>Contraseña</Form.Label>
+                <div className="valfora-input-group">
+                  <i className="bi bi-lock valfora-input-icon" aria-hidden="true" />
+                  <Form.Control
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    placeholder="Introduce tu contraseña"
+                    className="valfora-input pe-5"
+                  />
+                  <button
+                    type="button"
+                    className="valfora-password-toggle"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  >
+                    <i className={`bi ${showPassword ? "bi-eye-slash" : "bi-eye"}`} />
+                  </button>
+                </div>
               </Form.Group>
-              <div className="text-end mb-4">
-                <button type="button" className="valfora-link-btn">
-                  ¿Olvidaste tu contraseña?
-                </button>
-              </div>
+
               <Button
-                variant="primary"
                 type="submit"
                 className="w-100 valfora-login-submit"
-                disabled={submitting}
+                disabled={submitting || loading}
               >
-                {submitting ? "Entrando..." : "Iniciar sesión"}
+                {submitting ? (
+                  <>
+                    <Spinner animation="border" size="sm" className="me-2" />
+                    Entrando…
+                  </>
+                ) : (
+                  "Entrar al workspace"
+                )}
               </Button>
             </Form>
           </div>
-        </div>
-      </section>
+        </section>
 
+        <p className="valfora-login-foot">© {new Date().getFullYear()} Valfora Holdings</p>
+      </main>
     </div>
   );
 };
