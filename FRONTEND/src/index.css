@@ -2516,22 +2516,23 @@ a {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+  row-gap: 0.4rem;
 }
 
 .app-chat-sidebar-sla {
-  border: 1px solid rgba(25, 135, 84, 0.18) !important;
-  background: rgba(25, 135, 84, 0.08) !important;
-  color: #18724d !important;
+  border: 1px solid rgba(25, 135, 84, 0.2) !important;
+  background: linear-gradient(135deg, rgba(25, 135, 84, 0.12), rgba(25, 135, 84, 0.06)) !important;
+  color: #16613f !important;
   font-size: 0.68rem;
   font-weight: 700;
-  padding: 0.3rem 0.55rem;
+  padding: 0.22rem 0.55rem;
   box-shadow: none !important;
 }
 
 .app-chat-sidebar-flag {
   font-size: 0.68rem;
   font-weight: 700;
-  padding: 0.3rem 0.55rem;
+  padding: 0.22rem 0.55rem;
   border: 1px solid transparent !important;
   box-shadow: none !important;
 }
@@ -2554,28 +2555,24 @@ a {
   border-color: rgba(220, 53, 69, 0.22) !important;
 }
 
-.app-chat-sidebar-line-label {
-  font-size: 0.72rem;
-  color: var(--vf-text-soft);
+.app-chat-sidebar-meta-text {
+  font-size: 0.74rem;
+  color: #60708d;
   font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
-.app-chat-sidebar-line-tag {
+.app-chat-sidebar-window-pill {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-  padding: 0.2rem 0.55rem;
+  padding: 0.2rem 0.6rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--vf-primary-soft) 66%, var(--vf-surface));
-  border: 1px solid color-mix(in srgb, var(--vf-primary) 12%, var(--vf-border));
-  color: var(--vf-text-soft);
-}
-
-.app-chat-sidebar-line-tag.is-window {
   background: color-mix(in srgb, var(--vf-success-soft) 72%, var(--vf-surface));
   border-color: color-mix(in srgb, var(--vf-success) 18%, var(--vf-border));
   color: #1f7a4f;
   font-weight: 700;
+  font-size: 0.7rem;
 }
 
 .app-chat-sidebar-switches {
@@ -2587,8 +2584,8 @@ a {
 
 .app-chat-sidebar-switch-btn.btn {
   border-radius: 999px;
-  min-height: 38px;
-  padding: 0.45rem 0.95rem;
+  min-height: 36px;
+  padding: 0.38rem 0.9rem;
   font-size: 0.84rem;
   font-weight: 700;
   border: 1px solid #d6e1f4;
@@ -2615,8 +2612,8 @@ a {
 .app-chat-sidebar-switch-btn.btn-dark,
 .app-chat-sidebar-switch-btn.btn-dark:hover,
 .app-chat-sidebar-switch-btn.btn-dark:focus-visible {
-  background: #202733;
-  border-color: #202733;
+  background: #111827;
+  border-color: #111827;
   color: #fff;
 }
 
@@ -2636,6 +2633,12 @@ a {
 .app-chat-sidebar-line-switches .btn {
   border-radius: 999px;
   max-width: 100%;
+}
+
+.app-chat-topbar-chip.is-line {
+  background: rgba(241, 245, 249, 0.92);
+  border-color: rgba(148, 163, 184, 0.34);
+  color: #475569;
 }
 
 .app-chat-action-btn {

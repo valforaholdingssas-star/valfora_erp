@@ -99,7 +99,7 @@ const ChatThread = ({
               <strong className="app-chat-topbar-name">{activeConv.contact_name || "Chat"}</strong>
               <span className="app-chat-topbar-chip is-channel">{activeConv.channel}</span>
               {activeConv.whatsapp_line_name && (
-                <span className="app-chat-topbar-chip is-channel">{activeConv.whatsapp_line_name}</span>
+                <span className="app-chat-topbar-chip is-line">{activeConv.whatsapp_line_name}</span>
               )}
               <span
                 className={`app-chat-topbar-chip ${

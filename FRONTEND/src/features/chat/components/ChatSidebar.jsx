@@ -163,10 +163,10 @@ const ChatSidebar = ({
                       </Badge>
                     )}
                     {c.whatsapp_line_name && (
-                      <span className="app-chat-sidebar-line-label app-chat-sidebar-line-tag">{c.whatsapp_line_name}</span>
+                      <span className="app-chat-sidebar-meta-text">{c.whatsapp_line_name}</span>
                     )}
                     {c.__remainingWindowLabel && (
-                      <span className="app-chat-sidebar-line-label app-chat-sidebar-line-tag is-window">{c.__remainingWindowLabel}</span>
+                      <span className="app-chat-sidebar-window-pill">{c.__remainingWindowLabel}</span>
                     )}
                     {c.status === "archived" && (
                       <Badge pill bg="secondary" className="app-chat-sidebar-flag">
