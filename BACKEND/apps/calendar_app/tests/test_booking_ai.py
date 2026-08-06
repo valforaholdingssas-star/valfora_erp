@@ -188,6 +188,8 @@ def test_confirm_booking_creates_google_event_and_crm_activity(admin_user):
         reply = _confirm_booking(inbound=inbound, runtime=runtime, draft=draft, slot_iso=slot.isoformat())
 
     create_mock.assert_called_once()
+    # Placeholder/example.com emails are not invited via SA
+    assert create_mock.call_args.kwargs.get("attendee_email") is None
     draft.refresh_from_db()
     assert draft.status == "confirmed"
     assert draft.google_event_id == "evt-1"
@@ -198,6 +200,62 @@ def test_confirm_booking_creates_google_event_and_crm_activity(admin_user):
     assert activity is not None
     assert activity.deal_id == deal.id
     assert activity.due_date == slot
+
+
+def test_inviteable_attendee_email_filters_whatsapp_placeholders():
+    from apps.calendar_app.booking_ai import _inviteable_attendee_email
+
+    assert _inviteable_attendee_email("wa-573507847789@auto.local") is None
+    assert _inviteable_attendee_email("user@localhost") is None
+    assert _inviteable_attendee_email("real.person@gmail.com") == "real.person@gmail.com"
+    assert _inviteable_attendee_email("") is None
+    assert _inviteable_attendee_email(None) is None
+
+
+def test_create_event_retries_without_attendees_on_sa_403(monkeypatch):
+    from apps.calendar_app import google_client as gc
+
+    calls = []
+
+    class FakeResp:
+        def __init__(self, status_code, text="", payload=None):
+            self.status_code = status_code
+            self.text = text
+            self._payload = payload or {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise gc.requests.HTTPError(f"{self.status_code}", response=self)
+
+        def json(self):
+            return self._payload
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        calls.append({"url": url, "json": json})
+        if json and json.get("attendees"):
+            return FakeResp(
+                403,
+                text='{"error":{"errors":[{"reason":"forbiddenForServiceAccounts"}],"message":"Service accounts cannot invite attendees without Domain-Wide Delegation of Authority."}}',
+            )
+        return FakeResp(200, payload={"id": "evt-ok", "htmlLink": "https://x"})
+
+    monkeypatch.setattr(gc.requests, "post", fake_post)
+    start = timezone.make_aware(datetime(2026, 8, 7, 11, 0, 0))
+    end = start + timedelta(minutes=30)
+    out = gc.create_event(
+        access_token="t",
+        calendar_id="cal@x.com",
+        summary="Cita",
+        description="desc",
+        start_dt=start,
+        end_dt=end,
+        timezone="America/Bogota",
+        attendee_email="guest@somewhere.com",
+    )
+    assert out["id"] == "evt-ok"
+    assert len(calls) == 2
+    assert "attendees" in calls[0]["json"]
+    assert "attendees" not in calls[1]["json"]
 
 
 @pytest.mark.django_db

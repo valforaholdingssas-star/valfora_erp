@@ -477,7 +477,7 @@ def _confirm_booking(*, inbound: Message, runtime: AIRuntimeSettings, draft: Cal
         start_dt=slot_start,
         end_dt=slot_end,
         timezone=tz_name,
-        attendee_email=contact.email or None,
+        attendee_email=_inviteable_attendee_email(getattr(contact, "email", None)),
     )
 
     google_event_id = str(event.get("id") or "")
@@ -566,6 +566,34 @@ def _recent_assistant_invited_meeting(conv) -> bool:
 
 def _within_work_hours(dt: datetime) -> bool:
     return WORKDAY_START_HOUR <= dt.hour < WORKDAY_END_HOUR
+
+
+def _inviteable_attendee_email(email: str | None) -> str | None:
+    """Return a real email safe to invite via Google Calendar, else None.
+
+    WhatsApp auto-generated placeholders (e.g. wa-…@auto.local) must not be
+    sent as attendees: service accounts cannot invite guests without DWD and
+    those addresses are not deliverable anyway.
+    """
+    value = (email or "").strip().lower()
+    if not value or "@" not in value:
+        return None
+    local, _, domain = value.partition("@")
+    if not local or not domain or "." not in domain:
+        return None
+    blocked_domains = {
+        "auto.local",
+        "localhost",
+        "example.com",
+        "example.org",
+        "invalid",
+        "local",
+    }
+    if domain in blocked_domains or domain.endswith(".local"):
+        return None
+    if value.startswith("wa-") and domain.endswith(".local"):
+        return None
+    return (email or "").strip()
 
 
 def _snap_to_slot_grid(dt: datetime, *, minutes: int) -> datetime:

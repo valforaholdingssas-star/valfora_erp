@@ -109,24 +109,36 @@ def create_event(
     send_updates: bool = True,
 ) -> dict[str, Any]:
     cal_id = quote(calendar_id, safe="@")
-    params = ""
-    if send_updates and attendee_email:
-        params = "?sendUpdates=all"
-    url = f"https://www.googleapis.com/calendar/v3/calendars/{cal_id}/events{params}"
     payload: dict[str, Any] = {
         "summary": summary[:255],
         "description": description[:8000],
         "start": {"dateTime": start_dt.isoformat(), "timeZone": timezone},
         "end": {"dateTime": end_dt.isoformat(), "timeZone": timezone},
     }
-    if attendee_email:
-        payload["attendees"] = [{"email": attendee_email}]
-    response = requests.post(
-        url,
-        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=30,
-    )
+    invite = (attendee_email or "").strip() or None
+    if invite:
+        payload["attendees"] = [{"email": invite}]
+
+    def _post(*, with_invite: bool) -> Any:
+        body = dict(payload)
+        if not with_invite:
+            body.pop("attendees", None)
+        params = "?sendUpdates=all" if (send_updates and with_invite and invite) else ""
+        url = f"https://www.googleapis.com/calendar/v3/calendars/{cal_id}/events{params}"
+        return requests.post(
+            url,
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+            json=body,
+            timeout=30,
+        )
+
+    response = _post(with_invite=bool(invite))
+    if response.status_code == 403 and invite:
+        # Service accounts cannot invite guests without Domain-Wide Delegation.
+        # Retry as a calendar-only event (contact details stay in the description).
+        err_text = (response.text or "").lower()
+        if "forbiddenforserviceaccounts" in err_text or "domain-wide" in err_text or "attendee" in err_text:
+            response = _post(with_invite=False)
     response.raise_for_status()
     return response.json()
 
