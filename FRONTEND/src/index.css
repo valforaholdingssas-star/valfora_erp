@@ -2590,65 +2590,49 @@ a {
   white-space: normal;
 }
 
-.app-chat-sidebar-item-meta-chip {
+.app-chat-sidebar-item-meta-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 20px;
-  padding: 0.08rem 0.46rem;
-  border-radius: 0.5rem;
+  min-height: 22px;
+  padding: 0.16rem 0.62rem;
+  border-radius: 999px;
   border: 1px solid transparent;
-  background: transparent;
-  color: #64748b;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0;
+  line-height: 1;
   white-space: nowrap;
 }
 
-.app-chat-sidebar-item-meta-chip.is-sla {
-  border-color: #c7ead5;
-  background: #ecfaf2;
-  color: #147a48;
+.app-chat-sidebar-item-meta-pill.is-status-open {
+  background: #ecfdf3;
+  border-color: #b7ebca;
+  color: #127a44;
 }
 
-.app-chat-sidebar-item-meta-chip.is-ok {
-  border-color: #c7ead5;
-  background: #ecfaf2;
-  color: #147a48;
+.app-chat-sidebar-item-meta-pill.is-status-closed {
+  background: #eef2f7;
+  border-color: #d4dbe6;
+  color: #596579;
 }
 
-.app-chat-sidebar-item-meta-chip.is-warn {
-  border-color: #f6dfae;
-  background: #fff6e6;
-  color: #976109;
-}
-
-.app-chat-sidebar-item-meta-chip.is-critical {
-  border-color: #f0c1c7;
-  background: #fff0f2;
-  color: #b42318;
-}
-
-.app-chat-sidebar-item-meta-chip.is-line {
-  padding-inline: 0;
-  border: 0;
-  background: transparent;
-  color: #64748b;
+.app-chat-sidebar-item-meta-pill.is-line-text {
+  background: #f4f7fb;
+  border-color: #d9e1ef;
+  color: #66758f;
   font-weight: 600;
 }
 
-.app-chat-sidebar-item-meta-chip.is-window {
-  border-color: #d2ebdc;
-  background: #f1fbf5;
-  color: #1f8a57;
+.app-chat-sidebar-item-meta-pill.is-window {
+  background: #f0fdf4;
+  border-color: #c5ecd3;
+  color: #1c8b55;
 }
 
-.app-chat-sidebar-item-meta-chip.is-window-closed,
-.app-chat-sidebar-item-meta-chip.is-status-closed {
-  border-color: #d7dde8;
-  background: #eef2f7;
-  color: #5d6678;
+.app-chat-sidebar-item-meta-pill.is-window-closed {
+  background: #fff5e8;
+  border-color: #f7d5a2;
+  color: #a15c00;
 }
 
 .app-chat-sidebar-switches {

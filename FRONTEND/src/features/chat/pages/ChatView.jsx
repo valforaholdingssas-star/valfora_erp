@@ -490,7 +490,7 @@ const ChatView = () => {
         setMessageLoadError(extractApiError(error, "No se pudo cargar el histórico de la conversación."));
       })
       .finally(() => {
-        if (!silent && messagesRequestRef.current === requestId) {
+        if (messagesRequestRef.current === requestId) {
           setLoadingMsg(false);
         }
       });
@@ -503,7 +503,6 @@ const ChatView = () => {
         .then((conv) => {
           upsertConversationRow(conv);
           setActiveId(conv.id);
-          loadMessages(conv.id);
           loadConversations({ silent: true });
         })
         .catch(() => {});
@@ -528,7 +527,7 @@ const ChatView = () => {
 
   useEffect(() => {
     if (activeId) {
-      loadMessages(activeId, { silent: true });
+      loadMessages(activeId);
       return;
     }
     loadMessages(null);
@@ -583,14 +582,6 @@ const ChatView = () => {
   const sendTypingWs = (typing) => {
     sendWsJson({ type: "typing", typing });
   };
-
-  useEffect(() => {
-    if (!activeId || wsStatus === "connected") return undefined;
-    const timer = window.setInterval(() => {
-      loadMessages(activeId, { silent: true });
-    }, 8000);
-    return () => window.clearInterval(timer);
-  }, [activeId, wsStatus, loadMessages]);
 
   const handleInputChange = (e) => {
     const v = e.target.value;
@@ -829,7 +820,6 @@ const ChatView = () => {
       setMessages({ results: [], count: 0 });
     }
     setActiveId(id);
-    loadMessages(id);
     if (isMobileViewport) {
       setMobileSection("chat");
     }
