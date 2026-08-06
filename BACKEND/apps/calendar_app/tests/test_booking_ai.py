@@ -64,9 +64,10 @@ def test_parse_preferred_datetime_spanish_phrases():
     from unittest.mock import patch
     from zoneinfo import ZoneInfo
 
-    from apps.calendar_app.booking_ai import _parse_preferred_datetime
+    from apps.calendar_app.booking_ai import _parse_preferred_datetime, _parse_preferred_day, _resolve_weekday_date
 
     bogota = ZoneInfo("America/Bogota")
+    # Thursday 6 Aug 2026
     fake_now = datetime(2026, 8, 6, 16, 0, tzinfo=bogota)
     with patch("apps.calendar_app.booking_ai._now_in_calendar_tz", return_value=fake_now):
         dt = _parse_preferred_datetime("Domingo 09/08 a las 3pm", tz_name="America/Bogota")
@@ -80,6 +81,143 @@ def test_parse_preferred_datetime_spanish_phrases():
         assert dt2 is not None
         assert dt2.hour == 13
         assert dt2.weekday() == 6  # Sunday
+
+        # Thursday → viernes = tomorrow (7 Aug)
+        assert _parse_preferred_day("el viernes", tz_name="America/Bogota").isoformat() == "2026-08-07"
+        # Thursday → martes = next week (11 Aug)
+        assert _parse_preferred_day("martes", tz_name="America/Bogota").isoformat() == "2026-08-11"
+
+    assert _resolve_weekday_date(4, now=fake_now).date().isoformat() == "2026-08-07"  # viernes
+    assert _resolve_weekday_date(1, now=fake_now).date().isoformat() == "2026-08-11"  # martes
+
+
+@pytest.mark.django_db
+def test_affirmation_asks_for_day_not_slots(admin_user):
+    from apps.ai_config.models import AIConfiguration
+
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Ana", last_name="Lead")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    Message.objects.create(
+        conversation=conv,
+        sender_type="ai_bot",
+        content="¿Agendamos una reunión de 30 minutos?",
+        message_type="text",
+        status="sent",
+        is_ai_generated=True,
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Dale",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    with patch(
+        "apps.calendar_app.booking_ai._infer_calendar_intent",
+        return_value={"intent": "none", "slot_iso": None},
+    ):
+        reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is not None
+    assert "qué día" in reply.content.lower() or "que dia" in reply.content.lower()
+    draft = CalendarBookingDraft.objects.get(conversation=conv)
+    assert draft.status == "pending_day"
+
+
+@pytest.mark.django_db
+def test_pending_day_friday_asks_morning_or_afternoon(admin_user):
+    from apps.ai_config.models import AIConfiguration
+    from zoneinfo import ZoneInfo
+
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Ana", last_name="Lead")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_day",
+        timezone="America/Bogota",
+        duration_minutes=30,
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="el viernes",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    bogota = ZoneInfo("America/Bogota")
+    with patch(
+        "apps.calendar_app.booking_ai._now_in_calendar_tz",
+        return_value=datetime(2026, 8, 6, 16, 0, tzinfo=bogota),
+    ):
+        reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is not None
+    assert "mañana" in reply.content.lower() and "tarde" in reply.content.lower()
+    draft = CalendarBookingDraft.objects.get(conversation=conv)
+    assert draft.status == "pending_period"
+    assert draft.metadata.get("preferred_day") == "2026-08-07"
+
+
+@pytest.mark.django_db
+def test_day_and_time_free_asks_email(admin_user):
+    from apps.ai_config.models import AIConfiguration
+    from zoneinfo import ZoneInfo
+
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(
+        first_name="Lucia",
+        last_name="A",
+        email="wa-573507847789@auto.local",
+    )
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_day",
+        timezone="America/Bogota",
+        duration_minutes=30,
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="el martes a las 3pm",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    bogota = ZoneInfo("America/Bogota")
+    with (
+        patch(
+            "apps.calendar_app.booking_ai._now_in_calendar_tz",
+            return_value=datetime(2026, 8, 6, 16, 0, tzinfo=bogota),
+        ),
+        patch("apps.calendar_app.booking_ai._is_preferred_slot_free", return_value=True),
+    ):
+        reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is not None
+    assert "correo" in reply.content.lower()
+    assert "ya te agendo" in reply.content.lower()
+    draft = CalendarBookingDraft.objects.get(conversation=conv)
+    assert draft.status == "pending_email"
 
 
 @pytest.mark.django_db

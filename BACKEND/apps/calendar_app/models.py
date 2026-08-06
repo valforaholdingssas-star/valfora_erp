@@ -10,6 +10,8 @@ class CalendarBookingDraft(BaseModel):
     """Transient scheduling state for a conversation."""
 
     STATUS_CHOICES = (
+        ("pending_day", "Pending day"),
+        ("pending_period", "Pending period"),
         ("pending_selection", "Pending selection"),
         ("pending_email", "Pending email"),
         ("confirmed", "Confirmed"),

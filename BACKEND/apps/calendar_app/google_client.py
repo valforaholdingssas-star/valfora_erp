@@ -317,29 +317,56 @@ def compute_candidate_slots(
     max_results: int = 6,
     weekdays_only: bool = True,
     prefer_around: datetime | None = None,
+    target_date: datetime | None = None,
+    period_start_hour: int | None = None,
+    period_end_hour: int | None = None,
 ) -> list[datetime]:
     """Return candidate slot starts (timezone-aware) avoiding busy intervals.
 
-    By default only Mon–Fri. If prefer_around is set, returns free slots closest
-    to that datetime (still within the booking window).
+    By default only Mon–Fri. Optional target_date / period hours narrow the search.
+    If prefer_around is set, returns free slots closest to that datetime.
     """
     slot_delta = timedelta(minutes=max(15, slot_minutes))
     start_floor = now_local + timedelta(hours=2)
+    day_start_h = period_start_hour if period_start_hour is not None else workday_start_hour
+    day_end_h = period_end_hour if period_end_hour is not None else workday_end_hour
+    day_start_h = max(workday_start_hour, day_start_h)
+    day_end_h = min(workday_end_hour, day_end_h)
+
+    if target_date is not None:
+        target_day = target_date.date() if isinstance(target_date, datetime) else target_date
+        day_cursor = now_local.replace(
+            year=target_day.year,
+            month=target_day.month,
+            day=target_day.day,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        day_span = 1
+    else:
+        day_cursor = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_span = max(1, days_ahead)
+
     collected: list[datetime] = []
-    day_cursor = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    for _ in range(max(1, days_ahead)):
+    for _ in range(day_span):
         if weekdays_only and day_cursor.weekday() >= 5:
+            if target_date is not None:
+                break
             day_cursor = day_cursor + timedelta(days=1)
             continue
-        day_start = day_cursor.replace(hour=workday_start_hour, minute=0, second=0, microsecond=0)
-        day_end = day_cursor.replace(hour=workday_end_hour, minute=0, second=0, microsecond=0)
+        day_start = day_cursor.replace(hour=day_start_h, minute=0, second=0, microsecond=0)
+        day_end = day_cursor.replace(hour=day_end_h, minute=0, second=0, microsecond=0)
         slot = day_start
         while slot + slot_delta <= day_end:
             if slot >= start_floor and not _overlaps(slot, slot + slot_delta, busy_ranges):
                 collected.append(slot)
-                if not prefer_around and len(collected) >= max_results:
+                if not prefer_around and target_date is None and len(collected) >= max_results:
                     return collected
             slot += slot_delta
+        if target_date is not None:
+            break
         day_cursor = day_cursor + timedelta(days=1)
 
     if prefer_around and collected:

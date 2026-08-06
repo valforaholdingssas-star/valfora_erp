@@ -147,10 +147,11 @@ def google_calendar_system_policy() -> str:
         "Esta plataforma ya tiene Google Calendar integrado para agendar reuniones con Google Meet.\n"
         "NUNCA envíes ni inventes links de Calendly, Cal.com ni ningún enlace externo de reserva.\n"
         "NUNCA digas “te paso el link” ni menciones herramientas externas de agenda.\n"
-        "Cuando invites a reunirse, propone la reunión en texto y espera la confirmación del cliente "
-        "(sí, dale, ok, etc.). El sistema ofrecerá horarios reales automáticamente.\n"
-        "Si el cliente ya aceptó, no inventes horarios ni URLs: el backend consulta disponibilidad.\n"
-        "El sistema pedirá el correo del cliente para enviarle la invitación de Calendar + Meet."
+        "NUNCA inventes horarios ni listas de disponibilidad: el backend consulta el calendario real.\n"
+        "Flujo conversacional (el backend lo ejecuta): 1) si el cliente acepta reunirse, se le pregunta "
+        "qué día le queda bien; 2) luego si prefiere mañana o tarde; 3) recién ahí se proponen slots; "
+        "4) al confirmar horario se pide el correo para la invitación.\n"
+        "Si el cliente ya dio día y hora concretos, el backend valida disponibilidad solo."
     )
 
 
@@ -165,6 +166,10 @@ def _google_token(runtime: AIRuntimeSettings, *, for_events: bool = False) -> st
             raise
         logger.warning("Delegated Google token failed; retrying without impersonation")
         return get_service_account_token(sa, scope=scope, subject=None)
+
+
+MORNING_END_HOUR = 13  # 09:00–13:00
+AFTERNOON_START_HOUR = 13  # 13:00–18:00
 
 
 def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) -> Message | None:
@@ -185,114 +190,339 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
     if draft and draft.status == "pending_email":
         return _handle_pending_email(inbound=inbound, runtime=runtime, draft=draft, text=text)
 
+    if draft and draft.status == "pending_day":
+        return _handle_pending_day(inbound=inbound, runtime=runtime, draft=draft, text=text)
+
+    if draft and draft.status == "pending_period":
+        return _handle_pending_period(inbound=inbound, runtime=runtime, draft=draft, text=text)
+
     if draft and draft.status == "pending_selection":
-        tz_name = _calendar_tz_name(runtime, draft)
-        offered_slots = [str(x) for x in (draft.offered_slots or [])]
-        chosen = intent.get("slot_iso") if intent.get("intent") == "book_slot" else None
-        if not chosen:
-            chosen = _pick_slot_from_text(
-                user_text=text,
-                offered_slots=offered_slots,
-                model=config.llm_model,
-                tz_name=tz_name,
-            )
-        if chosen and chosen in offered_slots:
-            return _request_email_or_confirm(
-                inbound=inbound,
-                runtime=runtime,
-                draft=draft,
-                slot_iso=chosen,
-            )
+        return _handle_pending_selection(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            text=text,
+            intent=intent,
+            model=config.llm_model,
+        )
 
-        preferred = _parse_preferred_datetime(text, tz_name=tz_name)
-        if preferred:
-            preferred = _snap_to_slot_grid(
-                preferred,
-                minutes=int(runtime.google_slot_minutes or draft.duration_minutes or 30),
-            )
-            matched = _match_offered_slot(preferred, offered_slots, tz_name=tz_name)
-            if matched:
-                return _request_email_or_confirm(
-                    inbound=inbound,
-                    runtime=runtime,
-                    draft=draft,
-                    slot_iso=matched,
-                )
-
-            if preferred.weekday() >= 5:
-                return offer_availability_slots(
-                    inbound=inbound,
-                    runtime=runtime,
-                    draft=draft,
-                    prefer_around=preferred,
-                    intro=(
-                        "Agendamos de lunes a viernes. "
-                        f"El {_format_slot_label(preferred, tz_name)} cae en fin de semana; "
-                        "te propongo estos horarios cercanos:"
-                    ),
-                )
-
-            if not _within_work_hours(preferred):
-                return offer_availability_slots(
-                    inbound=inbound,
-                    runtime=runtime,
-                    draft=draft,
-                    prefer_around=preferred,
-                    intro=(
-                        f"Nuestra jornada es de lunes a viernes, "
-                        f"{WORKDAY_START_HOUR:02d}:00–{WORKDAY_END_HOUR:02d}:00. "
-                        "Te propongo estos horarios disponibles:"
-                    ),
-                )
-
-            if preferred < _now_in_calendar_tz(tz_name) + timedelta(hours=2):
-                return offer_availability_slots(
-                    inbound=inbound,
-                    runtime=runtime,
-                    draft=draft,
-                    prefer_around=preferred,
-                    intro="Ese horario ya no alcanza (necesitamos al menos 2 horas de anticipación). Alternativas:",
-                )
-
-            if _is_preferred_slot_free(runtime=runtime, slot_start=preferred, draft=draft):
-                return _request_email_or_confirm(
-                    inbound=inbound,
-                    runtime=runtime,
-                    draft=draft,
-                    slot_iso=preferred.isoformat(),
-                )
-
-            return offer_availability_slots(
-                inbound=inbound,
-                runtime=runtime,
-                draft=draft,
-                prefer_around=preferred,
-                intro=(
-                    f"El {_format_slot_label(preferred, tz_name)} ya no está libre. "
-                    "Estas son alternativas cercanas:"
-                ),
-            )
-
-        if intent.get("intent") == "book_slot" or _looks_like_slot_choice(text):
-            return offer_availability_slots(
-                inbound=inbound,
-                runtime=runtime,
-                draft=draft,
-                intro=(
-                    "No identifiqué ese horario con claridad. "
-                    "Elige uno de estos o indícame otro día y hora (lun–vie):"
-                ),
-            )
-
-    should_check_availability = (
+    should_start = (
         intent.get("intent") == "check_availability"
         or _has_schedule_intent(text)
         or (_is_scheduling_affirmation(text) and _recent_assistant_invited_meeting(conv))
     )
-    if not should_check_availability:
+    if not should_start:
         return None
 
-    return offer_availability_slots(inbound=inbound, runtime=runtime, draft=draft)
+    return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
+
+
+def _ask_preferred_day(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft | None,
+) -> Message:
+    conv = inbound.conversation
+    tz_name = _calendar_tz_name(runtime, draft)
+    if not draft:
+        draft = CalendarBookingDraft(conversation=conv)
+    elif draft.status in {"confirmed", "cancelled"}:
+        draft.offered_slots = []
+        draft.selected_slot = None
+        draft.google_event_id = ""
+        draft.metadata = {}
+    draft.status = "pending_day"
+    draft.timezone = tz_name
+    draft.duration_minutes = int(runtime.google_slot_minutes or 30)
+    draft.offered_slots = []
+    draft.save()
+    return Message.objects.create(
+        conversation=conv,
+        sender_type="ai_bot",
+        content="¿Qué día te queda bien que tengamos nuestra reunión?",
+        message_type="text",
+        status="pending" if conv.channel == "whatsapp" else "sent",
+        is_ai_generated=True,
+        ai_context_used={"calendar_waiting_day": True},
+    )
+
+
+def _handle_pending_day(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft,
+    text: str,
+) -> Message:
+    tz_name = _calendar_tz_name(runtime, draft)
+    # Day + time in one message → validate and book/suggest
+    preferred = _parse_preferred_datetime(text, tz_name=tz_name)
+    if preferred and _message_has_explicit_time(text):
+        preferred = _snap_to_slot_grid(
+            preferred,
+            minutes=int(runtime.google_slot_minutes or draft.duration_minutes or 30),
+        )
+        return _try_book_or_suggest(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            preferred=preferred,
+        )
+
+    day = _parse_preferred_day(text, tz_name=tz_name)
+    if not day:
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content=(
+                "Dime un día de la semana (por ejemplo: martes o viernes) "
+                "y armamos la reunión."
+            ),
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_day": True},
+        )
+
+    if day.weekday() >= 5:
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content=(
+                "Agendamos de lunes a viernes. "
+                "¿Qué día laborable te queda mejor?"
+            ),
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_day": True},
+        )
+
+    draft.status = "pending_period"
+    draft.metadata = {
+        **(draft.metadata or {}),
+        "preferred_day": day.isoformat(),
+        "preferred_day_label": f"{_WEEKDAYS_ES[day.weekday()]} {day.strftime('%d/%m')}",
+    }
+    draft.save(update_fields=["status", "metadata", "updated_at"])
+    label = draft.metadata["preferred_day_label"]
+    return Message.objects.create(
+        conversation=inbound.conversation,
+        sender_type="ai_bot",
+        content=f"Claro que sí, para el {label}: ¿te sirve en la mañana o en la tarde?",
+        message_type="text",
+        status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+        is_ai_generated=True,
+        ai_context_used={
+            "calendar_waiting_period": True,
+            "preferred_day": day.isoformat(),
+        },
+    )
+
+
+def _handle_pending_period(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft,
+    text: str,
+) -> Message:
+    tz_name = _calendar_tz_name(runtime, draft)
+    day_iso = (draft.metadata or {}).get("preferred_day")
+    if not day_iso:
+        return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
+
+    day = datetime.fromisoformat(day_iso).date()
+    # If they give a concrete time now, book/suggest on that day (or parsed day)
+    preferred = _parse_preferred_datetime(text, tz_name=tz_name)
+    if preferred and _message_has_explicit_time(text):
+        # If they only said a time, anchor to preferred day
+        if not _parse_preferred_day(text, tz_name=tz_name) and "hoy" not in text.lower() and "mañana" not in text.lower() and "manana" not in text.lower():
+            preferred = preferred.replace(year=day.year, month=day.month, day=day.day)
+        preferred = _snap_to_slot_grid(
+            preferred,
+            minutes=int(runtime.google_slot_minutes or draft.duration_minutes or 30),
+        )
+        return _try_book_or_suggest(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            preferred=preferred,
+        )
+
+    period = _parse_day_period(text)
+    if not period:
+        return Message.objects.create(
+            conversation=inbound.conversation,
+            sender_type="ai_bot",
+            content="¿Te acomoda mejor en la mañana o en la tarde?",
+            message_type="text",
+            status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+            is_ai_generated=True,
+            ai_context_used={"calendar_waiting_period": True},
+        )
+
+    hour_start, hour_end = (WORKDAY_START_HOUR, MORNING_END_HOUR) if period == "morning" else (AFTERNOON_START_HOUR, WORKDAY_END_HOUR)
+    draft.metadata = {
+        **(draft.metadata or {}),
+        "preferred_period": period,
+    }
+    draft.save(update_fields=["metadata", "updated_at"])
+    period_label = "mañana" if period == "morning" else "tarde"
+    day_label = (draft.metadata or {}).get("preferred_day_label") or day.isoformat()
+    return offer_availability_slots(
+        inbound=inbound,
+        runtime=runtime,
+        draft=draft,
+        target_date=datetime(day.year, day.month, day.day, tzinfo=_tz(tz_name)),
+        period_start_hour=hour_start,
+        period_end_hour=hour_end,
+        prefer_around=datetime(day.year, day.month, day.day, hour_start + 1, 0, tzinfo=_tz(tz_name)),
+        intro=f"Perfecto, para el {day_label} en la {period_label} tengo estos horarios:",
+        fallback_next_days=True,
+    )
+
+
+def _handle_pending_selection(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft,
+    text: str,
+    intent: dict,
+    model: str,
+) -> Message:
+    tz_name = _calendar_tz_name(runtime, draft)
+    offered_slots = [str(x) for x in (draft.offered_slots or [])]
+    chosen = intent.get("slot_iso") if intent.get("intent") == "book_slot" else None
+    if not chosen:
+        chosen = _pick_slot_from_text(
+            user_text=text,
+            offered_slots=offered_slots,
+            model=model,
+            tz_name=tz_name,
+        )
+    if chosen and chosen in offered_slots:
+        return _request_email_or_confirm(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            slot_iso=chosen,
+        )
+
+    preferred = _parse_preferred_datetime(text, tz_name=tz_name)
+    if preferred:
+        preferred = _snap_to_slot_grid(
+            preferred,
+            minutes=int(runtime.google_slot_minutes or draft.duration_minutes or 30),
+        )
+        matched = _match_offered_slot(preferred, offered_slots, tz_name=tz_name)
+        if matched:
+            return _request_email_or_confirm(
+                inbound=inbound,
+                runtime=runtime,
+                draft=draft,
+                slot_iso=matched,
+            )
+        return _try_book_or_suggest(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            preferred=preferred,
+        )
+
+    if intent.get("intent") == "book_slot" or _looks_like_slot_choice(text):
+        return offer_availability_slots(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            intro="No identifiqué ese horario. Elige uno de estos:",
+        )
+
+    # Maybe they want to change day
+    if _parse_preferred_day(text, tz_name=tz_name):
+        return _handle_pending_day(inbound=inbound, runtime=runtime, draft=draft, text=text)
+
+    return Message.objects.create(
+        conversation=inbound.conversation,
+        sender_type="ai_bot",
+        content="¿Cuál de esos horarios te sirve, o prefieres otro día?",
+        message_type="text",
+        status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
+        is_ai_generated=True,
+        ai_context_used={"calendar_waiting_selection": True},
+    )
+
+
+def _try_book_or_suggest(
+    *,
+    inbound: Message,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft,
+    preferred: datetime,
+) -> Message:
+    tz_name = _calendar_tz_name(runtime, draft)
+    preferred = _as_calendar_local(preferred, tz_name)
+
+    if preferred.weekday() >= 5:
+        return offer_availability_slots(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            prefer_around=preferred,
+            intro=(
+                "Agendamos de lunes a viernes. "
+                f"El {_format_slot_label(preferred, tz_name)} cae en fin de semana; "
+                "te propongo estos horarios cercanos:"
+            ),
+            fallback_next_days=True,
+        )
+
+    if not _within_work_hours(preferred):
+        return offer_availability_slots(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            target_date=preferred,
+            prefer_around=preferred,
+            intro=(
+                f"Nuestra jornada es de {WORKDAY_START_HOUR:02d}:00 a {WORKDAY_END_HOUR:02d}:00. "
+                "Te propongo estos horarios ese mismo día:"
+            ),
+            fallback_next_days=True,
+        )
+
+    if preferred < _now_in_calendar_tz(tz_name) + timedelta(hours=2):
+        return offer_availability_slots(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            prefer_around=preferred,
+            intro="Ese horario ya no alcanza (mínimo 2 horas de anticipación). Alternativas:",
+            fallback_next_days=True,
+        )
+
+    if _is_preferred_slot_free(runtime=runtime, slot_start=preferred, draft=draft):
+        return _request_email_or_confirm(
+            inbound=inbound,
+            runtime=runtime,
+            draft=draft,
+            slot_iso=preferred.isoformat(),
+        )
+
+    return offer_availability_slots(
+        inbound=inbound,
+        runtime=runtime,
+        draft=draft,
+        target_date=preferred,
+        prefer_around=preferred,
+        intro=(
+            f"El {_format_slot_label(preferred, tz_name)} ya está ocupado. "
+            "¿Te sirven estos horarios cercanos?"
+        ),
+        fallback_next_days=True,
+    )
 
 
 def offer_availability_slots(
@@ -302,6 +532,10 @@ def offer_availability_slots(
     draft: CalendarBookingDraft | None = None,
     prefer_around: datetime | None = None,
     intro: str | None = None,
+    target_date: datetime | None = None,
+    period_start_hour: int | None = None,
+    period_end_hour: int | None = None,
+    fallback_next_days: bool = False,
 ) -> Message | None:
     """Query Google freeBusy and create an AI message with concrete slot options."""
     runtime = runtime or AIRuntimeSettings.objects.order_by("-updated_at").first()
@@ -313,7 +547,7 @@ def offer_availability_slots(
     tz_name = _calendar_tz_name(runtime, draft)
 
     try:
-        sa = json.loads(runtime.google_service_account_json)
+        json.loads(runtime.google_service_account_json)
     except json.JSONDecodeError:
         return Message.objects.create(
             conversation=conv,
@@ -336,22 +570,48 @@ def offer_availability_slots(
         time_max=time_max,
         timezone=tz_name,
     )
+    slot_minutes = int(runtime.google_slot_minutes or 30)
     slots = compute_candidate_slots(
         now_local=now_local,
         busy_ranges=busy,
         days_ahead=max(1, days),
-        slot_minutes=int(runtime.google_slot_minutes or 30),
+        slot_minutes=slot_minutes,
         workday_start_hour=WORKDAY_START_HOUR,
         workday_end_hour=WORKDAY_END_HOUR,
         max_results=6,
         weekdays_only=True,
         prefer_around=prefer_around,
+        target_date=target_date,
+        period_start_hour=period_start_hour,
+        period_end_hour=period_end_hour,
     )
+
+    # If the requested day/period is empty, widen to nearby days.
+    if not slots and fallback_next_days:
+        slots = compute_candidate_slots(
+            now_local=now_local,
+            busy_ranges=busy,
+            days_ahead=max(1, days),
+            slot_minutes=slot_minutes,
+            workday_start_hour=WORKDAY_START_HOUR,
+            workday_end_hour=WORKDAY_END_HOUR,
+            max_results=6,
+            weekdays_only=True,
+            prefer_around=prefer_around or target_date or now_local,
+            period_start_hour=period_start_hour,
+            period_end_hour=period_end_hour,
+        )
+        if intro and "ocupado" not in (intro or "").lower() and "cercanos" not in (intro or "").lower():
+            intro = (
+                f"{intro.rstrip(':')} "
+                "(no había cupo en ese bloque; te muestro alternativas cercanas):"
+            )
+
     if not slots:
         return Message.objects.create(
             conversation=conv,
             sender_type="ai_bot",
-            content="No encontré espacios disponibles por ahora. ¿Quieres que revisemos otra semana?",
+            content="No encontré espacios disponibles por ahora. ¿Quieres que revisemos otro día?",
             message_type="text",
             status="pending" if conv.channel == "whatsapp" else "sent",
             is_ai_generated=True,
@@ -364,18 +624,18 @@ def offer_availability_slots(
     draft.status = "pending_selection"
     draft.offered_slots = offered
     draft.timezone = tz_name
-    draft.duration_minutes = int(runtime.google_slot_minutes or 30)
+    draft.duration_minutes = slot_minutes
     draft.save()
 
     choices = "\n".join(f"- {_format_slot_label(s, tz_name)}" for s in slots[:3])
-    header = (intro or "Perfecto, te propongo estos horarios disponibles:").strip()
+    header = (intro or "Te propongo estos horarios:").strip()
     return Message.objects.create(
         conversation=conv,
         sender_type="ai_bot",
         content=(
             f"{header}\n"
             f"{choices}\n\n"
-            "Dime cuál prefieres (día y hora) y te la reservo."
+            "Dime cuál te queda mejor."
         ),
         message_type="text",
         status="pending" if conv.channel == "whatsapp" else "sent",
@@ -587,9 +847,8 @@ def _request_email_or_confirm(
         conversation=inbound.conversation,
         sender_type="ai_bot",
         content=(
-            f"Perfecto, dejamos tentativo el {_format_slot_label(slot_start, tz_name)}. "
-            "Para enviarte la invitación a tu calendario con el enlace de Google Meet, "
-            "¿me compartes tu correo electrónico?"
+            f"Perfecto, ya te agendo el {_format_slot_label(slot_start, tz_name)}. "
+            "¿Me compartes tu correo para enviarte la invitación con Google Meet?"
         ),
         message_type="text",
         status="pending" if inbound.conversation.channel == "whatsapp" else "sent",
@@ -715,6 +974,79 @@ def _recent_assistant_invited_meeting(conv) -> bool:
 
 def _within_work_hours(dt: datetime) -> bool:
     return WORKDAY_START_HOUR <= dt.hour < WORKDAY_END_HOUR
+
+
+def _message_has_explicit_time(text: str) -> bool:
+    low = (text or "").lower()
+    return bool(
+        re.search(r"\b\d{1,2}:\d{2}\b", low)
+        or re.search(r"\b\d{1,2}\s*(am|pm)\b", low)
+        or re.search(r"a\s+las?\s+\d{1,2}\b", low)
+    )
+
+
+def _parse_day_period(text: str) -> str | None:
+    """Interpret morning/afternoon preference (used after the day is already known)."""
+    low = (text or "").lower().strip()
+    if any(x in low for x in ("tarde", "afternoon")) or re.search(r"\bpm\b", low):
+        return "afternoon"
+    if any(x in low for x in ("mañana", "manana", "morning")) or re.search(r"\bam\b", low):
+        return "morning"
+    return None
+
+
+def _resolve_weekday_date(weekday_idx: int, *, now: datetime) -> datetime:
+    """Next occurrence of weekday: this week if still upcoming, else next week.
+
+    Same weekday as today → today if still bookable, otherwise +7 days.
+    """
+    delta = (weekday_idx - now.weekday()) % 7
+    if delta == 0:
+        if now.hour < (WORKDAY_END_HOUR - 2):
+            return now.replace(hour=0, minute=0, second=0, microsecond=0)
+        delta = 7
+    target = now + timedelta(days=delta)
+    return target.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _parse_preferred_day(text: str, *, tz_name: str):
+    """Parse a day preference into a date (no required time)."""
+    from datetime import date
+
+    low = (text or "").lower().strip()
+    if not low:
+        return None
+    now = _now_in_calendar_tz(tz_name)
+
+    if re.search(r"\bhoy\b", low):
+        return now.date()
+    if re.search(r"\b(mañana|manana)\b", low):
+        return (now + timedelta(days=1)).date()
+
+    date_match = re.search(r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b", low)
+    if date_match:
+        day = int(date_match.group(1))
+        month = int(date_match.group(2))
+        year = now.year
+        if date_match.group(3):
+            year = int(date_match.group(3))
+            if year < 100:
+                year += 2000
+        try:
+            candidate = date(year, month, day)
+        except ValueError:
+            return None
+        if candidate < now.date() and not date_match.group(3):
+            try:
+                candidate = date(year + 1, month, day)
+            except ValueError:
+                return None
+        return candidate
+
+    for idx, name in enumerate(_WEEKDAYS_ES):
+        if name in low:
+            return _resolve_weekday_date(idx, now=now).date()
+    return None
 
 
 def _inviteable_attendee_email(email: str | None) -> str | None:
@@ -851,10 +1183,7 @@ def _parse_preferred_datetime(text: str, *, tz_name: str) -> datetime | None:
     else:
         for idx, name in enumerate(_WEEKDAYS_ES):
             if name in low:
-                delta = (idx - now.weekday()) % 7
-                if delta == 0:
-                    delta = 7
-                target = now + timedelta(days=delta)
+                target = _resolve_weekday_date(idx, now=now)
                 day, month, year = target.day, target.month, target.year
                 break
 
