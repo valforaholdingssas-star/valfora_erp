@@ -282,7 +282,24 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
     ):
         # Reuse the OneToOne draft row (cancelled/confirmed included) — never INSERT a duplicate.
         draft = _ensure_booking_draft(conversation=conv, runtime=runtime, draft=draft)
-        if interp.get("action") in start_actions:
+        has_concrete = bool(
+            interp.get("weekday")
+            or interp.get("date_iso")
+            or interp.get("period")
+            or interp.get("time_hhmm")
+            or int(interp.get("week_offset_days") or 0)
+        )
+        if interp.get("action") in start_actions or has_concrete:
+            # If LLM said start_booking but already extracted day/period, drive the state machine.
+            if interp.get("action") == "start_booking" and has_concrete:
+                if interp.get("time_hhmm") and (interp.get("weekday") or interp.get("date_iso")):
+                    interp = {**interp, "action": "provide_datetime"}
+                elif interp.get("weekday") or interp.get("date_iso"):
+                    interp = {**interp, "action": "provide_day"}
+                elif interp.get("period"):
+                    interp = {**interp, "action": "provide_period"}
+                elif int(interp.get("week_offset_days") or 0) >= 7:
+                    interp = {**interp, "action": "defer_week"}
             return _dispatch_booking_interpretation(
                 inbound=inbound,
                 runtime=runtime,

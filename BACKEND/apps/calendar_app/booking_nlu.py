@@ -123,13 +123,27 @@ def _merge_interpretations(primary: dict[str, Any], hint: dict[str, Any]) -> dic
         "none",
         "clarify",
         "provide_period",
+        "start_booking",
     }:
         out["action"] = "provide_datetime"
         out["related"] = True
-    elif out.get("period") and out.get("action") in {"none", "clarify"}:
+    elif (out.get("weekday") or out.get("date_iso")) and out.get("period") and out.get("action") in {
+        "none",
+        "clarify",
+        "start_booking",
+        "provide_period",
+    }:
+        # "martes en la tarde" must not stay as start_booking
+        out["action"] = "provide_day"
+        out["related"] = True
+    elif out.get("period") and out.get("action") in {"none", "clarify", "start_booking"}:
         out["action"] = "provide_period"
         out["related"] = True
-    elif (out.get("weekday") or out.get("date_iso")) and out.get("action") in {"none", "clarify"}:
+    elif (out.get("weekday") or out.get("date_iso")) and out.get("action") in {
+        "none",
+        "clarify",
+        "start_booking",
+    }:
         out["action"] = "provide_day"
         out["related"] = True
     if out.get("action") not in VALID_ACTIONS:

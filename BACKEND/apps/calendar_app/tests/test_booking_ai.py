@@ -540,6 +540,34 @@ def test_pending_selection_other_week_asks_day(admin_user, monkeypatch):
     assert draft.status == "pending_day"
 
 
+def test_nlu_merge_promotes_start_booking_when_day_and_period_present():
+    from apps.calendar_app.booking_nlu import _merge_interpretations
+
+    llm = {
+        "related": True,
+        "action": "start_booking",
+        "weekday": "martes",
+        "date_iso": "2026-08-11",
+        "period": "afternoon",
+        "time_hhmm": None,
+        "week_offset_days": 0,
+        "email": None,
+        "slot_iso": None,
+        "confidence": 0.8,
+    }
+    hint = {
+        "related": True,
+        "action": "provide_day",
+        "weekday": "martes",
+        "date_iso": "2026-08-11",
+        "period": "afternoon",
+    }
+    merged = _merge_interpretations(llm, hint)
+    assert merged["action"] == "provide_day"
+    assert merged["period"] == "afternoon"
+    assert merged["weekday"] == "martes"
+
+
 def test_nlu_merge_prefers_llm_datetime_and_fills_gaps():
     from apps.calendar_app.booking_nlu import _merge_interpretations
 
