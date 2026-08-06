@@ -17,6 +17,13 @@ from apps.calendar_app.booking_ai import maybe_handle_calendar_booking
 from django.core.files.base import ContentFile
 
 from apps.chat import services
+from apps.chat.ai_reply_guard import (
+    acquire_conversation_ai_lock,
+    has_ai_reply_after,
+    is_latest_contact_message,
+    latest_contact_message,
+    release_conversation_ai_lock,
+)
 from apps.chat.models import Conversation, Message, MessageAttachment
 
 logger = logging.getLogger(__name__)
@@ -49,13 +56,17 @@ def _enqueue_whatsapp_if_needed(conv: Conversation, reply: Message) -> None:
         send_whatsapp_outbound.delay(str(reply.id))
 
 
-@shared_task(name="chat.tasks.generate_ai_reply_for_message")
-def generate_ai_reply_for_message(inbound_message_id: str) -> None:
+def _should_persist_ai_reply(inbound: Message) -> bool:
+    return is_latest_contact_message(inbound) and not has_ai_reply_after(inbound)
+
+
+@shared_task(bind=True, name="chat.tasks.generate_ai_reply_for_message")
+def generate_ai_reply_for_message(self, inbound_message_id: str) -> None:
     """Generate an AI reply for an inbound contact message (Celery)."""
     try:
         inbound = Message.objects.select_related("conversation", "conversation__ai_configuration").get(
-        pk=inbound_message_id,
-    )
+            pk=inbound_message_id,
+        )
     except Message.DoesNotExist:
         return
     conv = inbound.conversation
@@ -68,6 +79,42 @@ def generate_ai_reply_for_message(inbound_message_id: str) -> None:
         return
     if inbound.sender_type != "contact" or inbound.is_ai_generated:
         return
+
+    # Coalesce bursts: only the latest contact message should answer.
+    if not is_latest_contact_message(inbound):
+        logger.info(
+            "Skipping AI reply for stale inbound %s (newer contact message exists) conv=%s",
+            inbound.id,
+            conv.id,
+        )
+        return
+    if has_ai_reply_after(inbound):
+        logger.info("Skipping AI reply: already answered after inbound %s", inbound.id)
+        return
+
+    lock_owner = str(inbound_message_id)
+    if not acquire_conversation_ai_lock(str(conv.id), owner=lock_owner):
+        retries = int(getattr(self.request, "retries", 0) or 0)
+        if retries < 3:
+            logger.info("AI reply lock busy for conv %s; retrying inbound %s", conv.id, inbound.id)
+            raise self.retry(countdown=5, max_retries=3)
+        logger.warning("AI reply lock busy for conv %s; dropping inbound %s after retries", conv.id, inbound.id)
+        return
+
+    try:
+        latest = latest_contact_message(conv.id)
+        if not latest or str(latest.id) != str(inbound.id):
+            logger.info("Skipping AI reply after lock: inbound %s is no longer latest", inbound.id)
+            return
+        if has_ai_reply_after(inbound):
+            return
+
+        _generate_ai_reply_locked(inbound=inbound, conv=conv)
+    finally:
+        release_conversation_ai_lock(str(conv.id), owner=lock_owner)
+
+
+def _generate_ai_reply_locked(*, inbound: Message, conv: Conversation) -> None:
     config = resolve_ai_configuration_for_conversation(conv)
     if not config:
         logger.warning("ai_mode_enabled but no default AIConfiguration row")
@@ -75,6 +122,12 @@ def generate_ai_reply_for_message(inbound_message_id: str) -> None:
 
     calendar_reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
     if calendar_reply:
+        if not _should_persist_ai_reply(inbound):
+            Message.objects.filter(pk=calendar_reply.pk).update(is_active=False)
+            latest = latest_contact_message(conv.id)
+            if latest and str(latest.id) != str(inbound.id):
+                generate_ai_reply_for_message.delay(str(latest.id))
+            return
         _enqueue_whatsapp_if_needed(conv, calendar_reply)
         return
 
@@ -82,6 +135,8 @@ def generate_ai_reply_for_message(inbound_message_id: str) -> None:
     usage_before = get_conversation_token_usage_today(str(conv.id))
     overhead = 4000 + int(config.max_tokens)
     if budget > 0 and usage_before + overhead > budget:
+        if not _should_persist_ai_reply(inbound):
+            return
         reply = Message.objects.create(
             conversation=conv,
             sender_type="ai_bot",
@@ -102,6 +157,14 @@ def generate_ai_reply_for_message(inbound_message_id: str) -> None:
         return
 
     if not result.text:
+        return
+
+    # Client may have sent another message while the LLM was running.
+    if not _should_persist_ai_reply(inbound):
+        latest = latest_contact_message(conv.id)
+        if latest and str(latest.id) != str(inbound.id):
+            generate_ai_reply_for_message.delay(str(latest.id))
+        logger.info("Discarding AI completion for stale inbound %s", inbound.id)
         return
 
     if budget > 0 and not try_reserve_conversation_tokens(str(conv.id), result.total_tokens, budget):
@@ -146,11 +209,18 @@ def generate_ai_reply_for_message(inbound_message_id: str) -> None:
             logger.warning("AI reply blocked by moderation for conversation %s", conv.id)
             return
 
+    if not _should_persist_ai_reply(inbound):
+        latest = latest_contact_message(conv.id)
+        if latest and str(latest.id) != str(inbound.id):
+            generate_ai_reply_for_message.delay(str(latest.id))
+        return
+
     audit = {
         "model": config.llm_model,
         "history_messages": config.max_history_messages,
         "usage": _usage_dict(result),
         "moderation": moderation_meta,
+        "trigger_message_id": str(inbound.id),
     }
     reply = Message.objects.create(
         conversation=conv,

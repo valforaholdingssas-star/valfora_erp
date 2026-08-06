@@ -167,6 +167,9 @@ CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 # Cuotas IA (DB distinta al broker para no mezclar con Celery/channels)
 REDIS_CACHE_URL = os.getenv("REDIS_CACHE_URL", "redis://127.0.0.1:6379/2")
+# Wait briefly so multi-bubble WhatsApp bursts get one AI reply (seconds).
+AI_REPLY_DEBOUNCE_SECONDS = int(os.getenv("AI_REPLY_DEBOUNCE_SECONDS", "4"))
+AI_REPLY_LOCK_TTL_SECONDS = int(os.getenv("AI_REPLY_LOCK_TTL_SECONDS", "120"))
 
 # LinkedIn / Unipile integration
 UNIPILE_API_BASE_URL = os.getenv("UNIPILE_API_BASE_URL", "https://api1.unipile.com:13111/api/v1")

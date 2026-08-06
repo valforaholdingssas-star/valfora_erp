@@ -53,6 +53,66 @@ def test_ai_reply_creates_bot_message(mock_rag, mock_emb, mock_reserve, mock_mod
 
 
 @pytest.mark.django_db
+@patch("apps.chat.ai_reply_guard.acquire_conversation_ai_lock", return_value=True)
+@patch("apps.chat.ai_reply_guard.release_conversation_ai_lock")
+@patch("apps.rag.retrieval.retrieve_relevant_chunks", return_value=[])
+@patch("apps.rag.embeddings.embed_query", return_value=[0.0] * 1536)
+@patch("apps.chat.tasks.try_reserve_conversation_tokens", return_value=True)
+@patch("apps.chat.tasks.moderate_openai_text", return_value=(True, {}))
+@patch(
+    "apps.chat.tasks.generate_chat_completion",
+    return_value=CompletionResult(
+        text="Respuesta única al lote.",
+        prompt_tokens=10,
+        completion_tokens=5,
+        total_tokens=15,
+    ),
+)
+def test_ai_reply_skips_stale_inbound_when_newer_contact_message_exists(
+    mock_llm,
+    mock_mod,
+    mock_reserve,
+    mock_emb,
+    mock_rag,
+    mock_release,
+    mock_lock,
+    admin_user,
+):
+    contact = Contact.objects.create(
+        first_name="Lead",
+        last_name="Burst",
+        email="burst@example.com",
+        created_by=admin_user,
+    )
+    deal = Deal.objects.create(title="AI burst deal", contact=contact, assigned_to=admin_user)
+    conv = Conversation.objects.get(deal=deal, channel="internal")
+    conv.ai_mode_enabled = True
+    conv.save(update_fields=["ai_mode_enabled", "updated_at"])
+    first = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Primera parte",
+        message_type="text",
+        status="delivered",
+    )
+    second = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Etc",
+        message_type="text",
+        status="delivered",
+    )
+
+    generate_ai_reply_for_message(str(first.id))
+    mock_llm.assert_not_called()
+    assert not Message.objects.filter(conversation=conv, sender_type="ai_bot").exists()
+
+    generate_ai_reply_for_message(str(second.id))
+    mock_llm.assert_called_once()
+    assert Message.objects.filter(conversation=conv, sender_type="ai_bot", is_ai_generated=True).count() == 1
+
+
+@pytest.mark.django_db
 @patch("apps.rag.retrieval.retrieve_relevant_chunks", return_value=[])
 @patch("apps.rag.embeddings.embed_query", return_value=[0.0] * 1536)
 @patch("apps.chat.tasks.try_reserve_conversation_tokens", return_value=True)

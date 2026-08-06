@@ -115,8 +115,13 @@ def enqueue_ai_reply_after_contact_message(
         return
 
     def _enqueue() -> None:
+        from apps.chat.ai_reply_guard import AI_REPLY_DEBOUNCE_SECONDS
         from apps.chat.tasks import generate_ai_reply_for_message
 
-        generate_ai_reply_for_message.delay(str(instance.id))
+        # Debounce rapid WhatsApp bursts so one reply covers the latest message batch.
+        generate_ai_reply_for_message.apply_async(
+            args=[str(instance.id)],
+            countdown=max(0, AI_REPLY_DEBOUNCE_SECONDS),
+        )
 
     transaction.on_commit(_enqueue)
