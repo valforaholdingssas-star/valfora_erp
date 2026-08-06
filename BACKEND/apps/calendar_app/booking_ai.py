@@ -276,13 +276,13 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
         )
 
     # Idle: only start when NLU says so (or strong deterministic start).
+    start_actions = {"provide_day", "provide_datetime", "defer_week", "provide_period"}
     if interp.get("action") == "start_booking" or (
-        interp.get("related") and interp.get("action") in {"provide_day", "provide_datetime", "defer_week"}
+        interp.get("related") and interp.get("action") in start_actions
     ):
-        draft = draft if draft and draft.status in _ACTIVE_BOOKING_STATUSES else None
-        ask = _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
-        draft = CalendarBookingDraft.objects.filter(conversation=conv).first()
-        if interp.get("action") in {"provide_day", "provide_datetime", "defer_week"} and draft:
+        # Reuse the OneToOne draft row (cancelled/confirmed included) — never INSERT a duplicate.
+        draft = _ensure_booking_draft(conversation=conv, runtime=runtime, draft=draft)
+        if interp.get("action") in start_actions:
             return _dispatch_booking_interpretation(
                 inbound=inbound,
                 runtime=runtime,
@@ -290,7 +290,7 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
                 interp=interp,
                 model=config.llm_model,
             )
-        return ask
+        return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
 
     return None
 
@@ -532,11 +532,14 @@ def _dispatch_booking_interpretation(
                     slot_iso=matched,
                 )
 
-    if action == "provide_period" or (status == "pending_period" and interp.get("period")):
-        return _apply_provide_period(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
-
+    # Day+period in one phrase ("martes en la tarde"): resolve day first (chains to slots).
     if action == "provide_day" or (status == "pending_day" and (interp.get("weekday") or interp.get("date_iso"))):
         return _apply_provide_day(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
+
+    if action == "provide_period" or (status == "pending_period" and interp.get("period")):
+        if (interp.get("weekday") or interp.get("date_iso")) and not (draft.metadata or {}).get("preferred_day"):
+            return _apply_provide_day(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
+        return _apply_provide_period(inbound=inbound, runtime=runtime, draft=draft, interp=interp)
 
     if action == "start_booking":
         return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
@@ -732,6 +735,30 @@ def _parse_week_offset_days(text: str) -> int | None:
     return None
 
 
+def _ensure_booking_draft(
+    *,
+    conversation,
+    runtime: AIRuntimeSettings,
+    draft: CalendarBookingDraft | None = None,
+) -> CalendarBookingDraft:
+    """Get or create the single draft per conversation; reset if finished/cancelled."""
+    existing = draft or CalendarBookingDraft.objects.filter(conversation=conversation).first()
+    tz_name = _calendar_tz_name(runtime, existing)
+    if existing is None:
+        existing = CalendarBookingDraft(conversation=conversation)
+    elif existing.status in {"confirmed", "cancelled"} or existing.status not in _ACTIVE_BOOKING_STATUSES:
+        existing.offered_slots = []
+        existing.selected_slot = None
+        existing.google_event_id = ""
+        existing.metadata = {}
+    existing.status = "pending_day"
+    existing.timezone = tz_name
+    existing.duration_minutes = int(runtime.google_slot_minutes or 30)
+    existing.offered_slots = []
+    existing.save()
+    return existing
+
+
 def _ask_preferred_day(
     *,
     inbound: Message,
@@ -739,19 +766,7 @@ def _ask_preferred_day(
     draft: CalendarBookingDraft | None,
 ) -> Message:
     conv = inbound.conversation
-    tz_name = _calendar_tz_name(runtime, draft)
-    if not draft:
-        draft = CalendarBookingDraft(conversation=conv)
-    elif draft.status in {"confirmed", "cancelled"}:
-        draft.offered_slots = []
-        draft.selected_slot = None
-        draft.google_event_id = ""
-        draft.metadata = {}
-    draft.status = "pending_day"
-    draft.timezone = tz_name
-    draft.duration_minutes = int(runtime.google_slot_minutes or 30)
-    draft.offered_slots = []
-    draft.save()
+    draft = _ensure_booking_draft(conversation=conv, runtime=runtime, draft=draft)
     return Message.objects.create(
         conversation=conv,
         sender_type="ai_bot",

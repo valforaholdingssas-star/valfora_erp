@@ -627,6 +627,57 @@ def test_nlu_layer_handles_colloquial_next_week(admin_user, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_idle_reuses_cancelled_draft_for_day_and_period(admin_user, monkeypatch):
+    """Regression: cancelled OneToOne draft must be reused, not INSERT-duplicated."""
+    from apps.ai_config.models import AIConfiguration
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Camilo", last_name="C")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="cancelled",
+        offered_slots=[],
+        timezone="America/Bogota",
+        duration_minutes=30,
+        metadata={"abandoned_reason": "nlu_unrelated"},
+    )
+    bogota = ZoneInfo("America/Bogota")
+    fake_now = datetime(2026, 8, 6, 17, 48, tzinfo=bogota)
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="El martes en la tarde",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+
+    with (
+        patch("apps.calendar_app.booking_ai._now_in_calendar_tz", return_value=fake_now),
+        patch("apps.calendar_app.booking_ai.get_service_account_token", return_value="token"),
+        patch("apps.calendar_app.booking_ai.freebusy_query", return_value=[]),
+    ):
+        reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+
+    assert reply is not None
+    assert CalendarBookingDraft.objects.filter(conversation=conv).count() == 1
+    draft = CalendarBookingDraft.objects.get(conversation=conv)
+    assert draft.status == "pending_selection"
+    assert (draft.metadata or {}).get("preferred_period") == "afternoon"
+    assert "martes" in reply.content.lower() or "tarde" in reply.content.lower() or "horario" in reply.content.lower()
+
+
+@pytest.mark.django_db
 def test_maybe_handle_calendar_booking_returns_none_when_disabled():
     AIRuntimeSettings.objects.create(google_calendar_enabled=False)
     contact = Contact.objects.create(first_name="A", last_name="B")
