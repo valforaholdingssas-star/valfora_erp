@@ -150,8 +150,6 @@ const computeRemainingWindowLabel = (conversation) => {
   return `${hours}h ${minutes}m`;
 };
 
-const CHAT_OVERDUE_FILTER_STORAGE_KEY = "chat_sla_overdue_only";
-
 const ChatView = () => {
   const WHATSAPP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
   const WHATSAPP_DOCUMENT_MAX_BYTES = 100 * 1024 * 1024;
@@ -199,13 +197,7 @@ const ChatView = () => {
   const [savingAiConfig, setSavingAiConfig] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [composerError, setComposerError] = useState("");
-  const [showOnlyOverdue, setShowOnlyOverdue] = useState(() => {
-    try {
-      return localStorage.getItem(CHAT_OVERDUE_FILTER_STORAGE_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
+  const [showOnlyOverdue, setShowOnlyOverdue] = useState(false);
   const [dealDetail, setDealDetail] = useState(null);
   const [dealDraft, setDealDraft] = useState(null);
   const [loadingDeal, setLoadingDeal] = useState(false);
@@ -822,14 +814,6 @@ const ChatView = () => {
       setAiConfigId(activeConv.ai_configuration || "");
     }
   }, [activeConv]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(CHAT_OVERDUE_FILTER_STORAGE_KEY, showOnlyOverdue ? "1" : "0");
-    } catch {
-      // ignore storage failures
-    }
-  }, [showOnlyOverdue]);
 
   useEffect(() => {
     if (!activeId) {
