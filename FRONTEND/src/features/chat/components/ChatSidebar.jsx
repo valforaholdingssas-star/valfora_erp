@@ -71,11 +71,8 @@ const ChatSidebar = ({
 }) => {
   const buildDealLine = (conversation) => {
     const title = conversation?.deal_title || null;
-    const stageLabel = resolveStageLabel(conversation, stageLabels);
-    if (!title && !stageLabel) return "";
-    if (title && stageLabel) return `Deal: ${title} · ${stageLabel}`;
-    if (title) return `Deal: ${title}`;
-    return `Etapa: ${stageLabel}`;
+    if (!title) return "";
+    return `Deal: ${title}`;
   };
 
   return (
@@ -163,8 +160,10 @@ const ChatSidebar = ({
             </div>
           )}
           {conversations?.map((c) => {
-            const dealLine = buildDealLine(c);
             const preview = (c.last_message_preview || "").trim();
+            const dealLine = buildDealLine(c);
+            const subtitle = preview || dealLine;
+            const meta = buildSidebarMeta(c, stageLabels);
             return (
               <button
                 key={c.id}
@@ -183,27 +182,30 @@ const ChatSidebar = ({
                         ) : null}
                         {c.last_message_at && (
                           <span className="app-chat-sidebar-item-time">
-                            {new Date(c.last_message_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
+                            {new Date(c.last_message_at).toLocaleTimeString("es-CO", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
                           </span>
                         )}
                       </div>
                     </div>
-                    {preview ? (
-                      <div className="app-chat-sidebar-item-preview">{preview}</div>
-                    ) : null}
-                    {dealLine ? (
+                    {subtitle ? <div className="app-chat-sidebar-item-subtitle">{subtitle}</div> : null}
+                    {preview && dealLine ? (
                       <div className="app-chat-sidebar-item-deal">{dealLine}</div>
                     ) : null}
-                    <div className="app-chat-sidebar-item-statusline">
-                      {buildSidebarMeta(c, stageLabels).map((tag) => (
-                        <span
-                          key={`${c.id}-${tag.key}`}
-                          className={`app-chat-sidebar-item-meta-token is-${tag.tone}`}
-                        >
-                          {tag.label}
-                        </span>
-                      ))}
-                    </div>
+                    {meta.length > 0 ? (
+                      <div className="app-chat-sidebar-item-statusline">
+                        {meta.map((tag) => (
+                          <span
+                            key={`${c.id}-${tag.key}`}
+                            className={`app-chat-sidebar-item-meta-token is-${tag.tone}`}
+                          >
+                            {tag.label}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </button>

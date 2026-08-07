@@ -2486,15 +2486,17 @@ a {
   width: 100%;
   text-align: left;
   border: 1px solid #d8e1f0;
-  border-radius: 18px;
-  padding: 0.95rem 1rem;
-  min-height: 88px;
+  border-radius: 16px;
+  padding: 0.85rem 0.95rem 0.9rem;
+  min-height: 0;
+  height: auto;
+  overflow: visible;
   background: #fff;
   color: var(--vf-text);
   appearance: none;
   font: inherit;
   cursor: pointer;
-  box-shadow: 0 8px 22px rgba(15, 34, 80, 0.05);
+  box-shadow: 0 6px 18px rgba(15, 34, 80, 0.05);
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
@@ -2512,21 +2514,22 @@ a {
 .app-chat-sidebar-item.is-active {
   background: #eef4ff;
   border-color: #9dbdf6;
-  box-shadow: 0 12px 28px rgba(38, 103, 223, 0.12);
+  box-shadow: 0 10px 24px rgba(38, 103, 223, 0.12);
 }
 
 .app-chat-sidebar-item-shell {
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
-  gap: 0.9rem;
-  align-items: center;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
 }
 
 .app-chat-sidebar-item-body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.28rem;
+  padding-bottom: 0.05rem;
 }
 
 .app-chat-sidebar-head {
@@ -2588,17 +2591,14 @@ a {
 }
 
 .app-chat-sidebar-item-name {
-  font-size: 1.02rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--vf-text);
-  line-height: 1.25;
+  line-height: 1.3;
   min-width: 0;
-  display: -webkit-box;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: normal;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
 }
 
 .app-chat-sidebar-item-time {
@@ -2679,9 +2679,9 @@ a {
 }
 
 .app-chat-sidebar-item-subtitle {
-  margin-top: 0.12rem;
+  margin-top: 0;
   color: #7a879c;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 500;
   line-height: 1.35;
   white-space: nowrap;
@@ -2693,12 +2693,12 @@ a {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.42rem;
-  margin-top: 0.22rem;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
   color: #70819e;
   font-size: 0.7rem;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.3;
   white-space: normal;
 }
 
@@ -2835,7 +2835,7 @@ a {
 }
 
 .app-chat-sidebar-item-preview {
-  margin-top: 0.18rem;
+  margin-top: 0;
   color: #70819e;
   font-size: 0.78rem;
   line-height: 1.35;
@@ -2845,9 +2845,9 @@ a {
 }
 
 .app-chat-sidebar-item-deal {
-  margin-top: 0.18rem;
+  margin-top: 0;
   color: #5b6b86;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 600;
   line-height: 1.35;
   white-space: nowrap;
@@ -3726,9 +3726,9 @@ a {
   }
 
   .app-chat-sidebar-item {
-    padding: 0.9rem !important;
+    padding: 0.8rem 0.85rem 0.85rem !important;
     border-radius: 14px;
-    min-height: 78px;
+    min-height: 0;
   }
 
   .app-avatar {
