@@ -1,5 +1,27 @@
+import { forwardRef, useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { Form, Spinner } from "react-bootstrap";
+import { Dropdown, Form, Spinner } from "react-bootstrap";
+
+const SidebarIconToggle = forwardRef(({ children, onClick, className, ...props }, ref) => (
+  <button
+    type="button"
+    {...props}
+    ref={ref}
+    className={className}
+    onClick={(event) => {
+      event.preventDefault();
+      onClick?.(event);
+    }}
+  >
+    {children}
+  </button>
+));
+SidebarIconToggle.displayName = "SidebarIconToggle";
+SidebarIconToggle.propTypes = {
+  children: PropTypes.node,
+  onClick: PropTypes.func,
+  className: PropTypes.string,
+};
 
 const initials = (name = "") =>
   name
@@ -25,14 +47,20 @@ const resolveStageLabel = (conversation, stageLabels = {}) => {
   return stageLabels[stageKey] || stageKey;
 };
 
-const buildSidebarMeta = (conversation, stageLabels = {}) => {
+const buildSidebarMeta = (conversation, stageLabels = {}, statusFilter = "open") => {
   const parts = [];
   const isClosed = conversation?.status === "archived" || conversation?.is_whatsapp_window_closed;
-  parts.push({
-    key: "status",
-    label: isClosed ? "Cerrado" : "Abierto",
-    tone: isClosed ? "status-closed" : "status-open",
-  });
+  // Avoid repeating "Cerrado/Abierto" when the list is already filtered by that status.
+  if (statusFilter !== "closed" && statusFilter !== "open") {
+    parts.push({
+      key: "status",
+      label: isClosed ? "Cerrado" : "Abierto",
+      tone: isClosed ? "status-closed" : "status-open",
+    });
+  } else if (statusFilter === "open" && isClosed) {
+    parts.push({ key: "status", label: "Cerrado", tone: "status-closed" });
+  }
+
   const stageLabel = resolveStageLabel(conversation, stageLabels);
   if (stageLabel) {
     parts.push({
@@ -41,12 +69,13 @@ const buildSidebarMeta = (conversation, stageLabels = {}) => {
       tone: "stage",
     });
   }
+
   const windowLabel = formatWindowTagLabel(conversation);
-  if (windowLabel) {
+  if (windowLabel && isClosed) {
     parts.push({
       key: "window",
       label: windowLabel,
-      tone: isClosed ? "window-closed" : "window",
+      tone: "window-closed",
     });
   }
   return parts;
@@ -67,87 +96,149 @@ const ChatSidebar = ({
   statusFilter,
   onStatusFilterChange,
   stageLabels = {},
+  onCollapse,
   className = "",
 }) => {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const selectedLineLabel = useMemo(() => {
+    if (!selectedWhatsAppLine) return "Todas las líneas";
+    const line = (whatsAppLines || []).find((item) => String(item.id) === String(selectedWhatsAppLine));
+    if (!line) return "Línea";
+    return line.line_name || line.internal_name || line.verified_name || line.display_phone_number || "Línea";
+  }, [selectedWhatsAppLine, whatsAppLines]);
+
+  const statusLabel = statusFilter === "closed" ? "Cerrados" : "Abiertos";
+  const activeFilterCount = [query?.trim(), statusFilter !== "open", Boolean(selectedWhatsAppLine)].filter(Boolean).length;
+
   const buildDealLine = (conversation) => {
     const title = conversation?.deal_title || null;
     if (!title) return "";
-    return `Deal: ${title}`;
+    return title;
   };
 
   return (
-    <div className={`p-2 h-100 app-chat-sidebar ${className}`}>
+    <div className={`h-100 app-chat-sidebar ${className}`}>
       <div className="app-chat-sidebar-head">
-        <div className="d-flex justify-content-between align-items-center px-2 mb-2">
-          <div>
+        <div className="app-chat-sidebar-head-row">
+          <div className="app-chat-sidebar-head-copy">
             <div className="app-chat-sidebar-title">Bandeja</div>
-            <div className="app-chat-sidebar-subtitle">{totalCount || conversations?.length || 0} conversaciones</div>
+            <div className="app-chat-sidebar-subtitle">
+              {totalCount || conversations?.length || 0} · {statusLabel}
+            </div>
+          </div>
+          <div className="app-chat-sidebar-head-actions">
+            <Dropdown
+              show={filtersOpen}
+              onToggle={(next) => setFiltersOpen(Boolean(next))}
+              align="end"
+              autoClose="outside"
+            >
+              <Dropdown.Toggle
+                as={SidebarIconToggle}
+                className={`app-chat-sidebar-icon-btn ${activeFilterCount > 0 ? "is-active" : ""}`}
+                aria-label="Buscar y filtrar bandeja"
+              >
+                <i className="bi bi-funnel" aria-hidden="true" />
+                {activeFilterCount > 0 ? <span className="app-chat-sidebar-icon-badge">{activeFilterCount}</span> : null}
+              </Dropdown.Toggle>
+              <Dropdown.Menu className="app-chat-filters-menu p-3" popperConfig={{ strategy: "fixed" }}>
+                <div className="app-chat-filters-menu-title">Buscar y filtrar</div>
+                <Form.Control
+                  size="sm"
+                  placeholder="Buscar chats"
+                  className="mb-3 app-chat-sidebar-search"
+                  value={query}
+                  onChange={(e) => onQueryChange(e.target.value)}
+                  autoFocus={filtersOpen}
+                />
+                <div className="app-chat-filters-section-label">Estado</div>
+                <div className="app-chat-filters-segment mb-3">
+                  <button
+                    type="button"
+                    className={`app-chat-filters-segment-btn ${statusFilter === "open" ? "is-active" : ""}`}
+                    onClick={() => onStatusFilterChange("open")}
+                  >
+                    Abiertos
+                  </button>
+                  <button
+                    type="button"
+                    className={`app-chat-filters-segment-btn ${statusFilter === "closed" ? "is-active" : ""}`}
+                    onClick={() => onStatusFilterChange("closed")}
+                  >
+                    Cerrados
+                  </button>
+                </div>
+                {(whatsAppLines || []).length > 0 ? (
+                  <>
+                    <div className="app-chat-filters-section-label">Línea WhatsApp</div>
+                    <div className="app-chat-filters-stack">
+                      <button
+                        type="button"
+                        className={`app-chat-filters-option ${selectedWhatsAppLine === "" ? "is-active" : ""}`}
+                        onClick={() => onSelectWhatsAppLine("")}
+                      >
+                        <span>Todas</span>
+                        <span>{totalCount || conversations?.length || 0}</span>
+                      </button>
+                      {whatsAppLines.map((line) => {
+                        const label =
+                          line.line_name || line.internal_name || line.verified_name || line.display_phone_number;
+                        const count = whatsAppLineCounts?.[line.id] || 0;
+                        return (
+                          <button
+                            key={line.id}
+                            type="button"
+                            className={`app-chat-filters-option ${selectedWhatsAppLine === line.id ? "is-active" : ""}`}
+                            onClick={() => onSelectWhatsAppLine(line.id)}
+                            title={label}
+                          >
+                            <span className="app-chat-filters-option-label">{label}</span>
+                            <span>{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : null}
+                <div className="app-chat-filters-menu-foot">
+                  <span className="app-chat-filters-channel">
+                    <i className="bi bi-whatsapp" aria-hidden="true" />
+                    WhatsApp
+                  </span>
+                  <button type="button" className="btn btn-sm btn-primary" onClick={() => setFiltersOpen(false)}>
+                    Listo
+                  </button>
+                </div>
+              </Dropdown.Menu>
+            </Dropdown>
+            {typeof onCollapse === "function" ? (
+              <button
+                type="button"
+                className="app-chat-sidebar-icon-btn d-none d-lg-inline-flex"
+                onClick={onCollapse}
+                aria-label="Ocultar bandeja"
+                title="Ocultar bandeja"
+              >
+                <i className="bi bi-layout-sidebar" aria-hidden="true" />
+              </button>
+            ) : null}
           </div>
         </div>
-        <Form.Control
-          size="sm"
-          placeholder="Buscar chats"
-          className="mb-2 app-chat-sidebar-search"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-        />
-        <div className="app-chat-sidebar-chip-grid mb-2">
-          <span className="app-chat-sidebar-chip is-channel is-active" aria-label="Canal WhatsApp">
-            <i className="bi bi-whatsapp" aria-hidden="true" />
-            WhatsApp
-          </span>
-        </div>
-        <div className="app-chat-sidebar-chip-grid mb-2">
-          <button
-            type="button"
-            className={`app-chat-sidebar-chip ${statusFilter === "open" ? "is-active is-dark" : ""}`}
-            onClick={() => onStatusFilterChange("open")}
-          >
-            Abiertos
-          </button>
-          <button
-            type="button"
-            className={`app-chat-sidebar-chip ${statusFilter === "closed" ? "is-active is-dark" : ""}`}
-            onClick={() => onStatusFilterChange("closed")}
-          >
-            Cerrados
-          </button>
-        </div>
-        {(whatsAppLines || []).length > 0 && (
-          <div className="app-chat-sidebar-chip-grid mb-3">
-            <button
-              type="button"
-              className={`app-chat-sidebar-chip app-chat-sidebar-chip--count ${selectedWhatsAppLine === "" ? "is-active is-dark" : ""}`}
-              onClick={() => onSelectWhatsAppLine("")}
-            >
-              Todas
-              <span>({totalCount || conversations?.length || 0})</span>
-            </button>
-            {whatsAppLines.map((line) => {
-              const label = line.line_name || line.internal_name || line.verified_name || line.display_phone_number;
-              const count = whatsAppLineCounts?.[line.id] || 0;
-              return (
-                <button
-                  key={line.id}
-                  type="button"
-                  className={`app-chat-sidebar-chip app-chat-sidebar-chip--count ${selectedWhatsAppLine === line.id ? "is-active is-dark" : ""}`}
-                  onClick={() => onSelectWhatsAppLine(line.id)}
-                  title={label}
-                >
-                  <span className="app-chat-sidebar-chip-label">{label}</span>
-                  <span>({count})</span>
-                </button>
-              );
-            })}
+        {(query?.trim() || selectedWhatsAppLine) && (
+          <div className="app-chat-sidebar-active-filters">
+            {query?.trim() ? <span className="app-chat-sidebar-active-chip">“{query.trim()}”</span> : null}
+            {selectedWhatsAppLine ? <span className="app-chat-sidebar-active-chip">{selectedLineLabel}</span> : null}
           </div>
         )}
       </div>
+
       {loading && (!conversations || conversations.length === 0) ? (
         <div className="p-2">
           <Spinner animation="border" size="sm" />
         </div>
       ) : (
-        <div className="d-flex flex-column gap-2 app-chat-sidebar-list">
+        <div className="app-chat-sidebar-list">
           {loading ? (
             <div className="px-2 pb-1">
               <Spinner animation="border" size="sm" />
@@ -161,9 +252,8 @@ const ChatSidebar = ({
           )}
           {conversations?.map((c) => {
             const preview = (c.last_message_preview || "").trim();
-            const dealLine = buildDealLine(c);
-            const subtitle = preview || dealLine;
-            const meta = buildSidebarMeta(c, stageLabels);
+            const dealTitle = buildDealLine(c);
+            const meta = buildSidebarMeta(c, stageLabels, statusFilter);
             return (
               <button
                 key={c.id}
@@ -190,10 +280,8 @@ const ChatSidebar = ({
                         )}
                       </div>
                     </div>
-                    {subtitle ? <div className="app-chat-sidebar-item-subtitle">{subtitle}</div> : null}
-                    {preview && dealLine ? (
-                      <div className="app-chat-sidebar-item-deal">{dealLine}</div>
-                    ) : null}
+                    {preview ? <div className="app-chat-sidebar-item-subtitle">{preview}</div> : null}
+                    {dealTitle ? <div className="app-chat-sidebar-item-deal">{dealTitle}</div> : null}
                     {meta.length > 0 ? (
                       <div className="app-chat-sidebar-item-statusline">
                         {meta.map((tag) => (
@@ -232,6 +320,7 @@ ChatSidebar.propTypes = {
   statusFilter: PropTypes.string,
   onStatusFilterChange: PropTypes.func.isRequired,
   stageLabels: PropTypes.objectOf(PropTypes.string),
+  onCollapse: PropTypes.func,
   className: PropTypes.string,
 };
 

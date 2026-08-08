@@ -1376,10 +1376,24 @@ const ChatView = () => {
             statusFilter={conversationStatusFilter}
             onStatusFilterChange={setConversationStatusFilter}
             stageLabels={stageLabels}
+            onCollapse={() => setSidebarCollapsed(true)}
             className={mobileSection !== "conversations" ? "d-none d-lg-flex" : ""}
           />
         )}
         <div className={`app-chat-panel app-chat-center ${mobileSection !== "chat" ? "d-none d-lg-flex" : ""}`}>
+          {sidebarCollapsed && !isMobileViewport ? (
+            <div className="app-chat-inbox-collapsed-bar">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={() => setSidebarCollapsed(false)}
+                aria-label="Mostrar bandeja de chats"
+              >
+                <i className="bi bi-layout-sidebar-inset" aria-hidden="true" />
+                <span className="ms-1">Mostrar bandeja</span>
+              </button>
+            </div>
+          ) : null}
           {!activeId && (
             <p className="text-muted mb-0">Selecciona una conversación o abre desde un contacto.</p>
           )}
