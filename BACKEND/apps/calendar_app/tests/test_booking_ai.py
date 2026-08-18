@@ -997,3 +997,169 @@ def test_maybe_handle_calendar_booking_returns_none_when_disabled():
 
     config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
     assert maybe_handle_calendar_booking(inbound=inbound, config=config) is None
+
+
+def test_explicit_reschedule_and_already_booked_claim_parsers():
+    from apps.calendar_app.booking_ai import (
+        _is_explicit_reschedule_intent,
+        _looks_like_already_booked_claim,
+    )
+
+    assert _is_explicit_reschedule_intent("Quiero reagendar la cita")
+    assert _is_explicit_reschedule_intent("Puedo cambiar la reunión para otro horario")
+    assert not _is_explicit_reschedule_intent("Gracias")
+    assert not _is_explicit_reschedule_intent("El pago se realiza una vez o es anual?")
+    assert _looks_like_already_booked_claim("Ya respondí eso... incluso ya agendamos... eres una IA?")
+    assert _looks_like_already_booked_claim("ya quedó agendada")
+    assert not _looks_like_already_booked_claim("Quiero agendar una reunión")
+
+
+@pytest.mark.django_db
+def test_confirmed_booking_does_not_restart_on_thanks_or_product_question(monkeypatch):
+    """After confirm, 'Gracias' / product questions must NOT ask for a day again."""
+    from apps.ai_config.models import AIConfiguration
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Guillermo", last_name="R")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    bogota = ZoneInfo("America/Bogota")
+    slot = datetime(2026, 8, 18, 15, 30, tzinfo=bogota)
+    draft = CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="confirmed",
+        selected_slot=slot,
+        google_event_id="evt-loop",
+        timezone="America/Bogota",
+        duration_minutes=30,
+    )
+    Message.objects.create(
+        conversation=conv,
+        sender_type="ai_bot",
+        content="Listo, tu cita quedó agendada para martes 18/08 15:30.",
+        message_type="text",
+        status="sent",
+        is_ai_generated=True,
+        ai_context_used={"calendar_booking_confirmed": True},
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+
+    def fake_interpret(**kwargs):
+        return {
+            "related": True,
+            "action": "start_booking",
+            "weekday": None,
+            "date_iso": None,
+            "period": None,
+            "time_hhmm": None,
+            "week_offset_days": 0,
+            "email": None,
+            "slot_iso": None,
+            "confidence": 0.9,
+            "source": "llm",
+        }
+
+    monkeypatch.setattr("apps.calendar_app.booking_ai.interpret_booking_utterance", fake_interpret)
+
+    thanks = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Gracias",
+        message_type="text",
+        status="delivered",
+    )
+    assert maybe_handle_calendar_booking(inbound=thanks, config=config) is None
+    draft.refresh_from_db()
+    assert draft.status == "confirmed"
+    assert draft.google_event_id == "evt-loop"
+
+    payment = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Cuéntame, el pago se realiza una vez o es un servicio anual?",
+        message_type="text",
+        status="delivered",
+    )
+    assert maybe_handle_calendar_booking(inbound=payment, config=config) is None
+    draft.refresh_from_db()
+    assert draft.status == "confirmed"
+
+
+@pytest.mark.django_db
+def test_confirmed_booking_restarts_only_on_explicit_reschedule(monkeypatch):
+    from apps.ai_config.models import AIConfiguration
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Guillermo", last_name="R")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    bogota = ZoneInfo("America/Bogota")
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="confirmed",
+        selected_slot=datetime(2026, 8, 18, 15, 30, tzinfo=bogota),
+        google_event_id="evt-loop",
+        timezone="America/Bogota",
+        duration_minutes=30,
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Quiero reagendar la cita",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is not None
+    assert "qué día" in reply.content.lower() or "que dia" in reply.content.lower()
+    assert CalendarBookingDraft.objects.get(conversation=conv).status == "pending_day"
+
+
+@pytest.mark.django_db
+def test_pending_day_already_booked_claim_leaves_funnel(monkeypatch):
+    from apps.ai_config.models import AIConfiguration
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Guillermo", last_name="R")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_day",
+        timezone="America/Bogota",
+        duration_minutes=30,
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Ya respondí eso... incluso ya agendamos... eres una IA?",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    assert maybe_handle_calendar_booking(inbound=inbound, config=config) is None
+    assert CalendarBookingDraft.objects.get(conversation=conv).status == "cancelled"

@@ -69,6 +69,7 @@ def interpret_booking_utterance(
     model: str,
     recent_meeting_invite: bool = False,
     deterministic_hint: dict[str, Any] | None = None,
+    already_booked: bool = False,
 ) -> dict[str, Any]:
     """Interpret user text into structured booking parameters.
 
@@ -84,6 +85,7 @@ def interpret_booking_utterance(
         draft_metadata=draft_metadata or {},
         model=model,
         recent_meeting_invite=recent_meeting_invite,
+        already_booked=already_booked,
     )
     if llm:
         merged = _merge_interpretations(llm, hint)
@@ -217,6 +219,7 @@ def _llm_interpret(
     draft_metadata: dict,
     model: str,
     recent_meeting_invite: bool,
+    already_booked: bool = False,
 ) -> dict[str, Any] | None:
     api_key = resolve_openai_api_key()
     if not api_key:
@@ -253,6 +256,9 @@ def _llm_interpret(
         "'en la mañana' → action=provide_period (period=morning|afternoon). "
         "NUNCA interpretes 'mañana' como el día siguiente cuando draft_status=pending_period.\n"
         "Si hay invitación reciente a reunirse y el cliente afirma (dale/ok/sí) → action=start_booking, related=true.\n"
+        "Si already_booked=true o draft_status=confirmed: related=false y action=none "
+        "salvo que pida REAGENDAR/cambiar la cita (entonces start_booking). "
+        "Gracias, preguntas de precio/pago o 'ya agendamos' NO reinician la agenda.\n"
         "Acciones válidas: none, start_booking, provide_day, provide_period, provide_datetime, "
         "choose_slot, defer_week, provide_email, cancel, clarify."
     )
@@ -261,6 +267,7 @@ def _llm_interpret(
         f"hoy={today} ({weekday_today})\n"
         f"draft_status={draft_status}\n"
         f"recent_meeting_invite={recent_meeting_invite}\n"
+        f"already_booked={already_booked}\n"
         f"draft_metadata={meta_json}\n"
         f"offered_slots={slots_json}\n"
         f"mensaje_cliente={text}\n\n"

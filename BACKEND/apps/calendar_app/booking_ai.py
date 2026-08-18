@@ -242,17 +242,39 @@ def looks_like_invented_slot_offer(text: str) -> bool:
     )
 
 
+def conversation_has_confirmed_booking(conversation) -> bool:
+    """True when this conversation already has a confirmed calendar appointment."""
+    return CalendarBookingDraft.objects.filter(conversation=conversation, status="confirmed").exists()
+
+
 def start_booking_by_asking_day(*, inbound: Message, runtime: AIRuntimeSettings | None = None) -> Message | None:
     """Public entry: begin scheduling by asking for a preferred day (never dump slots)."""
     runtime = runtime or AIRuntimeSettings.objects.order_by("-updated_at").first()
     if not is_google_calendar_ready(runtime):
         return None
     draft = CalendarBookingDraft.objects.filter(conversation=inbound.conversation).first()
+    if (
+        draft
+        and draft.status == "confirmed"
+        and not _is_explicit_reschedule_intent(inbound.content or "")
+    ):
+        return None
     return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
 
 
-def google_calendar_system_policy() -> str:
+def google_calendar_system_policy(*, conversation=None) -> str:
     """Injected into the LLM system prompt when Google Calendar booking is enabled."""
+    already_booked = False
+    if conversation is not None:
+        already_booked = conversation_has_confirmed_booking(conversation)
+    extra = ""
+    if already_booked:
+        extra = (
+            "\nYA HAY UNA CITA CONFIRMADA en esta conversación. "
+            "NO vuelvas a preguntar el día ni ofrezcas agendar otra vez. "
+            "Responde la pregunta del cliente (precio, producto, gracias, etc.). "
+            "Solo ofrece reagendar si el cliente lo pide explícitamente.\n"
+        )
     return (
         "--- Agenda (obligatorio) ---\n"
         "Esta plataforma ya tiene Google Calendar integrado para agendar reuniones con Google Meet.\n"
@@ -262,6 +284,7 @@ def google_calendar_system_policy() -> str:
         "Hay una capa NLU: el cliente puede hablar en lenguaje natural; el backend interpreta y agenda.\n"
         "Flujo: 1) si acepta reunirse, se pregunta el día; 2) mañana o tarde; 3) slots reales; "
         "4) correo para invitación Meet. No adelantes pasos ni inventes opciones."
+        f"{extra}"
     )
 
 
@@ -300,7 +323,17 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
         return None
 
     draft = CalendarBookingDraft.objects.filter(conversation=conv).first()
+    raw_status = draft.status if draft else "idle"
     status = draft.status if draft and draft.status in _ACTIVE_BOOKING_STATUSES else "idle"
+
+    # Confirmed appointments must not re-enter the funnel (e.g. "Gracias" after booking).
+    if draft and raw_status == "confirmed" and not _is_explicit_reschedule_intent(text):
+        return None
+
+    # Client says the meeting is already booked: leave the funnel and let the LLM answer.
+    if status in _ACTIVE_BOOKING_STATUSES and _looks_like_already_booked_claim(text):
+        _abandon_draft(draft, reason="already_booked_claim")
+        return None
 
     # Greetings / "?" / "qué hablas" must not re-dump the same slots.
     if _is_booking_noise(text):
@@ -328,7 +361,7 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
     )
     interp = interpret_booking_utterance(
         text=text,
-        draft_status=status,
+        draft_status=status if raw_status != "confirmed" else "confirmed",
         tz_name=tz_name,
         now_local=now_local,
         offered_slots=offered,
@@ -336,6 +369,7 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
         model=config.llm_model,
         recent_meeting_invite=_recent_assistant_invited_meeting(conv),
         deterministic_hint=hint,
+        already_booked=(raw_status == "confirmed"),
     )
 
     if status in _ACTIVE_BOOKING_STATUSES:
@@ -1805,12 +1839,44 @@ def _looks_like_slot_choice(text: str) -> bool:
     return bool(re.search(r"\b\d{1,2}([:/.]\d{2})?\b", low) or any(d in low for d in _WEEKDAYS_ES))
 
 
+def _is_explicit_reschedule_intent(text: str) -> bool:
+    """True only when the client clearly wants to change an already booked meeting."""
+    low = _fold_es(text)
+    return bool(
+        re.search(
+            r"\b(reagend\w*|reprogram\w*|cambiar\s+(la\s+)?(cita|reunion|horario)|"
+            r"otra\s+(cita|reunion)|nueva\s+(cita|reunion)|"
+            r"mover\s+(la\s+)?(cita|reunion)|cambiar\s+fecha|"
+            r"otro\s+horario)\b",
+            low,
+        )
+    )
+
+
+def _looks_like_already_booked_claim(text: str) -> bool:
+    """Client asserts the meeting is already scheduled — not a new booking request."""
+    low = _fold_es(text)
+    return bool(
+        re.search(
+            r"\b(ya\s+(agend\w*|quedo|confirm\w*|tenemos\s+(cita|reunion)|program\w*)|"
+            r"incluso\s+ya\s+agend|"
+            r"ya\s+lo\s+(agend\w*|confirm\w*))",
+            low,
+        )
+    )
+
+
 def _recent_assistant_invited_meeting(conv) -> bool:
+    if conversation_has_confirmed_booking(conv):
+        return False
     recent = (
         Message.objects.filter(conversation=conv, is_active=True, sender_type="ai_bot")
         .order_by("-created_at")[:4]
     )
     for msg in recent:
+        ctx = msg.ai_context_used or {}
+        if ctx.get("calendar_booking_confirmed"):
+            return False
         low = (msg.content or "").lower()
         if any(k in low for k in ("agend", "reunión", "reunion", "cita", "30 minutos", "asesoría", "asesoria")):
             return True

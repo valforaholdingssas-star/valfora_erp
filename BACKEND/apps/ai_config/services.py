@@ -66,7 +66,7 @@ def build_openai_messages(*, trigger_message: Message, config: AIConfiguration) 
         lines.append(f"Notas CRM:\n{notes}")
 
     context_block = "\n".join(lines)
-    system = _build_system_prompt(config)
+    system = _build_system_prompt(config, conversation=conv)
     rag_block = ""
     if getattr(config, "rag_enabled", True):
         try:
@@ -179,7 +179,7 @@ def moderate_openai_text(text: str) -> tuple[bool, dict[str, Any]]:
     return not flagged, audit
 
 
-def _build_system_prompt(config: AIConfiguration) -> str:
+def _build_system_prompt(config: AIConfiguration, *, conversation=None) -> str:
     """Compose final system prompt from structured fields + free-form prompt."""
     blocks: list[str] = []
     role = (getattr(config, "role", "") or "").strip()
@@ -203,7 +203,7 @@ def _build_system_prompt(config: AIConfiguration) -> str:
         from apps.calendar_app.booking_ai import google_calendar_system_policy, is_google_calendar_ready
 
         if is_google_calendar_ready():
-            blocks.append(google_calendar_system_policy())
+            blocks.append(google_calendar_system_policy(conversation=conversation))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Google Calendar prompt policy skipped: %s", exc)
 

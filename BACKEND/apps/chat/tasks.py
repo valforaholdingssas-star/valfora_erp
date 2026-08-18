@@ -15,6 +15,7 @@ from apps.ai_config.services import (
 )
 from apps.calendar_app.booking_ai import (
     contains_external_booking_link,
+    conversation_has_confirmed_booking,
     is_google_calendar_ready,
     looks_like_invented_slot_offer,
     maybe_handle_calendar_booking,
@@ -171,8 +172,11 @@ def _generate_ai_reply_locked(*, inbound: Message, conv: Conversation) -> None:
         return
 
     # Never let the LLM dump Calendly / invented slots — start the day-first booking funnel.
-    if is_google_calendar_ready() and (
-        contains_external_booking_link(result.text) or looks_like_invented_slot_offer(result.text)
+    # If a meeting is already confirmed, do not reopen the funnel.
+    if (
+        is_google_calendar_ready()
+        and not conversation_has_confirmed_booking(conv)
+        and (contains_external_booking_link(result.text) or looks_like_invented_slot_offer(result.text))
     ):
         logger.info(
             "LLM proposed external/invented booking options for conv %s; asking preferred day instead",
