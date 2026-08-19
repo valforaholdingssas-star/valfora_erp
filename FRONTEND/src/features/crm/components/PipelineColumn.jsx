@@ -12,6 +12,7 @@ const PipelineColumn = ({
   onCreateDeal,
   onQuickEdit,
   onLogCall,
+  sortable = true,
 }) => {
   const { setNodeRef, isOver } = useDroppable({
     id: stage.id,
@@ -46,9 +47,24 @@ const PipelineColumn = ({
           </button>
         </div>
       </div>
-      <div ref={setNodeRef} className="crm-stage-column-body">
-        <SortableContext items={deals.map((d) => d.id)} strategy={verticalListSortingStrategy}>
-          {deals.map((deal, index) => (
+      <div ref={sortable ? setNodeRef : undefined} className="crm-stage-column-body">
+        {sortable ? (
+          <SortableContext items={deals.map((d) => d.id)} strategy={verticalListSortingStrategy}>
+            {deals.map((deal, index) => (
+              <DealCard
+                key={deal.id}
+                deal={deal}
+                stageAccent={stage.accent}
+                onCreateActivity={onCreateActivity}
+                onQuickEdit={onQuickEdit}
+                onLogCall={onLogCall}
+                orderIndex={index}
+                sortable
+              />
+            ))}
+          </SortableContext>
+        ) : (
+          deals.map((deal, index) => (
             <DealCard
               key={deal.id}
               deal={deal}
@@ -57,13 +73,14 @@ const PipelineColumn = ({
               onQuickEdit={onQuickEdit}
               onLogCall={onLogCall}
               orderIndex={index}
+              sortable={false}
             />
-          ))}
-        </SortableContext>
+          ))
+        )}
         {!deals.length ? (
           <div className="crm-stage-empty">
             <i className="bi bi-inbox" />
-            <span>Suelta un deal aquí</span>
+            <span>{sortable ? "Suelta un deal aquí" : "Sin deals para este filtro"}</span>
           </div>
         ) : null}
       </div>
@@ -84,6 +101,7 @@ PipelineColumn.propTypes = {
   onCreateDeal: PropTypes.func,
   onQuickEdit: PropTypes.func,
   onLogCall: PropTypes.func,
+  sortable: PropTypes.bool,
 };
 
 export default PipelineColumn;

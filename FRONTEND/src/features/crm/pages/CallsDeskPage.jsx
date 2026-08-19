@@ -15,6 +15,7 @@ import QuickEditDealModal from "../components/QuickEditDealModal.jsx";
 import { resolveUserDisplayName } from "../utils/formatters.js";
 
 const CALL_STAGE_KEY = "realizar_llamada";
+const QUEUE_PAGE_SIZE = 10;
 
 const DEAL_SOURCES = [
   ["", "Todos los orígenes"],
@@ -71,6 +72,13 @@ const truncate = (text, max = 120) => {
   return `${value.slice(0, max)}…`;
 };
 
+const normalizeSearchText = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
 const extractApiError = (err, fallback) => {
   const detail = err?.response?.data?.detail;
   if (typeof detail === "string" && detail.trim()) return detail;
@@ -89,6 +97,7 @@ const CallsDeskPage = () => {
   const [assignedToFilter, setAssignedToFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [queuePage, setQueuePage] = useState(1);
   const [users, setUsers] = useState({ results: [] });
   const [companies, setCompanies] = useState({ results: [] });
   const [stages, setStages] = useState([]);
@@ -196,14 +205,34 @@ const CallsDeskPage = () => {
   }, [loadDayCalls, selectedDay]);
 
   const visibleDeals = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = normalizeSearchText(searchQuery);
     if (!q) return deals;
-    return deals.filter((deal) =>
-      [deal.title, deal.contact_name, deal.company_name, deal.assigned_to_name, deal.business_notes]
+    return deals.filter((deal) => {
+      const haystack = [
+        deal.title,
+        deal.contact_name,
+        deal.company_name,
+        deal.assigned_to_name,
+        deal.business_notes,
+        deal.source,
+      ]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(q)),
-    );
+        .map((value) => normalizeSearchText(value))
+        .join(" ");
+      return haystack.includes(q);
+    });
   }, [deals, searchQuery]);
+
+  useEffect(() => {
+    setQueuePage(1);
+  }, [searchQuery, assignedToFilter, sourceFilter, deals.length]);
+
+  const queueTotalPages = Math.max(1, Math.ceil(visibleDeals.length / QUEUE_PAGE_SIZE));
+  const safeQueuePage = Math.min(queuePage, queueTotalPages);
+  const pagedDeals = visibleDeals.slice(
+    (safeQueuePage - 1) * QUEUE_PAGE_SIZE,
+    safeQueuePage * QUEUE_PAGE_SIZE,
+  );
 
   const countsByDate = useMemo(() => {
     const map = new Map();
@@ -320,15 +349,6 @@ const CallsDeskPage = () => {
       </div>
 
       <div className="crm-pipeline-toolbar">
-        <div className="crm-toolbar-search">
-          <i className="bi bi-search" />
-          <input
-            type="text"
-            placeholder="Buscar deal o contacto"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
         <div className="crm-toolbar-filters">
           <div className="crm-toolbar-filter">
             <span>Asignado</span>
@@ -366,8 +386,18 @@ const CallsDeskPage = () => {
       <div className="row g-3 mb-4">
         <div className="col-xl-7">
           <Card className="border-0 shadow-sm h-100">
-            <Card.Header className="bg-white">
+            <Card.Header className="bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
               <strong>Cola de llamadas</strong>
+              <div className="crm-toolbar-search crm-queue-search">
+                <i className="bi bi-search" />
+                <input
+                  type="text"
+                  placeholder="Buscar contacto, deal o asignado"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  aria-label="Buscar en la cola de llamadas"
+                />
+              </div>
             </Card.Header>
             <Card.Body className="p-0">
               <div className="crm-pipeline-table-wrap">
@@ -383,7 +413,7 @@ const CallsDeskPage = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleDeals.map((deal) => (
+                    {pagedDeals.map((deal) => (
                       <tr key={deal.id}>
                         <td>{deal.contact_name || "—"}</td>
                         <td><div className="crm-table-title">{deal.title || "Sin título"}</div></td>
@@ -420,6 +450,32 @@ const CallsDeskPage = () => {
                   </tbody>
                 </Table>
               </div>
+              {visibleDeals.length ? (
+                <div className="crm-queue-pagination">
+                  <span className="small text-muted">
+                    {((safeQueuePage - 1) * QUEUE_PAGE_SIZE) + 1}–{Math.min(safeQueuePage * QUEUE_PAGE_SIZE, visibleDeals.length)} de {visibleDeals.length}
+                  </span>
+                  <div className="d-flex gap-2 align-items-center">
+                    <Button
+                      size="sm"
+                      variant="outline-secondary"
+                      disabled={safeQueuePage <= 1}
+                      onClick={() => setQueuePage((page) => Math.max(1, page - 1))}
+                    >
+                      Anterior
+                    </Button>
+                    <span className="small">Página {safeQueuePage} de {queueTotalPages}</span>
+                    <Button
+                      size="sm"
+                      variant="outline-secondary"
+                      disabled={safeQueuePage >= queueTotalPages}
+                      onClick={() => setQueuePage((page) => Math.min(queueTotalPages, page + 1))}
+                    >
+                      Siguiente
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </Card.Body>
           </Card>
         </div>

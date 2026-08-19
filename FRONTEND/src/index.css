@@ -1474,7 +1474,7 @@ a {
   background: #ffffff;
   border: 1px solid #dbe4f0;
   border-radius: 1.3rem;
-  overflow: visible;
+  overflow: hidden;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
 
@@ -1779,6 +1779,20 @@ a {
 .crm-deal-card-icon-action:hover {
   background: #eef4fb;
   color: #1b4fa8;
+}
+
+.crm-queue-search {
+  min-width: min(100%, 260px);
+}
+
+.crm-queue-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #edf2f7;
 }
 
 .crm-calls-calendar-grid {

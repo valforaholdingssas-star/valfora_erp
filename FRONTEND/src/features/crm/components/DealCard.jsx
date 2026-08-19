@@ -7,6 +7,19 @@ import { formatDealDisplayNumber, formatDealValue } from "../utils/formatters.js
 
 const CALL_STAGE_KEY = "realizar_llamada";
 
+const dealShape = PropTypes.shape({
+  id: PropTypes.string.isRequired,
+  title: PropTypes.string,
+  contact_name: PropTypes.string,
+  value: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  currency: PropTypes.string,
+  stage: PropTypes.string,
+  is_stale: PropTypes.bool,
+  company_name: PropTypes.string,
+  assigned_to_name: PropTypes.string,
+  calls_count: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+});
+
 const buildAssigneeMeta = (label) => {
   const normalized = String(label || "").trim();
   if (!normalized || normalized.toLowerCase() === "sin asignar") {
@@ -25,11 +38,18 @@ const buildAssigneeMeta = (label) => {
   return { initials, shortName };
 };
 
-const DealCard = ({ deal, stageAccent, onCreateActivity, onQuickEdit, onLogCall, orderIndex }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: deal.id,
-    data: { stage: deal.stage, deal },
-  });
+const DealCardView = ({
+  deal,
+  stageAccent,
+  onCreateActivity,
+  onQuickEdit,
+  onLogCall,
+  orderIndex,
+  cardRef,
+  cardStyle,
+  className,
+  dragHandleProps,
+}) => {
   const assigneeLabel = deal.assigned_to_name || "Sin asignar";
   const assigneeMeta = buildAssigneeMeta(assigneeLabel);
   const companyLabel = deal.company_name || "Sin empresa";
@@ -38,15 +58,9 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, onQuickEdit, onLogCall,
 
   return (
     <Card
-      ref={setNodeRef}
-      className={`crm-deal-card ${isDragging ? "is-dragging" : ""}`}
-      style={{
-        "--deal-stage-accent": stageAccent || "#3b82f6",
-        transform: CSS.Transform.toString(transform),
-        transition,
-        cursor: isDragging ? "grabbing" : "default",
-        opacity: isDragging ? 0.55 : 1,
-      }}
+      ref={cardRef}
+      className={`crm-deal-card ${className || ""}`.trim()}
+      style={{ "--deal-stage-accent": stageAccent || "#3b82f6", ...cardStyle }}
     >
       <Card.Body className="crm-deal-card-body">
         <div className="crm-deal-card-topline">
@@ -65,18 +79,19 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, onQuickEdit, onLogCall,
         </div>
         <div className="crm-deal-card-title-row">
           <span className="crm-deal-card-title">{deal.title || deal.contact_name || `Deal ${deal.id.slice(0, 8)}`}</span>
-          <div className="crm-deal-card-title-actions">
-            <button
-              type="button"
-              className="pipeline-drag-handle crm-deal-drag-handle"
-              title="Arrastrar"
-              aria-label="Arrastrar deal"
-              {...attributes}
-              {...listeners}
-            >
-              <i className="bi bi-grip-vertical" />
-            </button>
-          </div>
+          {dragHandleProps ? (
+            <div className="crm-deal-card-title-actions">
+              <button
+                type="button"
+                className="pipeline-drag-handle crm-deal-drag-handle"
+                title="Arrastrar"
+                aria-label="Arrastrar deal"
+                {...dragHandleProps}
+              >
+                <i className="bi bi-grip-vertical" />
+              </button>
+            </div>
+          ) : null}
         </div>
         <div className="crm-deal-card-value">
           {formatDealValue(deal.value)} <span>{deal.currency}</span>
@@ -136,24 +151,57 @@ const DealCard = ({ deal, stageAccent, onCreateActivity, onQuickEdit, onLogCall,
   );
 };
 
-DealCard.propTypes = {
-  deal: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    title: PropTypes.string,
-    contact_name: PropTypes.string,
-    value: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-    currency: PropTypes.string,
-    stage: PropTypes.string,
-    is_stale: PropTypes.bool,
-    company_name: PropTypes.string,
-    assigned_to_name: PropTypes.string,
-    calls_count: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-  }).isRequired,
+DealCardView.propTypes = {
+  deal: dealShape.isRequired,
   stageAccent: PropTypes.string,
   onCreateActivity: PropTypes.func,
   onQuickEdit: PropTypes.func,
   onLogCall: PropTypes.func,
   orderIndex: PropTypes.number,
+  cardRef: PropTypes.oneOfType([PropTypes.func, PropTypes.object]),
+  cardStyle: PropTypes.object,
+  className: PropTypes.string,
+  dragHandleProps: PropTypes.object,
+};
+
+const SortableDealCard = (props) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: props.deal.id,
+    data: { stage: props.deal.stage, deal: props.deal },
+  });
+
+  return (
+    <DealCardView
+      {...props}
+      cardRef={setNodeRef}
+      className={isDragging ? "is-dragging" : ""}
+      cardStyle={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        cursor: isDragging ? "grabbing" : "default",
+        opacity: isDragging ? 0.55 : 1,
+      }}
+      dragHandleProps={{ ...attributes, ...listeners }}
+    />
+  );
+};
+
+SortableDealCard.propTypes = {
+  deal: dealShape.isRequired,
+};
+
+const DealCard = ({ sortable = true, ...props }) => (
+  sortable ? <SortableDealCard {...props} /> : <DealCardView {...props} />
+);
+
+DealCard.propTypes = {
+  deal: dealShape.isRequired,
+  stageAccent: PropTypes.string,
+  onCreateActivity: PropTypes.func,
+  onQuickEdit: PropTypes.func,
+  onLogCall: PropTypes.func,
+  orderIndex: PropTypes.number,
+  sortable: PropTypes.bool,
 };
 
 export default DealCard;

@@ -83,6 +83,13 @@ const slugifyStageName = (value) =>
     .replace(/^_+|_+$/g, "")
     .slice(0, 50);
 
+const normalizeSearchText = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
 const fetchAllPages = async (fetcher, params = {}, pageSize = 100) => {
   let page = 1;
   let expectedCount = null;
@@ -645,12 +652,24 @@ const DealsPipelinePage = () => {
   };
 
   const allDeals = stages.flatMap((stage) => byStage[stage.id] || []);
-  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const normalizedQuery = normalizeSearchText(searchQuery);
   const matchesSearch = (deal) => {
     if (!normalizedQuery) return true;
-    return [deal.title, deal.contact_name, deal.company_name, deal.assigned_to_name, deal.currency]
+    const haystack = [
+      deal.title,
+      deal.contact_name,
+      deal.company_name,
+      deal.assigned_to_name,
+      deal.currency,
+      deal.source,
+      deal.description,
+      deal.business_notes,
+      deal.id,
+    ]
       .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(normalizedQuery));
+      .map((value) => normalizeSearchText(value))
+      .join(" ");
+    return haystack.includes(normalizedQuery);
   };
   const visibleByStage = stages.reduce((acc, stage) => {
     acc[stage.id] = (byStage[stage.id] || []).filter(matchesSearch);
@@ -658,6 +677,7 @@ const DealsPipelinePage = () => {
   }, {});
   const visibleDeals = allDeals.filter(matchesSearch);
   const totalPipelineValue = visibleDeals.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+  const isSearchActive = Boolean(normalizedQuery);
 
   if (loading) {
     return (
@@ -803,6 +823,7 @@ const DealsPipelinePage = () => {
                   onCreateDeal={openCreateModalForStage}
                   onQuickEdit={openQuickEdit}
                   onLogCall={setLogCallDeal}
+                  sortable={!isSearchActive}
                 />
               ))}
             </div>
