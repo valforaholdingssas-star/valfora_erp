@@ -494,7 +494,7 @@ const CallsDeskPage = () => {
                 </Button>
               </div>
             </Card.Header>
-            <Card.Body>
+            <Card.Body className="crm-calls-calendar-body">
               <div className="crm-calls-calendar-grid mb-3">
                 {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((label) => (
                   <div key={label} className="crm-calls-calendar-weekday">{label}</div>
@@ -515,9 +515,17 @@ const CallsDeskPage = () => {
                   ),
                 )}
               </div>
-              <div className="small text-muted mb-2">
+              <div className="crm-calls-day-summary">
                 Total del mes: <strong>{calendar.total}</strong>
-                {selectedDay ? <> · Día seleccionado: <strong>{selectedDay}</strong></> : null}
+                {selectedDay ? (
+                  <>
+                    {" "}
+                    · Día seleccionado:{" "}
+                    <strong>
+                      {new Intl.DateTimeFormat("es-CO", { dateStyle: "long" }).format(new Date(`${selectedDay}T00:00:00`))}
+                    </strong>
+                  </>
+                ) : null}
               </div>
               {selectedDay ? (
                 <div className="crm-calls-day-list">
@@ -526,20 +534,22 @@ const CallsDeskPage = () => {
                       <button
                         key={call.id}
                         type="button"
-                        className="crm-calls-day-item"
+                        className={`crm-calls-day-item ${detailCall?.id === call.id ? "is-active" : ""}`}
                         onClick={() => setDetailCall(call)}
                       >
-                        <strong>{call.deal_title || "Deal"}</strong>
-                        <span>{formatDateTime(call.called_at)}</span>
-                        <span className="text-muted">{truncate(call.notes, 80)}</span>
+                        <div className="crm-calls-day-item-topline">
+                          <strong>{call.deal_title || "Deal"}</strong>
+                          <span>{formatDateTime(call.called_at)}</span>
+                        </div>
+                        <p>{truncate(call.notes, 220)}</p>
                       </button>
                     ))
                   ) : (
-                    <div className="text-muted small py-2">Sin llamadas registradas este día.</div>
+                    <div className="text-muted py-3">Sin llamadas registradas este día.</div>
                   )}
                 </div>
               ) : (
-                <div className="text-muted small">Haz clic en un día para ver las llamadas.</div>
+                <div className="text-muted">Haz clic en un día para ver las llamadas.</div>
               )}
             </Card.Body>
           </Card>
