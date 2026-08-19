@@ -4,6 +4,7 @@ import {
   DragOverlay,
   PointerSensor,
   closestCorners,
+  pointerWithin,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -61,6 +62,16 @@ const buildStageDraft = (stage) => ({
   is_won_stage: Boolean(stage.isWonStage),
   is_lost_stage: Boolean(stage.isLostStage),
 });
+
+const detectPipelineCollision = (args) => {
+  const pointerHits = pointerWithin(args);
+  const isColumn = (hit) => args.droppableContainers.get(hit.id)?.data?.current?.type === "column";
+  const cardHits = pointerHits.filter((hit) => !isColumn(hit));
+  const columnHits = pointerHits.filter(isColumn);
+  if (cardHits.length) return cardHits;
+  if (columnHits.length) return columnHits;
+  return closestCorners(args);
+};
 
 const slugifyStageName = (value) =>
   String(value || "")
@@ -266,6 +277,14 @@ const DealsPipelinePage = () => {
     });
   };
 
+  const resolveOverStage = (over, state = byStage) => {
+    if (!over) return null;
+    const overData = over.data?.current;
+    if (overData?.type === "column" && overData.stageId) return overData.stageId;
+    if (orderedStageIds.includes(over.id)) return over.id;
+    return getStageForId(over.id, state);
+  };
+
   const handleDragStart = (event) => {
     const deal = findDealById(event.active.id);
     setActiveDeal(deal);
@@ -277,7 +296,7 @@ const DealsPipelinePage = () => {
     if (!over) return;
     setByStage((prev) => {
       const fromStage = getStageForId(active.id, prev);
-      const overStage = orderedStageIds.includes(over.id) ? over.id : getStageForId(over.id, prev);
+      const overStage = resolveOverStage(over, prev);
       if (!fromStage || !overStage || fromStage === overStage) return prev;
       return moveDealAcrossStages(prev, fromStage, overStage, active.id, over.id);
     });
@@ -291,7 +310,7 @@ const DealsPipelinePage = () => {
     if (!over) return;
     const previousState = structuredClone(byStage);
     const oldStage = originStage || getStageForId(active.id, previousState);
-    const newStage = orderedStageIds.includes(over.id) ? over.id : getStageForId(over.id, byStage);
+    const newStage = resolveOverStage(over, byStage);
     if (!oldStage || !newStage) return;
     if (oldStage === newStage) {
       setByStage((prev) => {
@@ -767,7 +786,7 @@ const DealsPipelinePage = () => {
       {viewMode === "canvas" ? (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={detectPipelineCollision}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}

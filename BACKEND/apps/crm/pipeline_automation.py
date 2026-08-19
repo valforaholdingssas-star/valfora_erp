@@ -81,14 +81,17 @@ class PipelineAutomationService:
         current = cls.normalize_stage(deal.stage)
         stage_map = cls.get_stage_map()
         if to_stage not in stage_map:
-            return StageMoveResult(moved=False, reason=f"Unknown target stage: {to_stage}")
-        # Manual moves from UI/canvas are intentionally flexible.
+            return StageMoveResult(moved=False, reason=f"Etapa destino desconocida: {to_stage}")
+        if current == to_stage:
+            return StageMoveResult(moved=True, reason="already_in_stage")
+        # Manual canvas/table moves can jump to any existing stage (including custom ones).
         # Automated moves remain constrained by can_move().
         is_manual = trigger == "manual"
         if not is_manual and not cls.can_move(current, to_stage):
-            return StageMoveResult(moved=False, reason=f"Invalid transition {current} -> {to_stage}")
-        if is_manual and current in cls.get_closed_stage_keys() and to_stage not in cls.get_closed_stage_keys():
-            return StageMoveResult(moved=False, reason=f"Invalid transition {current} -> {to_stage}")
+            return StageMoveResult(
+                moved=False,
+                reason=f"No se puede mover automáticamente de {current} a {to_stage}.",
+            )
 
         raw_from = deal.stage
         update_fields = ["stage", "is_stale", "updated_at"]

@@ -20,7 +20,6 @@ const PipelineColumn = ({
 
   return (
     <div
-      ref={setNodeRef}
       className={`crm-stage-column ${isOver ? "is-over" : ""}`}
       style={{ "--stage-accent": stage.accent, "--stage-tint": stage.tint }}
     >
@@ -47,7 +46,7 @@ const PipelineColumn = ({
           </button>
         </div>
       </div>
-      <div className="crm-stage-column-body">
+      <div ref={setNodeRef} className="crm-stage-column-body">
         <SortableContext items={deals.map((d) => d.id)} strategy={verticalListSortingStrategy}>
           {deals.map((deal, index) => (
             <DealCard
@@ -64,7 +63,7 @@ const PipelineColumn = ({
         {!deals.length ? (
           <div className="crm-stage-empty">
             <i className="bi bi-inbox" />
-            <span>Sin oportunidades en esta etapa.</span>
+            <span>Suelta un deal aquí</span>
           </div>
         ) : null}
       </div>
