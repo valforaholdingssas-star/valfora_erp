@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.accounts.permissions import IsAdminOrSuperAdmin
-from apps.common.audit import write_audit_log
+from apps.common.audit import json_safe, write_audit_log
 from apps.crm.filters import ActivityFilter, CompanyFilter, ContactFilter, DealFilter, DocumentFilter
 from apps.crm.models import (
     Activity,
@@ -65,7 +65,7 @@ def _serialize_changes(changes: dict) -> dict:
             safe[key] = [str(item.pk) if hasattr(item, "pk") else item for item in value]
         else:
             safe[key] = value
-    return safe
+    return json_safe(safe)
 
 
 class CRMBaseViewSet(viewsets.ModelViewSet):
@@ -304,6 +304,30 @@ class DealViewSet(CRMBaseViewSet):
     def get_permissions(self):
         # Deals can be deleted by any role with CRM edit permission.
         return [permissions.IsAuthenticated(), IsCRMUser()]
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        incoming_stage = serializer.validated_data.get("stage")
+        if incoming_stage is not None and incoming_stage != instance.stage:
+            result = PipelineAutomationService.move_stage(
+                deal=instance,
+                to_stage=incoming_stage,
+                trigger="manual",
+                moved_by=self.request.user,
+                notes="Cambio de etapa desde edición de deal",
+            )
+            if not result.moved:
+                raise drf_serializers.ValidationError({"stage": result.reason})
+            serializer.validated_data.pop("stage", None)
+            serializer.instance.refresh_from_db()
+        instance = serializer.save()
+        write_audit_log(
+            user=self.request.user,
+            action="update",
+            instance=instance,
+            changes=_serialize_changes(dict(serializer.validated_data)),
+            request=self.request,
+        )
 
     def perform_create(self, serializer):
         assigned_to = serializer.validated_data.get("assigned_to") or self.request.user

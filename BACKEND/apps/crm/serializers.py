@@ -166,6 +166,16 @@ class DealSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Probability must be between 0 and 100.")
         return value
 
+    def validate_stage(self, value: str) -> str:
+        from apps.crm.pipeline_automation import PipelineAutomationService as PAS
+
+        stage = PAS.normalize_stage((value or "").strip())
+        if not stage:
+            raise serializers.ValidationError("La etapa es requerida.")
+        if stage not in PAS.get_stage_map():
+            raise serializers.ValidationError("Etapa desconocida.")
+        return stage
+
     def validate(self, attrs):
         contact = attrs.get("contact", getattr(self.instance, "contact", None))
         company = attrs.get("company", getattr(self.instance, "company", None))

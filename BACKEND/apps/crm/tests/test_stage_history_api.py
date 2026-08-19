@@ -77,3 +77,55 @@ def test_manual_move_from_call_stage_to_custom_stage(admin_user):
     assert move.status_code == 200, move.content
     deal.refresh_from_db()
     assert deal.stage == "nueva_etapa_11"
+
+
+def test_json_safe_serializes_decimal_and_uuid():
+    from decimal import Decimal
+    from uuid import uuid4
+
+    from apps.common.audit import json_safe
+
+    payload = json_safe({"value": Decimal("1500.50"), "id": uuid4(), "nested": {"n": Decimal("1")}})
+    assert payload["value"] == "1500.50"
+    assert payload["nested"]["n"] == "1"
+
+
+@pytest.mark.django_db
+def test_patch_deal_stage_with_value_does_not_500(admin_user):
+    from apps.crm.models import DealStageHistory, PipelineStage
+
+    PipelineStage.objects.update_or_create(
+        key="unanswered",
+        defaults={"name": "Sin respuesta", "position": 10, "is_closed_stage": False, "is_active": True},
+    )
+    contact = Contact.objects.create(
+        first_name="Calls",
+        last_name="Desk",
+        email="calls-desk@test.com",
+        assigned_to=admin_user,
+        created_by=admin_user,
+    )
+    deal = Deal.objects.create(
+        title="Lead llamadas",
+        contact=contact,
+        stage="realizar_llamada",
+        source="whatsapp",
+        value="2500000.00",
+        assigned_to=admin_user,
+    )
+    client = APIClient()
+    client.force_authenticate(user=admin_user)
+    patch = client.patch(
+        f"/api/v1/crm/deals/{deal.id}/",
+        {
+            "title": deal.title,
+            "stage": "unanswered",
+            "value": "2500000.00",
+            "probability": 10,
+        },
+        format="json",
+    )
+    assert patch.status_code == 200, patch.content
+    deal.refresh_from_db()
+    assert deal.stage == "unanswered"
+    assert DealStageHistory.objects.filter(deal=deal, to_stage="unanswered", trigger="manual").exists()
