@@ -99,6 +99,7 @@ class DealSerializer(serializers.ModelSerializer):
     """Serializer for Deal."""
 
     contact_name = serializers.SerializerMethodField()
+    contact_email = serializers.EmailField(source="contact.email", read_only=True)
     company_name = serializers.SerializerMethodField()
     assigned_to_name = serializers.SerializerMethodField()
     calls_count = serializers.SerializerMethodField()
@@ -110,6 +111,7 @@ class DealSerializer(serializers.ModelSerializer):
             "title",
             "contact",
             "contact_name",
+            "contact_email",
             "company",
             "company_name",
             "value",
@@ -132,6 +134,7 @@ class DealSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "id",
             "contact_name",
+            "contact_email",
             "company_name",
             "assigned_to_name",
             "calls_count",
@@ -471,6 +474,7 @@ class PublicLeadIngestResponseSerializer(serializers.Serializer):
 
     contact_id = serializers.UUIDField()
     deal_id = serializers.UUIDField(allow_null=True)
+    contact_email = serializers.EmailField()
     is_new_contact = serializers.BooleanField()
     is_new_deal = serializers.BooleanField()
     contact_name = serializers.CharField()

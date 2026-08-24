@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   closestCorners,
+  pointerWithin,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -24,6 +26,7 @@ import {
   updatePipelineStage,
 } from "../../../api/crm.js";
 import { fetchUsers } from "../../../api/users.js";
+import DealCard from "../components/DealCard.jsx";
 import LogDealCallModal from "../components/LogDealCallModal.jsx";
 import PipelineBoardErrorBoundary from "../components/PipelineBoardErrorBoundary.jsx";
 import PipelineColumn from "../components/PipelineColumn.jsx";
@@ -61,6 +64,20 @@ const buildStageDraft = (stage) => ({
   is_won_stage: Boolean(stage.isWonStage),
   is_lost_stage: Boolean(stage.isLostStage),
 });
+
+const detectPipelineCollision = (args) => {
+  try {
+    const pointerHits = pointerWithin(args) || [];
+    const containers = args.droppableContainers;
+    const isColumn = (hit) => containers?.get?.(hit.id)?.data?.current?.type === "column";
+    const columnHits = pointerHits.filter(isColumn);
+    if (columnHits.length) return columnHits;
+    if (pointerHits.length) return pointerHits;
+    return closestCorners(args);
+  } catch {
+    return closestCorners(args);
+  }
+};
 
 const slugifyStageName = (value) =>
   String(value || "")
@@ -102,8 +119,11 @@ const DealsPipelinePage = () => {
   const [stages, setStages] = useState([]);
   const [byStage, setByStage] = useState({});
   const [activeDealId, setActiveDealId] = useState(null);
+  const [activeDeal, setActiveDeal] = useState(null);
   const [dragOriginStage, setDragOriginStage] = useState(null);
   const [overStageId, setOverStageId] = useState(null);
+  const [moveNotice, setMoveNotice] = useState("");
+  const [justMovedDealId, setJustMovedDealId] = useState(null);
   const [activityDeal, setActivityDeal] = useState(null);
   const [viewMode, setViewMode] = useState("canvas");
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -156,7 +176,14 @@ const DealsPipelinePage = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
+  const stageTitleById = useMemo(
+    () => Object.fromEntries(stages.map((stage) => [stage.id, stage.title])),
+    [stages],
+  );
 
   const extractApiError = (err, fallback) => {
     const detail = err?.response?.data?.detail;
@@ -301,14 +328,18 @@ const DealsPipelinePage = () => {
     try {
       const dealId = String(event.active?.id || "");
       if (!dealId) return;
+      const deal = findDealById(dealId);
       setActiveDealId(dealId);
+      setActiveDeal(deal ? { ...deal } : null);
       setDragOriginStage(getStageForId(dealId));
-      setOverStageId(null);
+      setOverStageId(getStageForId(dealId));
+      setMoveNotice("");
       setError("");
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("handleDragStart failed", err);
       setActiveDealId(null);
+      setActiveDeal(null);
       setDragOriginStage(null);
     }
   };
@@ -323,11 +354,18 @@ const DealsPipelinePage = () => {
     }
   };
 
+  const scrollStageIntoView = (stageId) => {
+    if (!stageId || typeof document === "undefined") return;
+    const node = document.querySelector(`[data-stage-id="${stageId}"]`);
+    node?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  };
+
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     const originStage = dragOriginStage;
     const dealId = String(active?.id || "");
     setActiveDealId(null);
+    setActiveDeal(null);
     setDragOriginStage(null);
     setOverStageId(null);
 
@@ -335,21 +373,19 @@ const DealsPipelinePage = () => {
     if (!over) return;
 
     const newStage = resolveOverStage(over, byStage);
-    if (!newStage) return;
-
-    if (originStage === newStage) {
-      setByStage((prev) => {
-        const list = [...(prev[originStage] || [])];
-        const oldIndex = list.findIndex((deal) => String(deal.id) === dealId);
-        const newIndex = list.findIndex((deal) => String(deal.id) === String(over.id || ""));
-        if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return prev;
-        return { ...prev, [originStage]: arrayMove(list, oldIndex, newIndex) };
-      });
-      return;
-    }
+    if (!newStage || newStage === originStage) return;
 
     const previousState = cloneBoardState(byStage);
+    const toLabel = stageTitleById[newStage] || newStage;
     applyLocalStage(dealId, newStage, originStage);
+    setJustMovedDealId(dealId);
+    scrollStageIntoView(newStage);
+    setMoveNotice(`Movido a «${toLabel}»`);
+    window.setTimeout(() => setMoveNotice(""), 2800);
+    window.setTimeout(() => {
+      setJustMovedDealId((current) => (current === dealId ? null : current));
+    }, 2200);
+
     try {
       setMovingDealId(dealId);
       await moveDealStage(dealId, {
@@ -359,7 +395,10 @@ const DealsPipelinePage = () => {
       setError("");
     } catch (err) {
       setByStage(previousState);
+      setMoveNotice("");
+      setJustMovedDealId(null);
       setError(extractApiError(err, "No se pudo mover el deal. Se revirtió el cambio."));
+      scrollStageIntoView(originStage);
     } finally {
       setMovingDealId(null);
     }
@@ -367,6 +406,7 @@ const DealsPipelinePage = () => {
 
   const handleDragCancel = () => {
     setActiveDealId(null);
+    setActiveDeal(null);
     setDragOriginStage(null);
     setOverStageId(null);
   };
@@ -687,6 +727,7 @@ const DealsPipelinePage = () => {
     const haystack = [
       deal.title,
       deal.contact_name,
+      deal.contact_email,
       deal.company_name,
       deal.assigned_to_name,
       deal.currency,
@@ -831,18 +872,19 @@ const DealsPipelinePage = () => {
       </div>
 
       {error ? <Alert variant="danger" className="py-2 small mb-3">{error}</Alert> : null}
+      {moveNotice ? <Alert variant="success" className="py-2 small mb-3 crm-pipeline-move-notice">{moveNotice}</Alert> : null}
 
       {viewMode === "canvas" ? (
         <PipelineBoardErrorBoundary onReset={load}>
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCorners}
+            collisionDetection={detectPipelineCollision}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
           >
-            <div className="crm-pipeline-board-shell">
+            <div className={`crm-pipeline-board-shell ${activeDealId ? "is-dragging" : ""}`}>
               <div className="crm-pipeline-board">
                 {stages.map((stage) => (
                   <PipelineColumn
@@ -851,15 +893,26 @@ const DealsPipelinePage = () => {
                     deals={visibleByStage[stage.id] || []}
                     stageTotal={formatDealValue((visibleByStage[stage.id] || []).reduce((sum, deal) => sum + Number(deal.value || 0), 0))}
                     isOver={Boolean(activeDealId) && overStageId === stage.id}
+                    activeDealId={activeDealId}
+                    justMovedDealId={justMovedDealId}
                     onCreateActivity={openActivityModal}
                     onCreateDeal={openCreateModalForStage}
                     onQuickEdit={openQuickEdit}
                     onLogCall={setLogCallDeal}
-                    sortable={!isSearchActive}
+                    droppable={!isSearchActive}
                   />
                 ))}
               </div>
             </div>
+            <DragOverlay dropAnimation={null} zIndex={1400}>
+              {activeDeal ? (
+                <DealCard
+                  deal={activeDeal}
+                  stageAccent={stages.find((stage) => stage.id === (overStageId || activeDeal.stage))?.accent}
+                  isDragOverlay
+                />
+              ) : null}
+            </DragOverlay>
           </DndContext>
         </PipelineBoardErrorBoundary>
       ) : (

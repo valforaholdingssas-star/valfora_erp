@@ -62,6 +62,7 @@ class PublicLeadIngestView(APIView):
         response_payload = {
             "contact_id": contact.id,
             "deal_id": deal.id if deal else None,
+            "contact_email": contact.email,
             "is_new_contact": result["is_new_contact"],
             "is_new_deal": result["is_new_deal"],
             "contact_name": str(contact),

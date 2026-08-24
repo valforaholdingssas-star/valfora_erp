@@ -60,8 +60,10 @@ def test_public_lead_ingest_creates_contact_and_deal(ingest_config):
     data = body["data"]
     assert data["is_new_contact"] is True
     assert data["is_new_deal"] is True
+    assert data["contact_email"] == "lead.web@example.com"
     assert Contact.objects.filter(email="lead.web@example.com").exists()
-    assert Deal.objects.filter(contact__email="lead.web@example.com").exists()
+    deal = Deal.objects.get(contact__email="lead.web@example.com")
+    assert deal.title.startswith("Lead Web -")
     assert Activity.objects.filter(contact__email="lead.web@example.com").exists()
 
 

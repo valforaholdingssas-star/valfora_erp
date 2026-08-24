@@ -209,6 +209,14 @@ class LeadEngine:
                 title_override=deal_title or None,
             )
 
+        if deal:
+            deal = self.refresh_web_deal_visibility(
+                deal=deal,
+                contact=contact,
+                source=source,
+                deal_title=deal_title,
+            )
+
         activity = None
         if self.config.auto_create_follow_up:
             activity = self.create_web_form_activity(
@@ -396,6 +404,44 @@ class LeadEngine:
             return existing
         return Company.objects.create(name=label)
 
+    def _build_deal_title(self, *, contact: Contact, source: str, title_override: str | None = None) -> str:
+        """Build a human-readable deal title based on lead source."""
+
+        override = (title_override or "").strip()
+        if override:
+            return override
+        contact_name = f"{contact.first_name} {contact.last_name}".strip() or contact.email
+        if source == "website":
+            return f"Lead Web - {contact_name}"
+        return self.config.default_deal_title_template.format(
+            contact_name=contact_name,
+            phone=contact.phone_number or contact.whatsapp_number or contact.email,
+        )
+
+    def refresh_web_deal_visibility(
+        self,
+        *,
+        deal: Deal,
+        contact: Contact,
+        source: str,
+        deal_title: str = "",
+    ) -> Deal:
+        """Keep web-ingested deals easy to find in the pipeline."""
+
+        if source != "website":
+            return deal
+
+        update_fields: list[str] = ["updated_at"]
+        if deal.source != "website":
+            deal.source = "website"
+            update_fields.append("source")
+        expected_title = self._build_deal_title(contact=contact, source=source, title_override=deal_title or None)
+        if deal_title or "WhatsApp" in deal.title or deal.title.startswith("Lead WhatsApp"):
+            deal.title = expected_title
+            update_fields.append("title")
+        deal.save(update_fields=update_fields)
+        return deal
+
     def find_or_create_open_deal(
         self,
         *,
@@ -421,10 +467,7 @@ class LeadEngine:
             return None, False
 
         stage = PipelineAutomationService.normalize_stage(self.config.default_deal_pipeline_stage)
-        title = (title_override or "").strip() or self.config.default_deal_title_template.format(
-            contact_name=f"{contact.first_name} {contact.last_name}".strip(),
-            phone=contact.phone_number or contact.whatsapp_number or contact.email,
-        )
+        title = self._build_deal_title(contact=contact, source=source, title_override=title_override)
         deal = Deal.objects.create(
             title=title,
             contact=contact,
