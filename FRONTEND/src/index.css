@@ -1577,22 +1577,31 @@ a {
 }
 
 .crm-stage-column.is-over .crm-stage-column-body {
-  background: color-mix(in srgb, var(--stage-tint) 55%, #ffffff);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.crm-pipeline-board-error {
+  border: 1px solid #fecaca;
+  background: #fff7f7;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  color: #991b1b;
 }
 
 .crm-deal-card {
-  border: 1px solid #dbe4f0 !important;
-  border-radius: 1.05rem !important;
-  background: #ffffff !important;
-  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06) !important;
+  border: 1px solid #dbe4f0;
+  border-radius: 1.05rem;
+  background: #ffffff;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
 }
 
 .crm-deal-card.is-dragging {
-  border-color: var(--deal-stage-accent) !important;
+  border-color: var(--deal-stage-accent);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
 }
 
 .crm-deal-card-body {
-  padding: 0.8rem !important;
+  padding: 0.8rem;
   display: flex;
   flex-direction: column;
   gap: 0.55rem;

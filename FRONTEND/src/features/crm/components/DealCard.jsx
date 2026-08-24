@@ -1,6 +1,5 @@
 import PropTypes from "prop-types";
 import { CSS } from "@dnd-kit/utilities";
-import { Card } from "react-bootstrap";
 import { useSortable } from "@dnd-kit/sortable";
 import { Link } from "react-router-dom";
 import { formatDealDisplayNumber, formatDealValue } from "../utils/formatters.js";
@@ -8,7 +7,7 @@ import { formatDealDisplayNumber, formatDealValue } from "../utils/formatters.js
 const CALL_STAGE_KEY = "realizar_llamada";
 
 const dealShape = PropTypes.shape({
-  id: PropTypes.string.isRequired,
+  id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
   title: PropTypes.string,
   contact_name: PropTypes.string,
   value: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
@@ -38,6 +37,11 @@ const buildAssigneeMeta = (label) => {
   return { initials, shortName };
 };
 
+const dealTitle = (deal) => {
+  const id = String(deal?.id || "");
+  return deal?.title || deal?.contact_name || `Deal ${id.slice(0, 8)}`;
+};
+
 const DealCardView = ({
   deal,
   stageAccent,
@@ -57,12 +61,15 @@ const DealCardView = ({
   const isCallStage = deal.stage === CALL_STAGE_KEY;
 
   return (
-    <Card
+    <div
       ref={cardRef}
       className={`crm-deal-card ${className || ""}`.trim()}
-      style={{ "--deal-stage-accent": stageAccent || "#3b82f6", ...cardStyle }}
+      style={{
+        "--deal-stage-accent": stageAccent || "#3b82f6",
+        ...(cardStyle || {}),
+      }}
     >
-      <Card.Body className="crm-deal-card-body">
+      <div className="crm-deal-card-body">
         <div className="crm-deal-card-topline">
           <span className="crm-deal-card-number">{formatDealDisplayNumber(deal.id, orderIndex)}</span>
           <div className="crm-deal-card-topline-badges">
@@ -78,7 +85,7 @@ const DealCardView = ({
           </div>
         </div>
         <div className="crm-deal-card-title-row">
-          <span className="crm-deal-card-title">{deal.title || deal.contact_name || `Deal ${deal.id.slice(0, 8)}`}</span>
+          <span className="crm-deal-card-title">{dealTitle(deal)}</span>
           {dragHandleProps ? (
             <div className="crm-deal-card-title-actions">
               <button
@@ -146,8 +153,8 @@ const DealCardView = ({
             </button>
           </div>
         </div>
-      </Card.Body>
-    </Card>
+      </div>
+    </div>
   );
 };
 
@@ -166,21 +173,27 @@ DealCardView.propTypes = {
 
 const SortableDealCard = (props) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: props.deal.id,
-    data: { type: "deal", stage: props.deal.stage, deal: props.deal },
+    id: String(props.deal.id),
+    data: {
+      type: "deal",
+      stageId: props.deal.stage,
+    },
+    animateLayoutChanges: () => false,
   });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: transition || undefined,
+    opacity: isDragging ? 0.4 : 1,
+    cursor: isDragging ? "grabbing" : undefined,
+  };
 
   return (
     <DealCardView
       {...props}
       cardRef={setNodeRef}
       className={isDragging ? "is-dragging" : ""}
-      cardStyle={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        cursor: isDragging ? "grabbing" : "default",
-        opacity: isDragging ? 0.55 : 1,
-      }}
+      cardStyle={style}
       dragHandleProps={{ ...attributes, ...listeners }}
     />
   );

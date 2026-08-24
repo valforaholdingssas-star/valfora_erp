@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
-  DragOverlay,
   PointerSensor,
   closestCorners,
-  pointerWithin,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -27,6 +25,7 @@ import {
 } from "../../../api/crm.js";
 import { fetchUsers } from "../../../api/users.js";
 import LogDealCallModal from "../components/LogDealCallModal.jsx";
+import PipelineBoardErrorBoundary from "../components/PipelineBoardErrorBoundary.jsx";
 import PipelineColumn from "../components/PipelineColumn.jsx";
 import QuickEditDealModal from "../components/QuickEditDealModal.jsx";
 import { formatDealDisplayNumber, formatDealValue, resolveUserDisplayName } from "../utils/formatters.js";
@@ -62,16 +61,6 @@ const buildStageDraft = (stage) => ({
   is_won_stage: Boolean(stage.isWonStage),
   is_lost_stage: Boolean(stage.isLostStage),
 });
-
-const detectPipelineCollision = (args) => {
-  const pointerHits = pointerWithin(args);
-  const isColumn = (hit) => args.droppableContainers.get(hit.id)?.data?.current?.type === "column";
-  const cardHits = pointerHits.filter((hit) => !isColumn(hit));
-  const columnHits = pointerHits.filter(isColumn);
-  if (cardHits.length) return cardHits;
-  if (columnHits.length) return columnHits;
-  return closestCorners(args);
-};
 
 const slugifyStageName = (value) =>
   String(value || "")
@@ -112,7 +101,7 @@ const fetchAllPages = async (fetcher, params = {}, pageSize = 100) => {
 const DealsPipelinePage = () => {
   const [stages, setStages] = useState([]);
   const [byStage, setByStage] = useState({});
-  const [activeDeal, setActiveDeal] = useState(null);
+  const [activeDealId, setActiveDealId] = useState(null);
   const [dragOriginStage, setDragOriginStage] = useState(null);
   const [overStageId, setOverStageId] = useState(null);
   const [activityDeal, setActivityDeal] = useState(null);
@@ -242,32 +231,38 @@ const DealsPipelinePage = () => {
   // Manual moves can target any configured stage (including closed call/custom columns).
   const moveStageOptions = useMemo(() => stages, [stages]);
 
-  const getStageForId = (dealId, state = byStage) =>
-    stages.find((stage) => (state[stage.id] || []).some((deal) => deal.id === dealId))?.id;
+  const getStageForId = (dealId, state = byStage) => {
+    const needle = String(dealId || "");
+    return stages.find((stage) =>
+      (state[stage.id] || []).some((deal) => String(deal.id) === needle),
+    )?.id;
+  };
 
   const findDealById = (dealId, state = byStage) => {
     const stageId = getStageForId(dealId, state);
     if (!stageId) return null;
-    return (state[stageId] || []).find((deal) => deal.id === dealId) || null;
+    const needle = String(dealId || "");
+    return (state[stageId] || []).find((deal) => String(deal.id) === needle) || null;
   };
 
   const moveDealAcrossStages = (state, fromStageId, toStageId, activeId, overId) => {
     if (!fromStageId || !toStageId) return state;
+    const needle = String(activeId || "");
     const sourceList = [...(state[fromStageId] || [])];
-    const sourceIndex = sourceList.findIndex((deal) => deal.id === activeId);
+    const sourceIndex = sourceList.findIndex((deal) => String(deal.id) === needle);
     if (sourceIndex < 0) return state;
     const [moved] = sourceList.splice(sourceIndex, 1);
     const updatedMoved = { ...moved, stage: toStageId };
 
     if (fromStageId === toStageId) {
-      let targetIndex = sourceList.findIndex((deal) => deal.id === overId);
+      let targetIndex = sourceList.findIndex((deal) => String(deal.id) === String(overId || ""));
       if (targetIndex < 0) targetIndex = sourceList.length;
       sourceList.splice(targetIndex, 0, updatedMoved);
       return { ...state, [fromStageId]: sourceList };
     }
 
-    const targetList = [...(state[toStageId] || [])].filter((deal) => deal.id !== activeId);
-    let targetIndex = targetList.findIndex((deal) => deal.id === overId);
+    const targetList = [...(state[toStageId] || [])].filter((deal) => String(deal.id) !== needle);
+    let targetIndex = targetList.findIndex((deal) => String(deal.id) === String(overId || ""));
     if (targetIndex < 0) targetIndex = targetList.length;
     targetList.splice(targetIndex, 0, updatedMoved);
     return {
@@ -297,32 +292,42 @@ const DealsPipelinePage = () => {
     if (!over) return null;
     const overData = over.data?.current;
     if (overData?.type === "column" && overData.stageId) return overData.stageId;
-    if (overData?.stage) return overData.stage;
+    if (overData?.stageId) return overData.stageId;
     if (orderedStageIds.includes(over.id)) return over.id;
     return getStageForId(over.id, state);
   };
 
   const handleDragStart = (event) => {
-    const dealId = event.active.id;
-    const deal = findDealById(dealId);
-    setActiveDeal(deal ? { ...deal } : null);
-    setDragOriginStage(getStageForId(dealId));
-    setOverStageId(getStageForId(dealId));
-    setError("");
+    try {
+      const dealId = String(event.active?.id || "");
+      if (!dealId) return;
+      setActiveDealId(dealId);
+      setDragOriginStage(getStageForId(dealId));
+      setOverStageId(null);
+      setError("");
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("handleDragStart failed", err);
+      setActiveDealId(null);
+      setDragOriginStage(null);
+    }
   };
 
-  // Highlight only — never mutate board mid-drag (cross-column SortableContext
-  // thrashing was blanking the whole React tree).
   const handleDragOver = (event) => {
-    const next = resolveOverStage(event.over, byStage);
-    setOverStageId((prev) => (prev === next ? prev : next));
+    try {
+      const next = resolveOverStage(event.over, byStage);
+      setOverStageId((prev) => (prev === next ? prev : next));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("handleDragOver failed", err);
+    }
   };
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     const originStage = dragOriginStage;
-    const dealId = active?.id;
-    setActiveDeal(null);
+    const dealId = String(active?.id || "");
+    setActiveDealId(null);
     setDragOriginStage(null);
     setOverStageId(null);
 
@@ -335,8 +340,8 @@ const DealsPipelinePage = () => {
     if (originStage === newStage) {
       setByStage((prev) => {
         const list = [...(prev[originStage] || [])];
-        const oldIndex = list.findIndex((deal) => deal.id === dealId);
-        const newIndex = list.findIndex((deal) => deal.id === over.id);
+        const oldIndex = list.findIndex((deal) => String(deal.id) === dealId);
+        const newIndex = list.findIndex((deal) => String(deal.id) === String(over.id || ""));
         if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return prev;
         return { ...prev, [originStage]: arrayMove(list, oldIndex, newIndex) };
       });
@@ -361,7 +366,7 @@ const DealsPipelinePage = () => {
   };
 
   const handleDragCancel = () => {
-    setActiveDeal(null);
+    setActiveDealId(null);
     setDragOriginStage(null);
     setOverStageId(null);
   };
@@ -828,50 +833,35 @@ const DealsPipelinePage = () => {
       {error ? <Alert variant="danger" className="py-2 small mb-3">{error}</Alert> : null}
 
       {viewMode === "canvas" ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={detectPipelineCollision}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
-        >
-          <div className="crm-pipeline-board-shell">
-            <div className="crm-pipeline-board">
-              {stages.map((stage) => (
-                <PipelineColumn
-                  key={stage.id}
-                  stage={stage}
-                  deals={visibleByStage[stage.id] || []}
-                  stageTotal={formatDealValue((visibleByStage[stage.id] || []).reduce((sum, deal) => sum + Number(deal.value || 0), 0))}
-                  isOver={overStageId === stage.id && Boolean(activeDeal)}
-                  onCreateActivity={openActivityModal}
-                  onCreateDeal={openCreateModalForStage}
-                  onQuickEdit={openQuickEdit}
-                  onLogCall={setLogCallDeal}
-                  sortable={!isSearchActive}
-                />
-              ))}
+        <PipelineBoardErrorBoundary onReset={load}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <div className="crm-pipeline-board-shell">
+              <div className="crm-pipeline-board">
+                {stages.map((stage) => (
+                  <PipelineColumn
+                    key={stage.id}
+                    stage={stage}
+                    deals={visibleByStage[stage.id] || []}
+                    stageTotal={formatDealValue((visibleByStage[stage.id] || []).reduce((sum, deal) => sum + Number(deal.value || 0), 0))}
+                    isOver={Boolean(activeDealId) && overStageId === stage.id}
+                    onCreateActivity={openActivityModal}
+                    onCreateDeal={openCreateModalForStage}
+                    onQuickEdit={openQuickEdit}
+                    onLogCall={setLogCallDeal}
+                    sortable={!isSearchActive}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-          <DragOverlay dropAnimation={null}>
-            {activeDeal ? (
-              <Card className="shadow-sm crm-pipeline-drag-card">
-                <Card.Body>
-                  <div className="crm-pipeline-card-topline">
-                    <span className="pipeline-chip pipeline-chip-neutral">Moviendo</span>
-                    <span className="pipeline-chip pipeline-chip-company">{activeDeal.company_name || "Sin empresa"}</span>
-                  </div>
-                  <div className="crm-pipeline-drag-title">
-                    {activeDeal.title || activeDeal.contact_name || `Deal ${String(activeDeal.id || "").slice(0, 8)}`}
-                  </div>
-                  <div className="crm-pipeline-drag-meta">{formatDealValue(activeDeal.value)} {activeDeal.currency}</div>
-                  <div className="crm-pipeline-drag-contact">{activeDeal.contact_name}</div>
-                </Card.Body>
-              </Card>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+          </DndContext>
+        </PipelineBoardErrorBoundary>
       ) : (
         <div className="crm-pipeline-table-shell">
           {selectedDealIds.length > 0 ? (
