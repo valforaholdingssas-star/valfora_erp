@@ -1576,6 +1576,10 @@ a {
   pointer-events: none;
 }
 
+.crm-stage-column.is-over .crm-stage-column-body {
+  background: color-mix(in srgb, var(--stage-tint) 55%, #ffffff);
+}
+
 .crm-deal-card {
   border: 1px solid #dbe4f0 !important;
   border-radius: 1.05rem !important;

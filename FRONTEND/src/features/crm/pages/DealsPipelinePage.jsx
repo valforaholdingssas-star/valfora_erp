@@ -114,6 +114,7 @@ const DealsPipelinePage = () => {
   const [byStage, setByStage] = useState({});
   const [activeDeal, setActiveDeal] = useState(null);
   const [dragOriginStage, setDragOriginStage] = useState(null);
+  const [overStageId, setOverStageId] = useState(null);
   const [activityDeal, setActivityDeal] = useState(null);
   const [viewMode, setViewMode] = useState("canvas");
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -238,7 +239,8 @@ const DealsPipelinePage = () => {
   }, [load]);
 
   const orderedStageIds = useMemo(() => stages.map((stage) => stage.id), [stages]);
-  const moveStageOptions = useMemo(() => stages.filter((stage) => !stage.isClosedStage || stage.isWonStage || stage.isLostStage), [stages]);
+  // Manual moves can target any configured stage (including closed call/custom columns).
+  const moveStageOptions = useMemo(() => stages, [stages]);
 
   const getStageForId = (dealId, state = byStage) =>
     stages.find((stage) => (state[stage.id] || []).some((deal) => deal.id === dealId))?.id;
@@ -250,12 +252,21 @@ const DealsPipelinePage = () => {
   };
 
   const moveDealAcrossStages = (state, fromStageId, toStageId, activeId, overId) => {
+    if (!fromStageId || !toStageId) return state;
     const sourceList = [...(state[fromStageId] || [])];
-    const targetList = fromStageId === toStageId ? sourceList : [...(state[toStageId] || [])];
     const sourceIndex = sourceList.findIndex((deal) => deal.id === activeId);
     if (sourceIndex < 0) return state;
     const [moved] = sourceList.splice(sourceIndex, 1);
     const updatedMoved = { ...moved, stage: toStageId };
+
+    if (fromStageId === toStageId) {
+      let targetIndex = sourceList.findIndex((deal) => deal.id === overId);
+      if (targetIndex < 0) targetIndex = sourceList.length;
+      sourceList.splice(targetIndex, 0, updatedMoved);
+      return { ...state, [fromStageId]: sourceList };
+    }
+
+    const targetList = [...(state[toStageId] || [])].filter((deal) => deal.id !== activeId);
     let targetIndex = targetList.findIndex((deal) => deal.id === overId);
     if (targetIndex < 0) targetIndex = targetList.length;
     targetList.splice(targetIndex, 0, updatedMoved);
@@ -266,21 +277,19 @@ const DealsPipelinePage = () => {
     };
   };
 
-  const applyLocalStage = (dealId, toStage) => {
+  const cloneBoardState = (state) => {
+    try {
+      return structuredClone(state);
+    } catch {
+      return JSON.parse(JSON.stringify(state));
+    }
+  };
+
+  const applyLocalStage = (dealId, toStage, fromStageHint = null) => {
     setByStage((prev) => {
-      const fromStage = getStageForId(dealId, prev);
-      if (!fromStage || fromStage === toStage) return prev;
-      const source = [...(prev[fromStage] || [])];
-      const index = source.findIndex((deal) => deal.id === dealId);
-      if (index < 0) return prev;
-      const [deal] = source.splice(index, 1);
-      const target = [...(prev[toStage] || [])];
-      target.unshift({ ...deal, stage: toStage });
-      return {
-        ...prev,
-        [fromStage]: source,
-        [toStage]: target,
-      };
+      const fromStage = fromStageHint || getStageForId(dealId, prev);
+      if (!fromStage || !toStage || fromStage === toStage) return prev;
+      return moveDealAcrossStages(prev, fromStage, toStage, dealId, null);
     });
   };
 
@@ -288,51 +297,60 @@ const DealsPipelinePage = () => {
     if (!over) return null;
     const overData = over.data?.current;
     if (overData?.type === "column" && overData.stageId) return overData.stageId;
+    if (overData?.stage) return overData.stage;
     if (orderedStageIds.includes(over.id)) return over.id;
     return getStageForId(over.id, state);
   };
 
   const handleDragStart = (event) => {
-    const deal = findDealById(event.active.id);
-    setActiveDeal(deal);
-    setDragOriginStage(getStageForId(event.active.id));
+    const dealId = event.active.id;
+    const deal = findDealById(dealId);
+    setActiveDeal(deal ? { ...deal } : null);
+    setDragOriginStage(getStageForId(dealId));
+    setOverStageId(getStageForId(dealId));
+    setError("");
   };
 
+  // Highlight only — never mutate board mid-drag (cross-column SortableContext
+  // thrashing was blanking the whole React tree).
   const handleDragOver = (event) => {
-    const { active, over } = event;
-    if (!over) return;
-    setByStage((prev) => {
-      const fromStage = getStageForId(active.id, prev);
-      const overStage = resolveOverStage(over, prev);
-      if (!fromStage || !overStage || fromStage === overStage) return prev;
-      return moveDealAcrossStages(prev, fromStage, overStage, active.id, over.id);
-    });
+    const next = resolveOverStage(event.over, byStage);
+    setOverStageId((prev) => (prev === next ? prev : next));
   };
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
-    setActiveDeal(null);
     const originStage = dragOriginStage;
+    const dealId = active?.id;
+    setActiveDeal(null);
     setDragOriginStage(null);
+    setOverStageId(null);
+
+    if (!dealId || !originStage) return;
     if (!over) return;
-    const previousState = structuredClone(byStage);
-    const oldStage = originStage || getStageForId(active.id, previousState);
+
     const newStage = resolveOverStage(over, byStage);
-    if (!oldStage || !newStage) return;
-    if (oldStage === newStage) {
+    if (!newStage) return;
+
+    if (originStage === newStage) {
       setByStage((prev) => {
-        const list = [...(prev[oldStage] || [])];
-        const oldIndex = list.findIndex((deal) => deal.id === active.id);
+        const list = [...(prev[originStage] || [])];
+        const oldIndex = list.findIndex((deal) => deal.id === dealId);
         const newIndex = list.findIndex((deal) => deal.id === over.id);
-        if (oldIndex < 0 || newIndex < 0) return prev;
-        return { ...prev, [oldStage]: arrayMove(list, oldIndex, newIndex) };
+        if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return prev;
+        return { ...prev, [originStage]: arrayMove(list, oldIndex, newIndex) };
       });
       return;
     }
+
+    const previousState = cloneBoardState(byStage);
+    applyLocalStage(dealId, newStage, originStage);
     try {
-      setMovingDealId(active.id);
-      await moveDealStage(active.id, { to_stage: newStage, notes: "Cambio manual desde pipeline canvas" });
-      applyLocalStage(active.id, newStage);
+      setMovingDealId(dealId);
+      await moveDealStage(dealId, {
+        to_stage: newStage,
+        notes: "Cambio manual desde pipeline canvas",
+      });
       setError("");
     } catch (err) {
       setByStage(previousState);
@@ -340,6 +358,12 @@ const DealsPipelinePage = () => {
     } finally {
       setMovingDealId(null);
     }
+  };
+
+  const handleDragCancel = () => {
+    setActiveDeal(null);
+    setDragOriginStage(null);
+    setOverStageId(null);
   };
 
   const openActivityModal = (deal) => {
@@ -810,6 +834,7 @@ const DealsPipelinePage = () => {
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
         >
           <div className="crm-pipeline-board-shell">
             <div className="crm-pipeline-board">
@@ -819,6 +844,7 @@ const DealsPipelinePage = () => {
                   stage={stage}
                   deals={visibleByStage[stage.id] || []}
                   stageTotal={formatDealValue((visibleByStage[stage.id] || []).reduce((sum, deal) => sum + Number(deal.value || 0), 0))}
+                  isOver={overStageId === stage.id && Boolean(activeDeal)}
                   onCreateActivity={openActivityModal}
                   onCreateDeal={openCreateModalForStage}
                   onQuickEdit={openQuickEdit}
@@ -828,7 +854,7 @@ const DealsPipelinePage = () => {
               ))}
             </div>
           </div>
-          <DragOverlay>
+          <DragOverlay dropAnimation={null}>
             {activeDeal ? (
               <Card className="shadow-sm crm-pipeline-drag-card">
                 <Card.Body>
@@ -836,7 +862,9 @@ const DealsPipelinePage = () => {
                     <span className="pipeline-chip pipeline-chip-neutral">Moviendo</span>
                     <span className="pipeline-chip pipeline-chip-company">{activeDeal.company_name || "Sin empresa"}</span>
                   </div>
-                  <div className="crm-pipeline-drag-title">{activeDeal.title || activeDeal.contact_name || `Deal ${activeDeal.id.slice(0, 8)}`}</div>
+                  <div className="crm-pipeline-drag-title">
+                    {activeDeal.title || activeDeal.contact_name || `Deal ${String(activeDeal.id || "").slice(0, 8)}`}
+                  </div>
                   <div className="crm-pipeline-drag-meta">{formatDealValue(activeDeal.value)} {activeDeal.currency}</div>
                   <div className="crm-pipeline-drag-contact">{activeDeal.contact_name}</div>
                 </Card.Body>
@@ -905,11 +933,12 @@ const DealsPipelinePage = () => {
                         onChange={async (e) => {
                           const toStage = e.target.value;
                           if (toStage === deal.stage) return;
-                          const snapshot = structuredClone(byStage);
+                          const fromStage = deal.stage;
+                          const snapshot = cloneBoardState(byStage);
+                          applyLocalStage(deal.id, toStage, fromStage);
                           try {
                             setMovingDealId(deal.id);
                             await moveDealStage(deal.id, { to_stage: toStage, notes: "Cambio manual desde tabla" });
-                            applyLocalStage(deal.id, toStage);
                             setError("");
                           } catch (err) {
                             setByStage(snapshot);

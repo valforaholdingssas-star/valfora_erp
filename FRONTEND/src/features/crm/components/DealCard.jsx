@@ -167,7 +167,7 @@ DealCardView.propTypes = {
 const SortableDealCard = (props) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.deal.id,
-    data: { stage: props.deal.stage, deal: props.deal },
+    data: { type: "deal", stage: props.deal.stage, deal: props.deal },
   });
 
   return (

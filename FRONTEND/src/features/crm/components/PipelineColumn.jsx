@@ -8,16 +8,20 @@ const PipelineColumn = ({
   stage,
   deals,
   stageTotal,
+  isOver: isOverProp = false,
   onCreateActivity,
   onCreateDeal,
   onQuickEdit,
   onLogCall,
   sortable = true,
 }) => {
-  const { setNodeRef, isOver } = useDroppable({
+  const { setNodeRef, isOver: isDroppableOver } = useDroppable({
     id: stage.id,
     data: { type: "column", stageId: stage.id },
+    disabled: !sortable,
   });
+  const isOver = Boolean(isOverProp || isDroppableOver);
+  const dealIds = deals.map((d) => d.id).filter(Boolean);
 
   return (
     <div
@@ -47,9 +51,9 @@ const PipelineColumn = ({
           </button>
         </div>
       </div>
-      <div ref={sortable ? setNodeRef : undefined} className="crm-stage-column-body">
+      <div ref={setNodeRef} className="crm-stage-column-body">
         {sortable ? (
-          <SortableContext items={deals.map((d) => d.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext items={dealIds} strategy={verticalListSortingStrategy} id={`sortable-${stage.id}`}>
             {deals.map((deal, index) => (
               <DealCard
                 key={deal.id}
@@ -97,6 +101,7 @@ PipelineColumn.propTypes = {
   }).isRequired,
   deals: PropTypes.arrayOf(PropTypes.object).isRequired,
   stageTotal: PropTypes.string.isRequired,
+  isOver: PropTypes.bool,
   onCreateActivity: PropTypes.func,
   onCreateDeal: PropTypes.func,
   onQuickEdit: PropTypes.func,
