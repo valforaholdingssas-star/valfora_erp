@@ -13,7 +13,7 @@ from django.utils import timezone
 from apps.ai_config.runtime import resolve_global_ai_mode_enabled
 from apps.common.audit import write_audit_log
 from apps.crm.assignment_engine import AssignmentEngine
-from apps.crm.models import Activity, Contact, Deal, LeadEngineConfig
+from apps.crm.models import Activity, Company, Contact, Deal, LeadEngineConfig
 
 
 def normalize_phone(raw_phone: str) -> str:
@@ -164,6 +164,308 @@ class LeadEngine:
             "activity": activity,
             "notifications_sent": 0,
         }
+
+    @transaction.atomic
+    def process_public_form_lead(
+        self,
+        *,
+        email: str,
+        first_name: str,
+        last_name: str,
+        phone_number: str = "",
+        message: str = "",
+        source: str = "website",
+        company_name: str = "",
+        deal_title: str = "",
+        create_deal: bool | None = None,
+        external_id: str = "",
+        custom_fields: dict[str, Any] | None = None,
+        intent_level: str = "",
+    ) -> dict[str, Any]:
+        """Create or update a CRM lead from an external web form submission."""
+
+        contact, is_new_contact = self.find_or_create_web_contact(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            phone_number=phone_number,
+            source=source,
+            company_name=company_name,
+            external_id=external_id,
+            custom_fields=custom_fields or {},
+            intent_level=intent_level,
+        )
+
+        contact.last_contact_date = timezone.now()
+        contact.save(update_fields=["last_contact_date", "updated_at"])
+
+        should_create_deal = self.config.auto_create_deal if create_deal is None else create_deal
+        deal = None
+        is_new_deal = False
+        if should_create_deal:
+            deal, is_new_deal = self.find_or_create_open_deal(
+                contact=contact,
+                source=source,
+                title_override=deal_title or None,
+            )
+
+        activity = None
+        if self.config.auto_create_follow_up:
+            activity = self.create_web_form_activity(
+                contact=contact,
+                deal=deal,
+                message=message,
+            )
+
+        if is_new_contact:
+            write_audit_log(
+                user=None,
+                action="create",
+                instance=contact,
+                changes={"source": source, "auto": True, "channel": "public_ingest"},
+            )
+        if is_new_deal and deal:
+            write_audit_log(
+                user=None,
+                action="create",
+                instance=deal,
+                changes={"source": source, "auto": True, "channel": "public_ingest"},
+            )
+
+        return {
+            "contact": contact,
+            "is_new_contact": is_new_contact,
+            "deal": deal,
+            "is_new_deal": is_new_deal,
+            "activity": activity,
+        }
+
+    def find_or_create_web_contact(
+        self,
+        *,
+        email: str,
+        first_name: str,
+        last_name: str,
+        phone_number: str,
+        source: str,
+        company_name: str,
+        external_id: str,
+        custom_fields: dict[str, Any],
+        intent_level: str,
+    ) -> tuple[Contact, bool]:
+        """Find contact by external id, email or phone; create when allowed."""
+
+        email_norm = (email or "").strip().lower()
+        if external_id:
+            existing = Contact.objects.filter(
+                is_active=True,
+                custom_fields__external_lead_id=external_id,
+            ).first()
+            if existing:
+                self._update_web_contact(
+                    existing,
+                    first_name=first_name,
+                    last_name=last_name,
+                    phone_number=phone_number,
+                    company_name=company_name,
+                    custom_fields=custom_fields,
+                    intent_level=intent_level,
+                )
+                return existing, False
+
+        if email_norm:
+            existing = Contact.objects.filter(is_active=True, email__iexact=email_norm).first()
+            if existing:
+                self._update_web_contact(
+                    existing,
+                    first_name=first_name,
+                    last_name=last_name,
+                    phone_number=phone_number,
+                    company_name=company_name,
+                    custom_fields=custom_fields,
+                    intent_level=intent_level,
+                    external_id=external_id,
+                )
+                return existing, False
+
+        digits = normalize_phone(phone_number)
+        if digits:
+            suffix = digits[-10:] if len(digits) >= 10 else digits
+            for contact in Contact.objects.filter(is_active=True):
+                for candidate in (
+                    normalize_phone(contact.phone_number),
+                    normalize_phone(contact.whatsapp_number),
+                ):
+                    tail = candidate[-10:] if len(candidate) >= 10 else candidate
+                    if candidate and (candidate == digits or tail == suffix):
+                        self._update_web_contact(
+                            contact,
+                            first_name=first_name,
+                            last_name=last_name,
+                            phone_number=phone_number,
+                            company_name=company_name,
+                            custom_fields=custom_fields,
+                            intent_level=intent_level,
+                            external_id=external_id,
+                            email=email_norm,
+                        )
+                        return contact, False
+
+        if not self.config.auto_create_contact:
+            fallback = Contact.objects.filter(is_active=True).order_by("-created_at").first()
+            if fallback:
+                return fallback, False
+
+        assignee = self.assign_responsible(source=source, whatsapp_phone_number=None)
+        merged_fields = dict(custom_fields or {})
+        if external_id:
+            merged_fields["external_lead_id"] = external_id
+        company = self._resolve_company(company_name)
+        contact = Contact.objects.create(
+            first_name=(first_name or "Nuevo").strip() or "Nuevo",
+            last_name=(last_name or "Lead").strip() or "Lead",
+            email=email_norm,
+            phone_number=digits,
+            company=company,
+            source=source if source in dict(Contact.SOURCE_CHOICES) else "website",
+            lifecycle_stage=self.config.default_lifecycle_stage,
+            intent_level=intent_level if intent_level in dict(Contact.INTENT_CHOICES) else self.config.default_intent_level,
+            assigned_to=assignee,
+            last_contact_date=timezone.now(),
+            custom_fields=merged_fields,
+            created_by=None,
+        )
+        return contact, True
+
+    def _update_web_contact(
+        self,
+        contact: Contact,
+        *,
+        first_name: str,
+        last_name: str,
+        phone_number: str,
+        company_name: str,
+        custom_fields: dict[str, Any],
+        intent_level: str,
+        external_id: str = "",
+        email: str = "",
+    ) -> Contact:
+        """Fill empty fields on an existing contact from a web form resubmission."""
+
+        changed_fields: list[str] = []
+        if first_name and not contact.first_name:
+            contact.first_name = first_name.strip()
+            changed_fields.append("first_name")
+        if last_name and not contact.last_name:
+            contact.last_name = last_name.strip()
+            changed_fields.append("last_name")
+        digits = normalize_phone(phone_number)
+        if digits and not contact.phone_number:
+            contact.phone_number = digits
+            changed_fields.append("phone_number")
+        if email and (not contact.email or contact.email.endswith("@auto.local")):
+            contact.email = email
+            changed_fields.append("email")
+        if intent_level and intent_level in dict(Contact.INTENT_CHOICES):
+            contact.intent_level = intent_level
+            changed_fields.append("intent_level")
+        company = self._resolve_company(company_name)
+        if company and not contact.company_id:
+            contact.company = company
+            changed_fields.append("company")
+        merged = dict(contact.custom_fields or {})
+        merged.update(custom_fields or {})
+        if external_id:
+            merged["external_lead_id"] = external_id
+        if merged != (contact.custom_fields or {}):
+            contact.custom_fields = merged
+            changed_fields.append("custom_fields")
+        if changed_fields:
+            changed_fields.append("updated_at")
+            contact.save(update_fields=changed_fields)
+        return contact
+
+    def _resolve_company(self, company_name: str) -> Company | None:
+        """Return existing company by name or create a lightweight record."""
+
+        label = (company_name or "").strip()
+        if not label:
+            return None
+        existing = Company.objects.filter(is_active=True, name__iexact=label).first()
+        if existing:
+            return existing
+        return Company.objects.create(name=label)
+
+    def find_or_create_open_deal(
+        self,
+        *,
+        contact: Contact,
+        source: str,
+        title_override: str | None = None,
+    ) -> tuple[Deal | None, bool]:
+        """Return an open deal for the contact or create one for inbound web leads."""
+
+        from apps.crm.models import DealStageHistory
+        from apps.crm.pipeline_automation import PipelineAutomationService
+
+        closed_stage_keys = PipelineAutomationService.get_closed_stage_keys()
+        active = (
+            Deal.objects.filter(contact=contact, is_active=True)
+            .exclude(stage__in=closed_stage_keys)
+            .order_by("-updated_at", "-created_at")
+            .first()
+        )
+        if active:
+            return active, False
+        if not self.config.auto_create_deal:
+            return None, False
+
+        stage = PipelineAutomationService.normalize_stage(self.config.default_deal_pipeline_stage)
+        title = (title_override or "").strip() or self.config.default_deal_title_template.format(
+            contact_name=f"{contact.first_name} {contact.last_name}".strip(),
+            phone=contact.phone_number or contact.whatsapp_number or contact.email,
+        )
+        deal = Deal.objects.create(
+            title=title,
+            contact=contact,
+            company=contact.company,
+            stage=stage,
+            probability=10,
+            assigned_to=contact.assigned_to,
+            source=source if source in dict(Deal.SOURCE_CHOICES) else "website",
+        )
+        DealStageHistory.objects.create(
+            deal=deal,
+            from_stage="",
+            to_stage=stage,
+            moved_by=None,
+            trigger="lead_created",
+            notes="Deal creado automáticamente desde formulario web",
+        )
+        return deal, True
+
+    def create_web_form_activity(
+        self,
+        *,
+        contact: Contact,
+        deal: Deal | None,
+        message: str,
+    ) -> Activity:
+        """Create a follow-up activity for a web form submission."""
+
+        due = timezone.now() + timedelta(minutes=self.config.max_response_time_minutes)
+        preview = (message or "Lead recibido desde formulario externo.").strip()
+        return Activity.objects.create(
+            contact=contact,
+            deal=deal,
+            activity_type="follow_up",
+            subject="Lead desde formulario web",
+            description=preview[:2000],
+            due_date=due,
+            is_completed=False,
+            assigned_to=contact.assigned_to,
+            created_by=None,
+        )
 
     def find_or_create_contact(
         self,

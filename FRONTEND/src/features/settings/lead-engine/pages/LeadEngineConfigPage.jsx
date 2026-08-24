@@ -113,6 +113,35 @@ const LeadEngineConfigPage = () => {
                   </Col>
                 </Row>
 
+                <hr className="my-4" />
+                <div className="app-eyebrow mb-2">Formularios externos</div>
+                <Form.Check
+                  type="switch"
+                  label="Habilitar endpoint público de leads"
+                  checked={Boolean(form.public_ingest_enabled)}
+                  onChange={(e) => setForm((p) => ({ ...p, public_ingest_enabled: e.target.checked }))}
+                  className="mb-2"
+                />
+                <Form.Group className="mb-2">
+                  <Form.Label>API key de ingestión</Form.Label>
+                  <Form.Control
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder={form.has_public_ingest_api_key ? form.public_ingest_api_key_masked || "Configurada" : "Pegar nueva API key"}
+                    onChange={(e) => setForm((p) => ({ ...p, public_ingest_api_key: e.target.value }))}
+                  />
+                  <Form.Text className="text-muted">
+                    Endpoint: <code>POST /api/v1/crm/leads/ingest/</code> con header <code>X-Lead-Ingest-Key</code>.
+                  </Form.Text>
+                </Form.Group>
+                <Form.Check
+                  type="checkbox"
+                  label="Limpiar API key guardada"
+                  checked={Boolean(form.clear_public_ingest_api_key)}
+                  onChange={(e) => setForm((p) => ({ ...p, clear_public_ingest_api_key: e.target.checked }))}
+                  className="mb-3"
+                />
+
                 <Button type="submit" className="mt-3">Guardar</Button>
             </Form>
           </section>

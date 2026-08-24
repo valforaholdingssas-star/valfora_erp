@@ -347,6 +347,20 @@ class DealStageHistorySerializer(serializers.ModelSerializer):
 class LeadEngineConfigSerializer(serializers.ModelSerializer):
     """Serializer for lead automation settings."""
 
+    public_ingest_api_key = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    clear_public_ingest_api_key = serializers.BooleanField(
+        write_only=True,
+        required=False,
+        default=False,
+    )
+    has_public_ingest_api_key = serializers.SerializerMethodField(read_only=True)
+    public_ingest_api_key_masked = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = LeadEngineConfig
         fields = (
@@ -365,12 +379,101 @@ class LeadEngineConfigSerializer(serializers.ModelSerializer):
             "assignment_specific_user",
             "notify_on_new_lead",
             "notify_on_returning_contact",
+            "public_ingest_enabled",
+            "has_public_ingest_api_key",
+            "public_ingest_api_key_masked",
+            "public_ingest_api_key",
+            "clear_public_ingest_api_key",
             "auto_response_template",
             "is_active",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at")
+        read_only_fields = (
+            "id",
+            "has_public_ingest_api_key",
+            "public_ingest_api_key_masked",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_has_public_ingest_api_key(self, obj: LeadEngineConfig) -> bool:
+        from apps.crm.lead_ingest_auth import resolve_lead_ingest_api_key
+
+        return bool(resolve_lead_ingest_api_key(obj))
+
+    def get_public_ingest_api_key_masked(self, obj: LeadEngineConfig) -> str:
+        from apps.crm.lead_ingest_auth import resolve_lead_ingest_api_key
+
+        value = resolve_lead_ingest_api_key(obj)
+        if not value:
+            return ""
+        if len(value) <= 8:
+            return "****"
+        return f"{value[:4]}...{value[-4:]}"
+
+    def update(self, instance, validated_data):
+        maybe_key = validated_data.pop("public_ingest_api_key", None)
+        clear_key = bool(validated_data.pop("clear_public_ingest_api_key", False))
+        instance = super().update(instance, validated_data)
+        if clear_key:
+            instance.public_ingest_api_key = ""
+            instance.save(update_fields=["public_ingest_api_key", "updated_at"])
+        elif maybe_key is not None and maybe_key != "":
+            instance.public_ingest_api_key = maybe_key
+            instance.save(update_fields=["public_ingest_api_key", "updated_at"])
+        return instance
+
+
+class PublicLeadIngestSerializer(serializers.Serializer):
+    """Payload for external web forms creating CRM leads."""
+
+    email = serializers.EmailField()
+    first_name = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    last_name = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    full_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    phone_number = serializers.CharField(max_length=40, required=False, allow_blank=True, default="")
+    message = serializers.CharField(required=False, allow_blank=True, default="")
+    company_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    deal_title = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    source = serializers.ChoiceField(choices=Contact.SOURCE_CHOICES, default="website")
+    intent_level = serializers.ChoiceField(
+        choices=Contact.INTENT_CHOICES,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    create_deal = serializers.BooleanField(required=False, allow_null=True, default=None)
+    external_id = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    custom_fields = serializers.DictField(required=False, default=dict)
+
+    def validate(self, attrs):
+        first_name = (attrs.get("first_name") or "").strip()
+        last_name = (attrs.get("last_name") or "").strip()
+        full_name = (attrs.get("full_name") or "").strip()
+        if not first_name and not last_name and full_name:
+            pieces = full_name.split(" ", 1)
+            first_name = pieces[0]
+            last_name = pieces[1] if len(pieces) > 1 else "Lead"
+        if not first_name:
+            first_name = "Nuevo"
+        if not last_name:
+            last_name = "Lead"
+        attrs["first_name"] = first_name
+        attrs["last_name"] = last_name
+        attrs.pop("full_name", None)
+        return attrs
+
+
+class PublicLeadIngestResponseSerializer(serializers.Serializer):
+    """Response payload for public lead ingest."""
+
+    contact_id = serializers.UUIDField()
+    deal_id = serializers.UUIDField(allow_null=True)
+    is_new_contact = serializers.BooleanField()
+    is_new_deal = serializers.BooleanField()
+    contact_name = serializers.CharField()
+    deal_title = serializers.CharField(allow_blank=True)
 
 
 class PipelineAutomationConfigSerializer(serializers.ModelSerializer):

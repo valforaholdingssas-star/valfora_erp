@@ -135,6 +135,7 @@ REST_FRAMEWORK = {
         "user": "5000/hour",
         "login": "5/minute",
         "password_reset": "10/hour",
+        "lead_ingest": "60/hour",
     },
 }
 

@@ -5,6 +5,7 @@ from django.db import models
 from django.utils import timezone
 
 from apps.common.models import BaseModel
+from apps.whatsapp.models import EncryptedTextField
 
 
 class Company(BaseModel):
@@ -353,6 +354,8 @@ class LeadEngineConfig(BaseModel):
     )
     notify_on_new_lead = models.BooleanField(default=True)
     notify_on_returning_contact = models.BooleanField(default=False)
+    public_ingest_enabled = models.BooleanField(default=False)
+    public_ingest_api_key = EncryptedTextField(blank=True)
     auto_response_template = models.ForeignKey(
         "whatsapp.WhatsAppTemplate",
         on_delete=models.SET_NULL,
