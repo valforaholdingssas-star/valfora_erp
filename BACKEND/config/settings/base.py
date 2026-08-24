@@ -49,6 +49,7 @@ CRM_CALL_STAGE_ASSIGNEE_NAME = os.getenv("CRM_CALL_STAGE_ASSIGNEE_NAME", "Juan C
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "apps.crm.lead_ingest_cors.LeadIngestCorsMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -219,10 +220,27 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CORS_ALLOWED_ORIGINS = os.getenv(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000",
-).split(",")
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000,https://3orillas.com,https://www.3orillas.com",
+    ).split(",")
+    if origin.strip()
+]
+
+CORS_ALLOW_HEADERS = (
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "x-lead-ingest-key",
+)
 
 LOGGING = {
     "version": 1,

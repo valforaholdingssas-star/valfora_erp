@@ -380,6 +380,7 @@ class LeadEngineConfigSerializer(serializers.ModelSerializer):
             "notify_on_new_lead",
             "notify_on_returning_contact",
             "public_ingest_enabled",
+            "public_ingest_allowed_origins",
             "has_public_ingest_api_key",
             "public_ingest_api_key_masked",
             "public_ingest_api_key",

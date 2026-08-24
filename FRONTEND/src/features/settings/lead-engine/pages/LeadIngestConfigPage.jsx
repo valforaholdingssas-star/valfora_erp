@@ -3,6 +3,8 @@ import { Alert, Button, Form, Spinner } from "react-bootstrap";
 
 import useLeadEngineConfig from "../hooks/useLeadEngineConfig.js";
 
+const DEFAULT_ORIGINS = ["https://3orillas.com", "https://www.3orillas.com"];
+
 const generateApiKey = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return `lead_${crypto.randomUUID().replace(/-/g, "")}`;
@@ -10,9 +12,21 @@ const generateApiKey = () => {
   return `lead_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
 };
 
+const originsToText = (origins) => {
+  const list = Array.isArray(origins) && origins.length ? origins : DEFAULT_ORIGINS;
+  return list.join("\n");
+};
+
+const textToOrigins = (value) =>
+  String(value || "")
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
 const LeadIngestConfigPage = () => {
   const { leadConfig, loading, saveLeadConfig } = useLeadEngineConfig();
   const [form, setForm] = useState({});
+  const [originsText, setOriginsText] = useState(originsToText(DEFAULT_ORIGINS));
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -22,7 +36,10 @@ const LeadIngestConfigPage = () => {
   }, []);
 
   useEffect(() => {
-    if (leadConfig) setForm(leadConfig);
+    if (leadConfig) {
+      setForm(leadConfig);
+      setOriginsText(originsToText(leadConfig.public_ingest_allowed_origins));
+    }
   }, [leadConfig]);
 
   if (loading || !leadConfig) {
@@ -34,7 +51,10 @@ const LeadIngestConfigPage = () => {
     setError("");
     setStatus("");
     try {
-      await saveLeadConfig(form);
+      await saveLeadConfig({
+        ...form,
+        public_ingest_allowed_origins: textToOrigins(originsText),
+      });
       setStatus("Configuración de formularios web guardada.");
       setForm((prev) => ({ ...prev, public_ingest_api_key: "", clear_public_ingest_api_key: false }));
     } catch (err) {
@@ -62,13 +82,19 @@ const LeadIngestConfigPage = () => {
           <div className="app-eyebrow">Lead Engine</div>
           <h1 className="h3 mb-1">Formularios web (API pública)</h1>
           <p className="text-muted mb-0">
-            Conecta landing pages o formularios externos para crear contactos y deals automáticamente en el CRM.
+            Endpoint restringido solo a ingestión de leads. La API key funciona únicamente en este endpoint y solo desde dominios en lista blanca.
           </p>
         </div>
       </div>
 
       {status ? <Alert variant="success" className="py-2">{status}</Alert> : null}
       {error ? <Alert variant="danger" className="py-2">{error}</Alert> : null}
+
+      <Alert variant="info" className="small">
+        Si el formulario vive en <strong>3orillas.com</strong>, la key puede ir en el JS de esa página, pero el backend
+        la aceptará <strong>solo</strong> desde los dominios autorizados abajo. Si ves error rojo al enviar, revisa CORS
+        y que el dominio esté en la lista blanca.
+      </Alert>
 
       <div className="row g-4">
         <div className="col-lg-7">
@@ -88,10 +114,10 @@ const LeadIngestConfigPage = () => {
                 className="mb-3"
               />
               <Form.Group className="mb-3">
-                <Form.Label>API key</Form.Label>
+                <Form.Label>API key (solo ingest leads)</Form.Label>
                 <div className="d-flex gap-2 flex-wrap">
                   <Form.Control
-                    type="text"
+                    type="password"
                     autoComplete="new-password"
                     value={form.public_ingest_api_key || ""}
                     placeholder={form.has_public_ingest_api_key ? form.public_ingest_api_key_masked || "Configurada" : "Genera o pega una API key"}
@@ -106,7 +132,20 @@ const LeadIngestConfigPage = () => {
                   </Button>
                 </div>
                 <Form.Text className="text-muted">
-                  Envía esta key en el header <code>X-Lead-Ingest-Key</code> o como <code>Authorization: Bearer …</code>.
+                  Esta key no sirve para el resto del ERP. Úsala en <code>X-Lead-Ingest-Key</code> desde 3orillas.com.
+                </Form.Text>
+              </Form.Group>
+              <Form.Group className="mb-3">
+                <Form.Label>Dominios permitidos (lista blanca)</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={3}
+                  value={originsText}
+                  onChange={(e) => setOriginsText(e.target.value)}
+                  placeholder={"https://3orillas.com\nhttps://www.3orillas.com"}
+                />
+                <Form.Text className="text-muted">
+                  Un dominio por línea. Solo esos orígenes pueden llamar al endpoint desde el navegador.
                 </Form.Text>
               </Form.Group>
               {form.has_public_ingest_api_key ? (
@@ -128,22 +167,22 @@ const LeadIngestConfigPage = () => {
             <div className="app-surface-header mb-3">
               <div>
                 <div className="app-eyebrow">Integración</div>
-                <h2 className="h6 mb-0">Cómo llamarlo</h2>
+                <h2 className="h6 mb-0">Desde 3orillas.com</h2>
               </div>
             </div>
             <p className="small text-muted mb-2">URL del endpoint</p>
             <pre className="small bg-light border rounded p-2 mb-3 overflow-auto">{`POST ${apiBase}`}</pre>
             <p className="small text-muted mb-2">Headers</p>
             <pre className="small bg-light border rounded p-2 mb-3 overflow-auto">{`Content-Type: application/json
-X-Lead-Ingest-Key: tu-api-key`}</pre>
+X-Lead-Ingest-Key: <tu-api-key>`}</pre>
             <p className="small text-muted mb-2">Body de ejemplo</p>
             <pre className="small bg-light border rounded p-2 mb-0 overflow-auto">{examplePayload}</pre>
           </section>
 
           <Alert variant={form.public_ingest_enabled ? "success" : "warning"} className="small mb-0">
             {form.public_ingest_enabled
-              ? "El endpoint está habilitado. Los formularios externos ya pueden enviar leads."
-              : "Activa el switch y guarda una API key para que el endpoint acepte solicitudes."}
+              ? "CORS habilitado para los dominios en lista blanca (incluye 3orillas.com por defecto)."
+              : "Activa el switch, guarda dominios y API key para habilitar el endpoint."}
           </Alert>
         </div>
       </div>

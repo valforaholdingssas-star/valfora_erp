@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -23,12 +25,16 @@ class LeadIngestRateThrottle(SimpleRateThrottle):
         return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
 
 
+@method_decorator(csrf_exempt, name="dispatch")
 class PublicLeadIngestView(APIView):
     """Accept lead submissions from external web forms."""
 
     authentication_classes: list = []
     permission_classes = [permissions.AllowAny, LeadIngestApiKeyPermission]
     throttle_classes = [LeadIngestRateThrottle]
+
+    def options(self, request, *args, **kwargs):  # noqa: ANN001
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def post(self, request):
         serializer = PublicLeadIngestSerializer(data=request.data)
