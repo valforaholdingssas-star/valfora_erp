@@ -52,6 +52,7 @@ const WhatsAppTemplateForm = lazy(() => import("../../features/settings/whatsapp
 const WhatsAppProfilePage = lazy(() => import("../../features/settings/whatsapp/pages/WhatsAppProfilePage.jsx"));
 const WhatsAppAnalyticsPage = lazy(() => import("../../features/settings/whatsapp/pages/WhatsAppAnalyticsPage.jsx"));
 const LeadEngineConfigPage = lazy(() => import("../../features/settings/lead-engine/pages/LeadEngineConfigPage.jsx"));
+const LeadIngestConfigPage = lazy(() => import("../../features/settings/lead-engine/pages/LeadIngestConfigPage.jsx"));
 const PipelineAutomationPage = lazy(() => import("../../features/settings/lead-engine/pages/PipelineAutomationPage.jsx"));
 const LeadEngineDashboardPage = lazy(() => import("../../features/settings/lead-engine/pages/LeadEngineDashboardPage.jsx"));
 
@@ -180,6 +181,7 @@ const MainLayout = () => {
                 <Route path="/settings/whatsapp/profile" element={canViewWhatsapp ? <WhatsAppProfilePage /> : <Navigate to="/" replace />} />
                 <Route path="/settings/whatsapp/analytics" element={canViewWhatsapp ? <WhatsAppAnalyticsPage /> : <Navigate to="/" replace />} />
                 <Route path="/settings/lead-engine" element={canViewCRM ? <LeadEngineConfigPage /> : <Navigate to="/" replace />} />
+                <Route path="/settings/lead-engine/ingest" element={canViewCRM ? <LeadIngestConfigPage /> : <Navigate to="/" replace />} />
                 <Route path="/settings/lead-engine/pipeline" element={canViewCRM ? <PipelineAutomationPage /> : <Navigate to="/" replace />} />
                 <Route path="/settings/lead-engine/dashboard" element={canViewCRM ? <LeadEngineDashboardPage /> : <Navigate to="/" replace />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

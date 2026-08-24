@@ -144,6 +144,7 @@ const Sidebar = ({ collapsed, isMobile = false, mobileOpen = false, onCloseMobil
               showWhatsAppSettings ? { to: "/settings/whatsapp/profile", label: "WhatsApp Perfil", icon: "bi-person-vcard" } : null,
               showWhatsAppSettings ? { to: "/settings/whatsapp/analytics", label: "WhatsApp Analítica", icon: "bi-bar-chart-line" } : null,
               showCRM ? { to: "/settings/lead-engine", label: "Automatización Leads", icon: "bi-diagram-3" } : null,
+              showCRM ? { to: "/settings/lead-engine/ingest", label: "Formularios web (API)", icon: "bi-window-plus" } : null,
               showCRM ? { to: "/settings/lead-engine/pipeline", label: "Pipeline Auto", icon: "bi-bezier2" } : null,
               showCRM ? { to: "/settings/lead-engine/dashboard", label: "Dashboard Auto", icon: "bi-speedometer2" } : null,
             ].filter(Boolean)
