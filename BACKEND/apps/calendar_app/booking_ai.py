@@ -386,6 +386,23 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
             if status != "pending_email":
                 _abandon_draft(draft, reason="nlu_unrelated")
             return None
+        # Mid-funnel product answers ("Si con carrito", "básica para vender") must
+        # leave the calendar flow — never re-ask the meeting day.
+        if status != "pending_email" and interp.get("action") in {"none", "clarify", "start_booking"}:
+            has_booking_signal = bool(
+                _has_schedule_intent(text)
+                or _is_scheduling_affirmation(text)
+                or interp.get("weekday")
+                or interp.get("date_iso")
+                or interp.get("time_hhmm")
+                or interp.get("email")
+                or interp.get("slot_iso")
+                or (interp.get("period") and _parse_day_period(text))
+                or int(interp.get("week_offset_days") or 0)
+            )
+            if not has_booking_signal:
+                _abandon_draft(draft, reason="product_talk_mid_funnel")
+                return None
         return _dispatch_booking_interpretation(
             inbound=inbound,
             runtime=runtime,
@@ -396,9 +413,27 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
 
     # Idle: only start when NLU says so (or strong deterministic start).
     start_actions = {"provide_day", "provide_datetime", "defer_week", "provide_period"}
-    if interp.get("action") == "start_booking" or (
+    wants_start = interp.get("action") == "start_booking" or (
         interp.get("related") and interp.get("action") in start_actions
-    ):
+    )
+    if wants_start:
+        # Hard gate: greetings/product talk must never open the funnel.
+        # Regression: "Buenas tardes\nCrear página web" used to parse "tardes" as
+        # period=afternoon and jump to "¿qué día te queda bien...?".
+        has_day_or_time = bool(
+            interp.get("weekday")
+            or interp.get("date_iso")
+            or interp.get("time_hhmm")
+            or int(interp.get("week_offset_days") or 0)
+        )
+        recent_invite = _recent_assistant_invited_meeting(conv)
+        if not (
+            _has_schedule_intent(text)
+            or has_day_or_time
+            or (_is_scheduling_affirmation(text) and recent_invite)
+        ):
+            return None
+
         # Reuse the OneToOne draft row (cancelled/confirmed included) — never INSERT a duplicate.
         draft = _ensure_booking_draft(conversation=conv, runtime=runtime, draft=draft)
         has_concrete = bool(
@@ -415,10 +450,17 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
                     interp = {**interp, "action": "provide_datetime"}
                 elif interp.get("weekday") or interp.get("date_iso"):
                     interp = {**interp, "action": "provide_day"}
-                elif interp.get("period"):
+                elif interp.get("period") and _has_schedule_intent(text):
                     interp = {**interp, "action": "provide_period"}
                 elif int(interp.get("week_offset_days") or 0) >= 7:
                     interp = {**interp, "action": "defer_week"}
+            # Period alone without a locked day is not enough to enter from idle.
+            if interp.get("action") == "provide_period" and not (
+                (draft.metadata or {}).get("preferred_day") or has_day_or_time
+            ):
+                if not _has_schedule_intent(text):
+                    return None
+                return _ask_preferred_day(inbound=inbound, runtime=runtime, draft=draft)
             return _dispatch_booking_interpretation(
                 inbound=inbound,
                 runtime=runtime,
@@ -1812,8 +1854,15 @@ def _parse_email_from_text(text: str) -> str | None:
 
 
 def _has_schedule_intent(text: str) -> bool:
-    low = text.lower()
-    return any(k in low for k in SCHEDULE_KEYWORDS)
+    """True when the utterance explicitly talks about scheduling (word-boundary match)."""
+    low = _fold_es(text)
+    for keyword in SCHEDULE_KEYWORDS:
+        folded = _fold_es(keyword)
+        if not folded:
+            continue
+        if re.search(rf"\b{re.escape(folded)}\b", low):
+            return True
+    return False
 
 
 def _normalize_affirmation(text: str) -> str:
@@ -1823,13 +1872,31 @@ def _normalize_affirmation(text: str) -> str:
 
 
 def _is_scheduling_affirmation(text: str) -> bool:
+    """Short yes/ok to a recent meeting invite — not product answers like 'Si con carrito'."""
     cleaned = _normalize_affirmation(text)
     if not cleaned:
         return False
     if cleaned in AFFIRM_SCHEDULE_PHRASES:
         return True
     tokens = cleaned.split()
-    if len(tokens) <= 5 and any(p == cleaned or cleaned.startswith(f"{p} ") or cleaned.endswith(f" {p}") for p in AFFIRM_SCHEDULE_PHRASES):
+    # Exact short affirmations only. Do NOT use startswith("si ") — that matches
+    # commercial replies ("si con carrito", "si básica", etc.).
+    if len(tokens) == 1 and tokens[0] in {
+        "si",
+        "sí",
+        "dale",
+        "ok",
+        "okay",
+        "va",
+        "listo",
+        "perfecto",
+        "claro",
+        "sale",
+        "bueno",
+        "hecho",
+        "sep",
+        "sip",
+    }:
         return True
     return False
 
@@ -1897,11 +1964,31 @@ def _message_has_explicit_time(text: str) -> bool:
 
 
 def _parse_day_period(text: str) -> str | None:
-    """Interpret morning/afternoon preference (used after the day is already known)."""
+    """Interpret morning/afternoon preference (used after the day is already known).
+
+    Must ignore greetings: "Buenas tardes" is NOT a request for the afternoon slot.
+    """
     low = (text or "").lower().strip()
-    if any(x in low for x in ("tarde", "afternoon")) or re.search(r"\bpm\b", low):
+    if not low:
+        return None
+    # Remove social greetings that contain "tarde"/"mañana" before period detection.
+    cleaned = re.sub(
+        r"\b(?:buenas?\s+tardes?|buena\s+tarde|buenas?\s+noches?|buen(?:os)?\s+d[ií]as?|"
+        r"hola|hey|saludos)\b[!.?¿¡]*",
+        " ",
+        low,
+        flags=re.I,
+    )
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return None
+    if re.search(r"\b(?:en\s+la\s+)?tardes?\b", cleaned) or "afternoon" in cleaned or re.search(r"\bpm\b", cleaned):
         return "afternoon"
-    if any(x in low for x in ("mañana", "manana", "morning")) or re.search(r"\bam\b", low):
+    if (
+        re.search(r"\b(?:en\s+la\s+)?(?:mañana|manana)s?\b", cleaned)
+        or "morning" in cleaned
+        or re.search(r"\bam\b", cleaned)
+    ):
         return "morning"
     return None
 

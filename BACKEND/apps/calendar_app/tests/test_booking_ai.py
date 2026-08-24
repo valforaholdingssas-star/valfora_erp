@@ -1163,3 +1163,95 @@ def test_pending_day_already_booked_claim_leaves_funnel(monkeypatch):
     config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
     assert maybe_handle_calendar_booking(inbound=inbound, config=config) is None
     assert CalendarBookingDraft.objects.get(conversation=conv).status == "cancelled"
+
+
+def test_parse_day_period_ignores_buenas_tardes_greeting():
+    from apps.calendar_app.booking_ai import _parse_day_period
+
+    assert _parse_day_period("Buenas tardes") is None
+    assert _parse_day_period("Buenas tardes\nCrear página web") is None
+    assert _parse_day_period("en la tarde") == "afternoon"
+    assert _parse_day_period("por la mañana") == "morning"
+
+
+def test_scheduling_affirmation_rejects_product_yes():
+    from apps.calendar_app.booking_ai import _is_scheduling_affirmation
+
+    assert _is_scheduling_affirmation("Dale")
+    assert _is_scheduling_affirmation("sí")
+    assert _is_scheduling_affirmation("ok dale")
+    assert not _is_scheduling_affirmation("Si con carrito")
+    assert not _is_scheduling_affirmation("Básica, para vender un producto")
+
+
+@pytest.mark.django_db
+def test_greeting_plus_product_does_not_ask_meeting_day(monkeypatch):
+    """Regression Angie: 'Buenas tardes / Crear página web' must not open booking."""
+    from apps.ai_config.models import AIConfiguration
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Angie", last_name="P")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Buenas tardes\nCrear página web",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is None
+    assert not CalendarBookingDraft.objects.filter(conversation=conv, status="pending_day").exists()
+
+
+@pytest.mark.django_db
+def test_product_yes_mid_funnel_exits_instead_of_reasking_day(monkeypatch):
+    """'Si con carrito' while pending_day must leave the funnel for normal AI."""
+    from apps.ai_config.models import AIConfiguration
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Angie", last_name="P")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    CalendarBookingDraft.objects.create(
+        conversation=conv,
+        status="pending_day",
+        timezone="America/Bogota",
+        duration_minutes=30,
+    )
+    Message.objects.create(
+        conversation=conv,
+        sender_type="ai_bot",
+        content="¿Qué día te queda bien que tengamos nuestra reunión?",
+        message_type="text",
+        status="sent",
+        is_ai_generated=True,
+        ai_context_used={"calendar_waiting_day": True},
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="Si con carrito",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
+    assert reply is None
+    assert CalendarBookingDraft.objects.get(conversation=conv).status == "cancelled"
