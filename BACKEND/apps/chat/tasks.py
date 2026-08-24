@@ -14,6 +14,7 @@ from apps.ai_config.services import (
     moderate_openai_text,
 )
 from apps.calendar_app.booking_ai import (
+    client_may_start_booking,
     contains_external_booking_link,
     conversation_has_confirmed_booking,
     is_google_calendar_ready,
@@ -171,27 +172,46 @@ def _generate_ai_reply_locked(*, inbound: Message, conv: Conversation) -> None:
     if not result.text:
         return
 
-    # Never let the LLM dump Calendly / invented slots — start the day-first booking funnel.
-    # If a meeting is already confirmed, do not reopen the funnel.
-    if (
-        is_google_calendar_ready()
-        and not conversation_has_confirmed_booking(conv)
-        and (contains_external_booking_link(result.text) or looks_like_invented_slot_offer(result.text))
-    ):
-        logger.info(
-            "LLM proposed external/invented booking options for conv %s; asking preferred day instead",
-            conv.id,
+    # Never let the LLM dump Calendly / invented slots.
+    # External booking links: always redirect into the real calendar funnel.
+    # Invented slot lists: only open the funnel if the CLIENT already asked to schedule;
+    # otherwise keep a commercial reply without forcing "¿qué día...?".
+    if is_google_calendar_ready() and not conversation_has_confirmed_booking(conv):
+        client_wants_booking = client_may_start_booking(
+            text=inbound.content or "",
+            conversation=conv,
         )
-        calendar_reply = start_booking_by_asking_day(inbound=inbound)
-        if calendar_reply:
-            if not _should_persist_ai_reply(inbound, exclude_reply_id=str(calendar_reply.id)):
-                Message.objects.filter(pk=calendar_reply.pk).update(is_active=False, updated_at=timezone.now())
-                latest = latest_contact_message(conv.id)
-                if latest and str(latest.id) != str(inbound.id):
-                    generate_ai_reply_for_message.delay(str(latest.id))
+        has_external_link = contains_external_booking_link(result.text)
+        invented_slots = looks_like_invented_slot_offer(result.text)
+        if has_external_link or (invented_slots and client_wants_booking):
+            logger.info(
+                "LLM proposed external/invented booking options for conv %s; asking preferred day instead",
+                conv.id,
+            )
+            calendar_reply = start_booking_by_asking_day(inbound=inbound)
+            if calendar_reply:
+                if not _should_persist_ai_reply(inbound, exclude_reply_id=str(calendar_reply.id)):
+                    Message.objects.filter(pk=calendar_reply.pk).update(is_active=False, updated_at=timezone.now())
+                    latest = latest_contact_message(conv.id)
+                    if latest and str(latest.id) != str(inbound.id):
+                        generate_ai_reply_for_message.delay(str(latest.id))
+                    return
+                _enqueue_whatsapp_if_needed(conv, calendar_reply)
                 return
-            _enqueue_whatsapp_if_needed(conv, calendar_reply)
-            return
+        if invented_slots and not client_wants_booking:
+            logger.info(
+                "LLM invented slots without client schedule intent for conv %s; sanitizing reply",
+                conv.id,
+            )
+            result = CompletionResult(
+                text=(
+                    "Perfecto. Cuando quieras agendar una reunión con el equipo, "
+                    "dímelo y te muestro horarios reales por aquí (sin links externos)."
+                ),
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+                total_tokens=result.total_tokens,
+            )
 
     # Client may have sent another message while the LLM was running.
     if not _should_persist_ai_reply(inbound):

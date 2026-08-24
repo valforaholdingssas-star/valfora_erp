@@ -1255,3 +1255,114 @@ def test_product_yes_mid_funnel_exits_instead_of_reasking_day(monkeypatch):
     reply = maybe_handle_calendar_booking(inbound=inbound, config=config)
     assert reply is None
     assert CalendarBookingDraft.objects.get(conversation=conv).status == "cancelled"
+
+
+def test_weak_keywords_do_not_count_as_schedule_intent():
+    from apps.calendar_app.booking_ai import (
+        _has_schedule_intent,
+        _can_enter_booking_funnel,
+        _is_scheduling_affirmation,
+        _has_concrete_schedule_slot,
+    )
+
+    assert not _has_schedule_intent("¿Está disponible el plan básico?")
+    assert not _has_schedule_intent("¿Cuál es su horario de atención?")
+    assert not _has_schedule_intent("Buenas tardes crear página web")
+    assert not _has_schedule_intent("Si con carrito")
+    assert _has_schedule_intent("Quiero agendar una reunión")
+    assert _has_schedule_intent("Podemos vernos esta semana?")
+    assert _has_schedule_intent("Me gustaría una cita")
+    assert _has_concrete_schedule_slot("El martes en la tarde")
+    assert _has_concrete_schedule_slot("viernes a las 3pm")
+    assert not _has_concrete_schedule_slot("el viernes en la tarde me pagan el sueldo completo ya")
+    assert not _is_scheduling_affirmation("perfecto")
+    assert not _is_scheduling_affirmation("listo")
+    assert not _is_scheduling_affirmation("claro")
+
+
+@pytest.mark.django_db
+def test_soft_cta_plus_ok_does_not_open_booking(monkeypatch):
+    """Soft 'asesoría' mention must NOT make a lone 'ok' start the funnel."""
+    from apps.ai_config.models import AIConfiguration
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Soft", last_name="Cta")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    Message.objects.create(
+        conversation=conv,
+        sender_type="ai_bot",
+        content="Claro, te puedo ayudar con una asesoría cuando lo necesites.",
+        message_type="text",
+        status="sent",
+        is_ai_generated=True,
+    )
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="ok",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    assert maybe_handle_calendar_booking(inbound=inbound, config=config) is None
+
+
+@pytest.mark.django_db
+def test_bare_weekday_does_not_open_booking(monkeypatch):
+    from apps.ai_config.models import AIConfiguration
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Day", last_name="Only")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    inbound = Message.objects.create(
+        conversation=conv,
+        sender_type="contact",
+        content="El martes tengo otra junta",
+        message_type="text",
+        status="delivered",
+    )
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    assert maybe_handle_calendar_booking(inbound=inbound, config=config) is None
+
+
+@pytest.mark.django_db
+def test_disponible_horario_do_not_open_booking(monkeypatch):
+    from apps.ai_config.models import AIConfiguration
+
+    monkeypatch.setattr("apps.calendar_app.booking_nlu.resolve_openai_api_key", lambda: None)
+    monkeypatch.setattr("apps.calendar_app.booking_ai.resolve_openai_api_key", lambda: None)
+    AIRuntimeSettings.objects.create(
+        google_calendar_enabled=True,
+        google_calendar_id="team@example.com",
+        google_calendar_timezone="America/Bogota",
+        google_slot_minutes=30,
+        google_service_account_json='{"client_email":"sa@x.iam.gserviceaccount.com","private_key":"x","token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    contact = Contact.objects.create(first_name="Weak", last_name="Kw")
+    conv = Conversation.objects.create(contact=contact, channel="whatsapp", ai_mode_enabled=True)
+    config = AIConfiguration.objects.create(name="default", is_default=True, llm_model="gpt-4o-mini")
+    for content in ("está disponible?", "cuál es su horario?", "tienen disponibilidad"):
+        inbound = Message.objects.create(
+            conversation=conv,
+            sender_type="contact",
+            content=content,
+            message_type="text",
+            status="delivered",
+        )
+        assert maybe_handle_calendar_booking(inbound=inbound, config=config) is None

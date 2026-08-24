@@ -33,43 +33,54 @@ logger = logging.getLogger(__name__)
 WORKDAY_START_HOUR = 9
 WORKDAY_END_HOUR = 18
 
+# Weak words like "disponible"/"horario" alone used to open the funnel on product talk.
+# Intent must be an explicit scheduling phrase (word/phrase boundaries).
+_SCHEDULE_INTENT_RE = re.compile(
+    r"(?:"
+    r"\b(agendar|agendemos|agendame|agéndame|agendamos|reagendar|reagendemos)\b|"
+    r"\b(cita|citas)\b|"
+    r"\b(reunion|reunión|reuniones|reunirnos|reunamonos|reunámonos|reunamos)\b|"
+    r"\b(llamada|llamadas|llamame|llámame|videollamada|videocall)\b|"
+    r"\b(google\s*meet|zoom|teams)\b|"
+    r"\b(asesoria|asesoría)\s+(agend|virtual|telefon|llam|meet)\w*|"
+    r"\b(quiero|quisiera|me\s+gustaria|me\s+gustaría|podemos|podriamos|podríamos|"
+    r"deseo|necesito)\s+(una\s+|la\s+)?(cita|reunion|reunión|llamada|asesoria|asesoría)\b|"
+    r"\b(podemos|podriamos|podríamos|quiero|quisiera)\s+(hablar|vernos|reunir(nos)?|agendar)\b|"
+    r"\b(cuando\s+(podemos|podemos|podriamos|podríamos)\s+(hablar|reunir|vernos))|"
+    r"\b(te\s+queda\s+(bien|libre)\b).{0,40}\b(reun|habl|llam|cita|agend)|"
+    r"\b(horario|disponib\w*)\s+(para\s+)?(reun|habl|llam|cita|agend|asesor)"
+    r")",
+    re.I,
+)
+
+# Kept for legacy callers / tests that still iterate keywords.
 SCHEDULE_KEYWORDS = (
     "agendar",
-    "agenda",
+    "agendemos",
     "cita",
     "reunión",
     "reunion",
-    "horario",
-    "disponible",
-    "disponibilidad",
-    "llamar",
     "llamada",
+    "videollamada",
     "videocall",
-    "meet",
+    "google meet",
 )
 
+# Only clear short "yes" answers after an EXPLICIT meeting invite.
+# Avoid commercial fillers: bueno/listo/perfecto/claro/va alone.
 AFFIRM_SCHEDULE_PHRASES = (
     "dale",
     "ok",
     "okay",
-    "va",
-    "vamos",
-    "listo",
-    "perfecto",
-    "de acuerdo",
-    "claro",
     "si",
     "sí",
     "sip",
     "sep",
-    "bueno",
+    "de acuerdo",
+    "por supuesto",
     "hagamoslo",
     "hagámoslo",
-    "me sirve",
     "me late",
-    "por supuesto",
-    "sale",
-    "hecho",
     "si quiero",
     "sí quiero",
     "si por favor",
@@ -81,6 +92,24 @@ AFFIRM_SCHEDULE_PHRASES = (
     "vamos a eso",
     "quiero agendar",
     "agendemos",
+    "agendemos pues",
+)
+
+# Assistant message must look like a real booking invitation, not a soft CTA.
+_EXPLICIT_MEETING_INVITE_RE = re.compile(
+    r"(?:"
+    r"qu[eé]\s+d[ií]a\s+te\s+queda|"
+    r"agendemos(\s+una)?\s+(reuni[oó]n|cita|llamada|asesor[ií]a)|"
+    r"te\s+propongo\s+(que\s+)?(agend|reun)|"
+    r"tenemos\s+(una\s+)?(reuni[oó]n|cita|llamada)|"
+    r"reuni[oó]n\s+de\s+\d+\s*minutos|"
+    r"\b30\s*minutos\b.{0,80}\b(reuni|asesor|cita|agend)|"
+    r"google\s*meet|"
+    r"te\s+(gustar[ií]a|parece)\s+(que\s+)?(agend|reun|habl)|"
+    r"podemos\s+agendar|"
+    r"coordinamos\s+(una\s+)?(cita|reuni|llamada)"
+    r")",
+    re.I,
 )
 
 EXTERNAL_BOOKING_LINK_RE = re.compile(
@@ -281,9 +310,11 @@ def google_calendar_system_policy(*, conversation=None) -> str:
         "NUNCA envíes ni inventes links de Calendly, Cal.com ni ningún enlace externo de reserva.\n"
         "NUNCA digas “te paso el link” ni menciones herramientas externas de agenda.\n"
         "NUNCA inventes horarios ni listas de disponibilidad: el backend consulta el calendario real.\n"
+        "NUNCA preguntes ‘qué día te queda bien’ ni ofrezcas reunirte si el cliente solo saluda, "
+        "pide información o describe un producto/servicio. Primero califica la necesidad.\n"
         "Hay una capa NLU: el cliente puede hablar en lenguaje natural; el backend interpreta y agenda.\n"
-        "Flujo: 1) si acepta reunirse, se pregunta el día; 2) mañana o tarde; 3) slots reales; "
-        "4) correo para invitación Meet. No adelantes pasos ni inventes opciones."
+        "Flujo: 1) SOLO si el cliente acepta o pide reunirse, se pregunta el día; 2) mañana o tarde; "
+        "3) slots reales; 4) correo para invitación Meet. No adelantes pasos ni inventes opciones."
         f"{extra}"
     )
 
@@ -411,31 +442,21 @@ def maybe_handle_calendar_booking(*, inbound: Message, config: AIConfiguration) 
             model=config.llm_model,
         )
 
-    # Idle: only start when NLU says so (or strong deterministic start).
+    # Idle: only enter with STRONG schedule signal — never day/period alone,
+    # never LLM start_booking alone, never soft keywords (disponible/horario).
     start_actions = {"provide_day", "provide_datetime", "defer_week", "provide_period"}
     wants_start = interp.get("action") == "start_booking" or (
         interp.get("related") and interp.get("action") in start_actions
     )
-    if wants_start:
-        # Hard gate: greetings/product talk must never open the funnel.
-        # Regression: "Buenas tardes\nCrear página web" used to parse "tardes" as
-        # period=afternoon and jump to "¿qué día te queda bien...?".
+    if wants_start and _can_enter_booking_funnel(text=text, conversation=conv, interp=interp):
+        # Reuse the OneToOne draft row (cancelled/confirmed included) — never INSERT a duplicate.
+        draft = _ensure_booking_draft(conversation=conv, runtime=runtime, draft=draft)
         has_day_or_time = bool(
             interp.get("weekday")
             or interp.get("date_iso")
             or interp.get("time_hhmm")
             or int(interp.get("week_offset_days") or 0)
         )
-        recent_invite = _recent_assistant_invited_meeting(conv)
-        if not (
-            _has_schedule_intent(text)
-            or has_day_or_time
-            or (_is_scheduling_affirmation(text) and recent_invite)
-        ):
-            return None
-
-        # Reuse the OneToOne draft row (cancelled/confirmed included) — never INSERT a duplicate.
-        draft = _ensure_booking_draft(conversation=conv, runtime=runtime, draft=draft)
         has_concrete = bool(
             interp.get("weekday")
             or interp.get("date_iso")
@@ -520,9 +541,15 @@ def _deterministic_booking_hint(
     # While waiting for morning/afternoon, "mañana" means morning — NEVER tomorrow.
     if period and (draft_status == "pending_period" or bare_period):
         hint.update({"related": True, "action": "provide_period", "period": period})
-    elif period and draft_status in {"pending_day", "pending_selection", "idle"}:
+    elif period and draft_status in {"pending_day", "pending_selection"}:
         hint.setdefault("related", True)
         hint.setdefault("action", "provide_period")
+        hint["period"] = period
+    elif period and draft_status == "idle" and (
+        _has_schedule_intent(text) or _has_concrete_schedule_slot(text)
+    ):
+        # "El martes en la tarde" from idle: keep period with the day signal.
+        hint.setdefault("related", True)
         hint["period"] = period
 
     preferred = _parse_preferred_datetime(text, tz_name=tz_name)
@@ -538,13 +565,18 @@ def _deterministic_booking_hint(
         )
     elif not (draft_status == "pending_period" and (bare_period or period)):
         # Skip mañana→tomorrow when the funnel is asking for period of day.
+        # From idle, only accept day hints when the utterance is booking-shaped.
         day = _parse_preferred_day(
             text,
             tz_name=tz_name,
             week_offset_days=int((draft.metadata or {}).get("week_offset_days") or 0) if draft else 0,
             interpret_manana_as_tomorrow=draft_status != "pending_period",
         )
-        if day:
+        if day and (
+            draft_status != "idle"
+            or _has_schedule_intent(text)
+            or _has_concrete_schedule_slot(text)
+        ):
             hint.update(
                 {
                     "related": True,
@@ -553,6 +585,8 @@ def _deterministic_booking_hint(
                     "weekday": _WEEKDAYS_ES[day.weekday()],
                 }
             )
+            if period:
+                hint["period"] = period
 
     if offered_slots:
         chosen = _pick_slot_from_text(
@@ -1854,15 +1888,55 @@ def _parse_email_from_text(text: str) -> str | None:
 
 
 def _has_schedule_intent(text: str) -> bool:
-    """True when the utterance explicitly talks about scheduling (word-boundary match)."""
-    low = _fold_es(text)
-    for keyword in SCHEDULE_KEYWORDS:
-        folded = _fold_es(keyword)
-        if not folded:
-            continue
-        if re.search(rf"\b{re.escape(folded)}\b", low):
+    """True only when the utterance explicitly asks to schedule (strong phrases)."""
+    low = _fold_es(text or "")
+    if not low.strip():
+        return False
+    return bool(_SCHEDULE_INTENT_RE.search(low) or _SCHEDULE_INTENT_RE.search(text or ""))
+
+
+def _has_concrete_schedule_slot(text: str) -> bool:
+    """Day/date + clock time, or a short day+period utterance (booking-shaped)."""
+    low = (text or "").lower()
+    has_day = bool(
+        _find_weekday_in_text(low)
+        or re.search(r"\b\d{1,2}[/-]\d{1,2}\b", low)
+        or re.search(r"\b(hoy|pasado\s+mañana|pasado\s+manana)\b", low)
+    )
+    if not has_day:
+        return False
+    if _message_has_explicit_time(text):
+        return True
+    # "el martes en la tarde" — short and clearly a slot preference.
+    # Reject longer commercial sentences that only mention a weekday + "tarde".
+    if _parse_day_period(text):
+        tokens = _normalize_affirmation(text).split()
+        if 2 <= len(tokens) <= 6:
             return True
     return False
+
+
+def _can_enter_booking_funnel(*, text: str, conversation, interp: dict | None = None) -> bool:
+    """Hard gate before opening pending_day from idle.
+
+    Allowed only when:
+    - explicit schedule language, or
+    - day/date + clock time (or short day+period), or
+    - short yes after an EXPLICIT assistant meeting invite.
+    Bare weekdays, greetings, product talk, or LLM start_booking alone are rejected.
+    """
+    if _has_schedule_intent(text):
+        return True
+    if _has_concrete_schedule_slot(text):
+        return True
+    if _is_scheduling_affirmation(text) and _recent_assistant_invited_meeting(conversation):
+        return True
+    return False
+
+
+def client_may_start_booking(*, text: str, conversation) -> bool:
+    """Public gate used by chat tasks before forcing the calendar funnel."""
+    return _can_enter_booking_funnel(text=text, conversation=conversation)
 
 
 def _normalize_affirmation(text: str) -> str:
@@ -1887,23 +1961,24 @@ def _is_scheduling_affirmation(text: str) -> bool:
         "dale",
         "ok",
         "okay",
-        "va",
-        "listo",
-        "perfecto",
-        "claro",
-        "sale",
-        "bueno",
-        "hecho",
-        "sep",
         "sip",
+        "sep",
     }:
         return True
     return False
 
 
 def _looks_like_slot_choice(text: str) -> bool:
+    """True for choosing an offered clock time — not bare digits like '2 productos'."""
     low = (text or "").lower()
-    return bool(re.search(r"\b\d{1,2}([:/.]\d{2})?\b", low) or any(d in low for d in _WEEKDAYS_ES))
+    if re.search(r"\b\d{1,2}:\d{2}\b", low):
+        return True
+    if re.search(r"\b\d{1,2}\s*(am|pm)\b", low):
+        return True
+    # "la de las 3" / "a las 10" while slots are offered
+    if re.search(r"\ba\s+las?\s+\d{1,2}\b", low):
+        return True
+    return False
 
 
 def _is_explicit_reschedule_intent(text: str) -> bool:
@@ -1934,6 +2009,7 @@ def _looks_like_already_booked_claim(text: str) -> bool:
 
 
 def _recent_assistant_invited_meeting(conv) -> bool:
+    """True only after an explicit booking invite, not a soft 'asesoría' mention."""
     if conversation_has_confirmed_booking(conv):
         return False
     recent = (
@@ -1944,8 +2020,9 @@ def _recent_assistant_invited_meeting(conv) -> bool:
         ctx = msg.ai_context_used or {}
         if ctx.get("calendar_booking_confirmed"):
             return False
-        low = (msg.content or "").lower()
-        if any(k in low for k in ("agend", "reunión", "reunion", "cita", "30 minutos", "asesoría", "asesoria")):
+        if ctx.get("calendar_waiting_day") or ctx.get("calendar_waiting_period") or ctx.get("calendar_waiting_day_or_period"):
+            return True
+        if _EXPLICIT_MEETING_INVITE_RE.search(msg.content or ""):
             return True
     return False
 
@@ -2072,12 +2149,9 @@ def _infer_calendar_intent(*, user_text: str, model: str) -> dict:
     Deterministic intent only — LLM classification caused false calendar starts
     on messages like "quiero más información".
     """
-    low = (user_text or "").lower()
-    if any(k in low for k in SCHEDULE_KEYWORDS):
+    if _has_schedule_intent(user_text):
         return {"intent": "check_availability", "slot_iso": None}
-    if _message_has_explicit_time(user_text) or (
-        _looks_like_slot_choice(user_text) and any(d in low for d in _WEEKDAYS_ES)
-    ):
+    if _has_concrete_schedule_slot(user_text):
         return {"intent": "book_slot", "slot_iso": None}
     return {"intent": "none", "slot_iso": None}
 
