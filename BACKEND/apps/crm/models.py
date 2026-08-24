@@ -357,6 +357,7 @@ class LeadEngineConfig(BaseModel):
     public_ingest_enabled = models.BooleanField(default=False)
     public_ingest_api_key = EncryptedTextField(blank=True)
     public_ingest_allowed_origins = models.JSONField(default=list, blank=True)
+    public_ingest_pipeline_stage = models.CharField(max_length=50, default="web", blank=True)
     auto_response_template = models.ForeignKey(
         "whatsapp.WhatsAppTemplate",
         on_delete=models.SET_NULL,

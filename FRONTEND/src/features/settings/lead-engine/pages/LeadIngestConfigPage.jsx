@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Form, Spinner } from "react-bootstrap";
 
+import { fetchPipelineStages } from "../../../../api/crm.js";
 import useLeadEngineConfig from "../hooks/useLeadEngineConfig.js";
 
 const DEFAULT_ORIGINS = ["https://3orillas.com", "https://www.3orillas.com"];
@@ -27,12 +28,19 @@ const LeadIngestConfigPage = () => {
   const { leadConfig, loading, saveLeadConfig } = useLeadEngineConfig();
   const [form, setForm] = useState({});
   const [originsText, setOriginsText] = useState(originsToText(DEFAULT_ORIGINS));
+  const [pipelineStages, setPipelineStages] = useState([]);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
   const apiBase = useMemo(() => {
     if (typeof window === "undefined") return "/api/v1/crm/leads/ingest/";
     return `${window.location.origin}/api/v1/crm/leads/ingest/`;
+  }, []);
+
+  useEffect(() => {
+    fetchPipelineStages({ page_size: 200 })
+      .then((payload) => setPipelineStages(payload?.results || payload || []))
+      .catch(() => setPipelineStages([]));
   }, []);
 
   useEffect(() => {
@@ -133,6 +141,22 @@ const LeadIngestConfigPage = () => {
                 </div>
                 <Form.Text className="text-muted">
                   Esta key no sirve para el resto del ERP. Úsala en <code>X-Lead-Ingest-Key</code> desde 3orillas.com.
+                </Form.Text>
+              </Form.Group>
+              <Form.Group className="mb-3">
+                <Form.Label>Columna del pipeline</Form.Label>
+                <Form.Select
+                  value={form.public_ingest_pipeline_stage || "web"}
+                  onChange={(e) => setForm((p) => ({ ...p, public_ingest_pipeline_stage: e.target.value }))}
+                >
+                  {(pipelineStages.length ? pipelineStages : [{ key: "web", name: "LEADS PG WEB" }]).map((stage) => (
+                    <option key={stage.key || stage.id} value={stage.key}>
+                      {stage.name}
+                    </option>
+                  ))}
+                </Form.Select>
+                <Form.Text className="text-muted">
+                  Los leads del endpoint se crearán (o moverán) automáticamente a esta columna.
                 </Form.Text>
               </Form.Group>
               <Form.Group className="mb-3">

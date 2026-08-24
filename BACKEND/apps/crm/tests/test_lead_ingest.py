@@ -7,7 +7,7 @@ import json
 import pytest
 from rest_framework.test import APIClient
 
-from apps.crm.models import Activity, Contact, Deal, LeadEngineConfig
+from apps.crm.models import Activity, Contact, Deal, LeadEngineConfig, PipelineStage
 
 
 def _body(response):
@@ -19,10 +19,20 @@ def _body(response):
 def ingest_config(db):
     """Enable public ingest with a known API key."""
 
+    PipelineStage.objects.get_or_create(
+        key="web",
+        defaults={
+            "name": "LEADS PG WEB",
+            "position": 99,
+            "accent_color": "#ef4444",
+            "tint_color": "rgba(239, 68, 68, 0.14)",
+        },
+    )
     cfg = LeadEngineConfig.objects.create(
         public_ingest_enabled=True,
         public_ingest_api_key="test-ingest-key-123",
         public_ingest_allowed_origins=["https://3orillas.com", "https://www.3orillas.com"],
+        public_ingest_pipeline_stage="web",
         auto_create_contact=True,
         auto_create_deal=True,
         auto_create_follow_up=True,
@@ -64,6 +74,7 @@ def test_public_lead_ingest_creates_contact_and_deal(ingest_config):
     assert Contact.objects.filter(email="lead.web@example.com").exists()
     deal = Deal.objects.get(contact__email="lead.web@example.com")
     assert deal.title.startswith("Lead Web -")
+    assert deal.stage == "web"
     assert Activity.objects.filter(contact__email="lead.web@example.com").exists()
 
 

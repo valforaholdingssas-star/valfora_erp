@@ -207,6 +207,7 @@ class LeadEngine:
                 contact=contact,
                 source=source,
                 title_override=deal_title or None,
+                pipeline_stage=self.resolve_public_ingest_stage(),
             )
 
         if deal:
@@ -404,6 +405,51 @@ class LeadEngine:
             return existing
         return Company.objects.create(name=label)
 
+    def resolve_public_ingest_stage(self) -> str:
+        """Return configured pipeline column for leads submitted via public web forms."""
+
+        from apps.crm.pipeline_automation import PipelineAutomationService
+
+        configured = (self.config.public_ingest_pipeline_stage or "web").strip()
+        normalized = PipelineAutomationService.normalize_stage(configured)
+        stage_map = PipelineAutomationService.get_stage_map()
+        if normalized in stage_map:
+            return normalized
+        fallback = PipelineAutomationService.normalize_stage(self.config.default_deal_pipeline_stage)
+        if fallback in stage_map:
+            return fallback
+        return normalized
+
+    def _assign_deal_to_stage(
+        self,
+        *,
+        deal: Deal,
+        to_stage: str,
+        notes: str,
+    ) -> Deal:
+        """Move deal directly to a pipeline stage (including custom columns)."""
+
+        from apps.crm.models import DealStageHistory
+        from apps.crm.pipeline_automation import PipelineAutomationService
+
+        target = PipelineAutomationService.normalize_stage(to_stage)
+        current = PipelineAutomationService.normalize_stage(deal.stage)
+        if current == target:
+            return deal
+        if target not in PipelineAutomationService.get_stage_map():
+            return deal
+        deal.stage = target
+        deal.save(update_fields=["stage", "updated_at"])
+        DealStageHistory.objects.create(
+            deal=deal,
+            from_stage=current,
+            to_stage=target,
+            moved_by=None,
+            trigger="lead_created",
+            notes=notes,
+        )
+        return deal
+
     def _build_deal_title(self, *, contact: Contact, source: str, title_override: str | None = None) -> str:
         """Build a human-readable deal title based on lead source."""
 
@@ -439,7 +485,15 @@ class LeadEngine:
         if deal_title or "WhatsApp" in deal.title or deal.title.startswith("Lead WhatsApp"):
             deal.title = expected_title
             update_fields.append("title")
-        deal.save(update_fields=update_fields)
+        if update_fields:
+            deal.save(update_fields=update_fields)
+        target_stage = self.resolve_public_ingest_stage()
+        if deal.stage != target_stage:
+            deal = self._assign_deal_to_stage(
+                deal=deal,
+                to_stage=target_stage,
+                notes="Lead ubicado en columna de formulario web",
+            )
         return deal
 
     def find_or_create_open_deal(
@@ -448,6 +502,7 @@ class LeadEngine:
         contact: Contact,
         source: str,
         title_override: str | None = None,
+        pipeline_stage: str | None = None,
     ) -> tuple[Deal | None, bool]:
         """Return an open deal for the contact or create one for inbound web leads."""
 
@@ -466,7 +521,9 @@ class LeadEngine:
         if not self.config.auto_create_deal:
             return None, False
 
-        stage = PipelineAutomationService.normalize_stage(self.config.default_deal_pipeline_stage)
+        stage = PipelineAutomationService.normalize_stage(
+            pipeline_stage or self.config.default_deal_pipeline_stage,
+        )
         title = self._build_deal_title(contact=contact, source=source, title_override=title_override)
         deal = Deal.objects.create(
             title=title,
