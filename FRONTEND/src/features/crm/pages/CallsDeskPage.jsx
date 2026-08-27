@@ -8,6 +8,7 @@ import {
   fetchDealCallsCalendar,
   fetchDeals,
   fetchPipelineStages,
+  moveDealStage,
 } from "../../../api/crm.js";
 import { fetchUsers } from "../../../api/users.js";
 import LogDealCallModal from "../components/LogDealCallModal.jsx";
@@ -16,6 +17,11 @@ import { resolveUserDisplayName } from "../utils/formatters.js";
 
 const CALL_STAGE_KEY = "realizar_llamada";
 const QUEUE_PAGE_SIZE = 10;
+const QUICK_OUTCOMES = [
+  { stage: "closed_lost", label: "Cerrar lead", variant: "outline-danger" },
+  { stage: "unanswered", label: "Sin respuesta", variant: "outline-secondary" },
+  { stage: "closed_won", label: "Ganado", variant: "outline-success" },
+];
 
 const DEAL_SOURCES = [
   ["", "Todos los orígenes"],
@@ -115,6 +121,7 @@ const CallsDeskPage = () => {
   const [quickEditDeal, setQuickEditDeal] = useState(null);
   const [logCallDeal, setLogCallDeal] = useState(null);
   const [detailCall, setDetailCall] = useState(null);
+  const [movingDealId, setMovingDealId] = useState(null);
 
   const loadMeta = useCallback(async () => {
     const [usersData, companiesData, stagesData] = await Promise.all([
@@ -278,11 +285,15 @@ const CallsDeskPage = () => {
 
   const handleCallLogged = async (_call, deal) => {
     if (deal?.id) {
-      setDeals((prev) =>
-        prev.map((row) =>
-          row.id === deal.id ? { ...row, calls_count: Number(row.calls_count || 0) + 1 } : row,
-        ),
-      );
+      if (deal.stage && deal.stage !== CALL_STAGE_KEY) {
+        handleDealSaved(deal);
+      } else {
+        setDeals((prev) =>
+          prev.map((row) =>
+            row.id === deal.id ? { ...row, calls_count: Number(row.calls_count || 0) + 1 } : row,
+          ),
+        );
+      }
     }
     try {
       await Promise.all([
@@ -317,6 +328,28 @@ const CallsDeskPage = () => {
       ),
     );
   };
+
+  const handleQuickMove = async (deal, toStage) => {
+    if (!deal?.id || !toStage) return;
+    setMovingDealId(deal.id);
+    setError("");
+    try {
+      const updated = await moveDealStage(deal.id, {
+        to_stage: toStage,
+        notes: `Movido desde escritorio de llamadas → ${toStage}`,
+      });
+      handleDealSaved(updated || { ...deal, stage: toStage });
+    } catch (err) {
+      setError(extractApiError(err, "No se pudo mover el lead a la etapa seleccionada."));
+    } finally {
+      setMovingDealId(null);
+    }
+  };
+
+  const stageLabelByKey = useMemo(
+    () => Object.fromEntries((stages || []).map((stage) => [stage.id, stage.title])),
+    [stages],
+  );
 
   if (loading && !deals.length && !recentCalls.length) {
     return (
@@ -426,10 +459,22 @@ const CallsDeskPage = () => {
                         </td>
                         <td className="small text-muted">{truncate(deal.business_notes, 90)}</td>
                         <td>
-                          <div className="crm-table-actions">
+                          <div className="crm-table-actions flex-wrap">
                             <Button size="sm" variant="outline-warning" onClick={() => setLogCallDeal(deal)}>
                               Registrar llamada
                             </Button>
+                            {QUICK_OUTCOMES.map((outcome) => (
+                              <Button
+                                key={outcome.stage}
+                                size="sm"
+                                variant={outcome.variant}
+                                disabled={movingDealId === deal.id}
+                                onClick={() => handleQuickMove(deal, outcome.stage)}
+                                title={`Mover a ${stageLabelByKey[outcome.stage] || outcome.label}`}
+                              >
+                                {movingDealId === deal.id ? "..." : outcome.label}
+                              </Button>
+                            ))}
                             <Button size="sm" variant="outline-primary" onClick={() => setQuickEditDeal(deal)}>
                               Editar
                             </Button>
@@ -614,6 +659,7 @@ const CallsDeskPage = () => {
       <LogDealCallModal
         show={Boolean(logCallDeal)}
         deal={logCallDeal}
+        stages={stages}
         onHide={() => setLogCallDeal(null)}
         onLogged={handleCallLogged}
       />

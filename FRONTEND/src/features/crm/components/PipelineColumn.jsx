@@ -1,5 +1,4 @@
 import PropTypes from "prop-types";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 
 import DealCard from "./DealCard.jsx";
@@ -9,24 +8,26 @@ const PipelineColumn = ({
   deals,
   stageTotal,
   isOver: isOverProp = false,
+  activeDealId = null,
+  justMovedDealId = null,
+  droppable = true,
   onCreateActivity,
   onCreateDeal,
   onQuickEdit,
   onLogCall,
-  sortable = true,
 }) => {
   const { setNodeRef, isOver: isDroppableOver } = useDroppable({
     id: stage.id,
     data: { type: "column", stageId: stage.id },
-    disabled: !sortable,
+    disabled: !droppable,
   });
   const isOver = Boolean(isOverProp || isDroppableOver);
-  const dealIds = deals.map((d) => d.id).filter(Boolean);
 
   return (
     <div
       className={`crm-stage-column ${isOver ? "is-over" : ""}`}
       style={{ "--stage-accent": stage.accent, "--stage-tint": stage.tint }}
+      data-stage-id={stage.id}
     >
       <div className="crm-stage-column-accent" />
       <div className="crm-stage-column-header">
@@ -38,6 +39,7 @@ const PipelineColumn = ({
             </span>
           </div>
           <div className="crm-stage-column-total">{stageTotal} pipeline</div>
+          {isOver ? <div className="crm-stage-drop-hint">Soltar aquí</div> : null}
         </div>
         <div className="crm-stage-column-actions">
           <button
@@ -52,39 +54,36 @@ const PipelineColumn = ({
         </div>
       </div>
       <div ref={setNodeRef} className="crm-stage-column-body">
-        {sortable ? (
-          <SortableContext items={dealIds} strategy={verticalListSortingStrategy} id={`sortable-${stage.id}`}>
-            {deals.map((deal, index) => (
+        {deals.map((deal, index) => {
+          const dealId = String(deal.id);
+          const isActive = activeDealId && dealId === String(activeDealId);
+          const isJustMoved = justMovedDealId && dealId === String(justMovedDealId);
+          return (
+            <div
+              key={deal.id}
+              className={[
+                "crm-deal-card-slot",
+                isActive ? "is-active-source" : "",
+                isJustMoved ? "is-just-moved" : "",
+              ].filter(Boolean).join(" ")}
+            >
+              {isActive ? <div className="crm-deal-card-ghost">Moviendo…</div> : null}
               <DealCard
-                key={deal.id}
                 deal={deal}
                 stageAccent={stage.accent}
                 onCreateActivity={onCreateActivity}
                 onQuickEdit={onQuickEdit}
                 onLogCall={onLogCall}
                 orderIndex={index}
-                sortable
+                draggable={droppable}
               />
-            ))}
-          </SortableContext>
-        ) : (
-          deals.map((deal, index) => (
-            <DealCard
-              key={deal.id}
-              deal={deal}
-              stageAccent={stage.accent}
-              onCreateActivity={onCreateActivity}
-              onQuickEdit={onQuickEdit}
-              onLogCall={onLogCall}
-              orderIndex={index}
-              sortable={false}
-            />
-          ))
-        )}
+            </div>
+          );
+        })}
         {!deals.length ? (
           <div className="crm-stage-empty">
             <i className="bi bi-inbox" />
-            <span>{sortable ? "Suelta un deal aquí" : "Sin deals para este filtro"}</span>
+            <span>{droppable ? "Suelta un deal aquí" : "Sin deals para este filtro"}</span>
           </div>
         ) : null}
       </div>
@@ -102,11 +101,13 @@ PipelineColumn.propTypes = {
   deals: PropTypes.arrayOf(PropTypes.object).isRequired,
   stageTotal: PropTypes.string.isRequired,
   isOver: PropTypes.bool,
+  activeDealId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  justMovedDealId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  droppable: PropTypes.bool,
   onCreateActivity: PropTypes.func,
   onCreateDeal: PropTypes.func,
   onQuickEdit: PropTypes.func,
   onLogCall: PropTypes.func,
-  sortable: PropTypes.bool,
 };
 
 export default PipelineColumn;

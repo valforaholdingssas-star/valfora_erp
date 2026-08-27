@@ -83,6 +83,49 @@ def test_move_to_call_stage_assigns_configured_user(admin_user, settings):
 
 
 @pytest.mark.django_db
+def test_can_move_from_call_stage_to_closed_lost(admin_user):
+    PipelineStage.objects.update_or_create(
+        key="realizar_llamada",
+        defaults={"name": "Realizar llamada", "position": 2, "is_closed_stage": True, "is_active": True},
+    )
+    PipelineStage.objects.update_or_create(
+        key="closed_lost",
+        defaults={"name": "Perdido", "position": 11, "is_closed_stage": True, "is_lost_stage": True, "is_active": True},
+    )
+    PipelineStage.objects.update_or_create(
+        key="unanswered",
+        defaults={"name": "Sin respuesta", "position": 10, "is_closed_stage": False, "is_active": True},
+    )
+    assert PipelineAutomationService.can_move("realizar_llamada", "closed_lost") is True
+    assert PipelineAutomationService.can_move("realizar_llamada", "unanswered") is True
+
+    contact = Contact.objects.create(
+        first_name="Close",
+        last_name="FromCall",
+        email="closefromcall@test.com",
+        assigned_to=admin_user,
+        created_by=admin_user,
+    )
+    deal = Deal.objects.create(
+        title="Lead a cerrar",
+        contact=contact,
+        stage="realizar_llamada",
+        source="whatsapp",
+        assigned_to=admin_user,
+    )
+    result = PipelineAutomationService.move_stage(
+        deal=deal,
+        to_stage="closed_lost",
+        trigger="manual",
+        moved_by=admin_user,
+        notes="Cerrar desde escritorio de llamadas",
+    )
+    assert result.moved is True
+    deal.refresh_from_db()
+    assert deal.stage == "closed_lost"
+
+
+@pytest.mark.django_db
 def test_create_and_list_deal_calls(api_client, admin_user):
     contact = Contact.objects.create(
         first_name="Nota",

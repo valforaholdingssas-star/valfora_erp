@@ -1240,9 +1240,15 @@ const DealsPipelinePage = () => {
       <LogDealCallModal
         show={Boolean(logCallDeal)}
         deal={logCallDeal}
+        stages={stages}
         onHide={() => setLogCallDeal(null)}
         onLogged={(_call, deal) => {
-          if (deal?.id) bumpDealCallsCount(deal.id);
+          if (!deal?.id) return;
+          if (deal.stage && deal.stage !== logCallDeal?.stage) {
+            applyLocalStage(deal.id, deal.stage, logCallDeal?.stage);
+          } else {
+            bumpDealCallsCount(deal.id);
+          }
         }}
       />
 

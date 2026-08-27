@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { Alert, Button, Form, Modal } from "react-bootstrap";
 
-import { createDealCall } from "../../../api/crm.js";
+import { createDealCall, moveDealStage } from "../../../api/crm.js";
 
 const extractApiError = (err, fallback) => {
   const detail = err?.response?.data?.detail;
@@ -17,16 +17,42 @@ const extractApiError = (err, fallback) => {
   return fallback;
 };
 
-const LogDealCallModal = ({ show, deal, onHide, onLogged }) => {
+const OUTCOME_PRESETS = [
+  { value: "", label: "Dejar en Realizar llamada" },
+  { value: "closed_lost", label: "Cerrar lead (Perdido)" },
+  { value: "closed_won", label: "Cerrar lead (Ganado)" },
+  { value: "unanswered", label: "Sin respuesta" },
+];
+
+const LogDealCallModal = ({ show, deal, stages = [], onHide, onLogged }) => {
   const [notes, setNotes] = useState("");
   const [calledAt, setCalledAt] = useState("");
+  const [nextStage, setNextStage] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const stageOptions = useMemo(() => {
+    const presetKeys = new Set(OUTCOME_PRESETS.map((item) => item.value).filter(Boolean));
+    const extras = (stages || [])
+      .filter((stage) => {
+        const key = stage.id || stage.key;
+        return key && key !== "realizar_llamada" && !presetKeys.has(key);
+      })
+      .map((stage) => ({
+        value: stage.id || stage.key,
+        label: stage.title || stage.name || stage.id,
+      }));
+    return [
+      ...OUTCOME_PRESETS,
+      ...extras,
+    ];
+  }, [stages]);
 
   useEffect(() => {
     if (!show) return;
     setNotes("");
     setCalledAt("");
+    setNextStage("");
     setError("");
   }, [show, deal?.id]);
 
@@ -45,7 +71,14 @@ const LogDealCallModal = ({ show, deal, onHide, onLogged }) => {
         payload.called_at = new Date(calledAt).toISOString();
       }
       const created = await createDealCall(deal.id, payload);
-      onLogged?.(created, deal);
+      let updatedDeal = deal;
+      if (nextStage && nextStage !== deal.stage) {
+        updatedDeal = await moveDealStage(deal.id, {
+          to_stage: nextStage,
+          notes: `Movido tras registrar llamada → ${nextStage}`,
+        });
+      }
+      onLogged?.(created, updatedDeal || deal);
       onHide?.();
     } catch (err) {
       setError(extractApiError(err, "No se pudo registrar la llamada."));
@@ -84,6 +117,17 @@ const LogDealCallModal = ({ show, deal, onHide, onLogged }) => {
               onChange={(e) => setCalledAt(e.target.value)}
             />
           </Form.Group>
+          <Form.Group>
+            <Form.Label>Después de la llamada, mover a</Form.Label>
+            <Form.Select value={nextStage} onChange={(e) => setNextStage(e.target.value)}>
+              {stageOptions.map((option) => (
+                <option key={option.value || "stay"} value={option.value}>{option.label}</option>
+              ))}
+            </Form.Select>
+            <Form.Text className="text-muted">
+              Usa &quot;Cerrar lead (Perdido)&quot; para sacar el deal del escritorio de llamadas.
+            </Form.Text>
+          </Form.Group>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="outline-secondary" onClick={onHide} disabled={saving}>Cancelar</Button>
@@ -97,12 +141,14 @@ const LogDealCallModal = ({ show, deal, onHide, onLogged }) => {
 LogDealCallModal.propTypes = {
   show: PropTypes.bool.isRequired,
   deal: PropTypes.object,
+  stages: PropTypes.arrayOf(PropTypes.object),
   onHide: PropTypes.func,
   onLogged: PropTypes.func,
 };
 
 LogDealCallModal.defaultProps = {
   deal: null,
+  stages: [],
   onHide: undefined,
   onLogged: undefined,
 };

@@ -58,10 +58,18 @@ class PipelineAutomationService:
         to_stage_obj = stage_map.get(to_stage)
         if not from_stage_obj or not to_stage_obj:
             return False
-        if from_stage_obj.is_closed_stage:
+
+        follow_up_key = cls.get_follow_up_stage_key()
+        # Terminal closed stages (won/lost) cannot be left automatically.
+        # The call-desk stage is flagged is_closed_stage for metrics, but deals must
+        # still be able to leave it toward any valid destination (incl. closed leads).
+        if from_stage_obj.is_closed_stage and from_stage != follow_up_key:
             return False
         if to_stage_obj.is_closed_stage:
             return True
+        if from_stage == follow_up_key:
+            return True
+
         open_sequence = [stage.key for stage in cls.get_stages() if not stage.is_closed_stage]
         if from_stage not in open_sequence or to_stage not in open_sequence:
             return False
