@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import ContractStatusBadge from "../components/ContractStatusBadge.jsx";
 import { useContracts } from "../hooks/useContracts.js";
+import { formatMoney } from "../utils/formatters.js";
 
 const ContractsList = () => {
   const { data, loading, error, loadContracts } = useContracts();
@@ -45,8 +46,10 @@ const ContractsList = () => {
                 <tr>
                   <th>Número</th>
                   <th>Título</th>
+                  <th>Cliente</th>
                   <th>Estado</th>
                   <th>Valor</th>
+                  <th>Saldo cartera</th>
                   <th>Inicio</th>
                 </tr>
               </thead>
@@ -57,8 +60,10 @@ const ContractsList = () => {
                       <Link to={`/finance/contracts/${item.id}`}>{item.contract_number}</Link>
                     </td>
                     <td>{item.title}</td>
+                    <td>{item.contact_name || "—"}</td>
                     <td><ContractStatusBadge status={item.status} /></td>
-                    <td>{item.total_value} {item.currency}</td>
+                    <td>{formatMoney(item.total_value, item.currency)}</td>
+                    <td>{formatMoney(item.balance_due, item.currency)}</td>
                     <td>{item.start_date}</td>
                   </tr>
                 ))}

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import InvoiceStatusBadge from "../components/InvoiceStatusBadge.jsx";
 import { useInvoices } from "../hooks/useInvoices.js";
+import { formatMoney } from "../utils/formatters.js";
 
 const InvoicesList = () => {
   const { data, loading, error, loadInvoices } = useInvoices();
@@ -29,8 +30,8 @@ const InvoicesList = () => {
         <div className="app-surface app-surface-padded">
           <div className="app-surface-header">
             <div>
-              <div className="app-eyebrow">Cartera</div>
-              <h2 className="h6 mb-0">Facturación emitida</h2>
+              <div className="app-eyebrow">Facturación</div>
+              <h2 className="h6 mb-0">Documentos emitidos</h2>
             </div>
             <div className="app-inline-stat">
               <span className="app-inline-stat-label">Total</span>
@@ -42,6 +43,8 @@ const InvoicesList = () => {
               <thead>
                 <tr>
                   <th>Número</th>
+                  <th>Cliente</th>
+                  <th>Contrato</th>
                   <th>Estado</th>
                   <th>Emisión</th>
                   <th>Vence</th>
@@ -53,11 +56,13 @@ const InvoicesList = () => {
                 {(data.results || []).map((item) => (
                   <tr key={item.id}>
                     <td><Link to={`/finance/invoices/${item.id}`}>{item.invoice_number}</Link></td>
+                    <td>{item.contact_name || "—"}</td>
+                    <td>{item.contract_number || "—"}</td>
                     <td><InvoiceStatusBadge status={item.status} /></td>
                     <td>{item.issue_date}</td>
                     <td>{item.due_date}</td>
-                    <td>{item.total_amount}</td>
-                    <td>{item.balance_due}</td>
+                    <td>{formatMoney(item.total_amount, item.currency)}</td>
+                    <td>{formatMoney(item.balance_due, item.currency)}</td>
                   </tr>
                 ))}
               </tbody>

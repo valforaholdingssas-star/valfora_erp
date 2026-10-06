@@ -11,6 +11,9 @@ export const fetchContract = (id) => api.get(`/finance/contracts/${id}/`).then(u
 export const createContract = (payload) => api.post("/finance/contracts/", payload).then(unwrap);
 export const updateContract = (id, payload) => api.patch(`/finance/contracts/${id}/`, payload).then(unwrap);
 
+export const fetchContractDocuments = (params) => api.get("/finance/contract-documents/", { params }).then(unwrap);
+export const createContractDocument = (payload) => api.post("/finance/contract-documents/", payload).then(unwrap);
+
 export const fetchInvoices = (params) => api.get("/finance/invoices/", { params }).then(unwrap);
 export const fetchInvoice = (id) => api.get(`/finance/invoices/${id}/`).then(unwrap);
 export const createInvoice = (payload) => api.post("/finance/invoices/", payload).then(unwrap);
@@ -21,4 +24,6 @@ export const createPayment = (payload) => api.post("/finance/payments/", payload
 
 export const fetchReceivables = (params) => api.get("/finance/receivables/", { params }).then(unwrap);
 export const fetchAgingReport = () => api.get("/finance/receivables/aging-report/").then(unwrap);
+export const fetchPortfolio = (params) => api.get("/finance/portfolio/", { params }).then(unwrap);
+export const fetchCashFlow = (params) => api.get("/finance/cash-flow/", { params }).then(unwrap);
 export const fetchFinanceDashboard = (params) => api.get("/finance/dashboard/", { params }).then(unwrap);

@@ -118,31 +118,153 @@ def build_aging_report() -> dict:
     }
 
 
-def build_finance_dashboard(start: date, end: date) -> dict:
-    invoices = Invoice.objects.filter(is_active=True, issue_date__range=(start, end))
-    payments = Payment.objects.filter(is_active=True, payment_date__range=(start, end))
-    contracts = Contract.objects.filter(is_active=True)
+def _iter_months(start: date, end: date):
+    month_cursor = date(start.year, start.month, 1)
+    while month_cursor <= end:
+        next_month = (month_cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+        yield month_cursor, next_month
+        month_cursor = next_month
 
-    invoiced_total = invoices.aggregate(v=Sum("total_amount")).get("v") or Decimal("0")
-    paid_total = payments.aggregate(v=Sum("amount")).get("v") or Decimal("0")
+
+def build_cash_flow_report(start: date, end: date) -> dict:
+    """Ingresos (pagos), facturación y cartera pendiente por mes en un rango."""
+
+    monthly_income = []
+    monthly_billing = []
+    for month_start, next_month in _iter_months(start, end):
+        income = Payment.objects.filter(
+            is_active=True,
+            payment_date__gte=month_start,
+            payment_date__lt=next_month,
+            payment_date__lte=end,
+        ).aggregate(v=Sum("amount")).get("v") or Decimal("0")
+        billing = Invoice.objects.filter(
+            is_active=True,
+            issue_date__gte=month_start,
+            issue_date__lt=next_month,
+            issue_date__lte=end,
+            status__in=("sent", "paid", "partially_paid", "overdue"),
+        ).aggregate(v=Sum("total_amount")).get("v") or Decimal("0")
+        label = month_start.strftime("%Y-%m")
+        monthly_income.append({"month": label, "value": float(income)})
+        monthly_billing.append({"month": label, "value": float(billing)})
+
+    payments_qs = Payment.objects.filter(is_active=True, payment_date__range=(start, end))
+    invoices_qs = Invoice.objects.filter(
+        is_active=True,
+        issue_date__range=(start, end),
+        status__in=("sent", "paid", "partially_paid", "overdue"),
+    )
+    paid_total = payments_qs.aggregate(v=Sum("amount")).get("v") or Decimal("0")
+    invoiced_total = invoices_qs.aggregate(v=Sum("total_amount")).get("v") or Decimal("0")
     receivables_total = sum((inv.balance_due for inv in receivables_queryset()), Decimal("0"))
     overdue_total = sum(
         (inv.balance_due for inv in receivables_queryset().filter(status="overdue")),
         Decimal("0"),
     )
-    collection_rate = float((paid_total / invoiced_total * Decimal("100")) if invoiced_total > 0 else Decimal("0"))
 
-    monthly_incomes = []
-    month_cursor = date(start.year, start.month, 1)
-    while month_cursor <= end:
-        next_month = (month_cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
-        total = Payment.objects.filter(
-            is_active=True,
-            payment_date__gte=month_cursor,
-            payment_date__lt=next_month,
-        ).aggregate(v=Sum("amount")).get("v") or Decimal("0")
-        monthly_incomes.append({"month": month_cursor.strftime("%Y-%m"), "value": float(total)})
-        month_cursor = next_month
+    return {
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "kpis": {
+            "invoiced_total": float(invoiced_total),
+            "collected_total": float(paid_total),
+            "receivables_total": float(receivables_total),
+            "overdue_total": float(overdue_total),
+            "net_gap": float(invoiced_total - paid_total),
+            "collection_rate": float(
+                (paid_total / invoiced_total * Decimal("100")) if invoiced_total > 0 else Decimal("0")
+            ),
+            "payments_count": payments_qs.count(),
+            "invoices_count": invoices_qs.count(),
+        },
+        "monthly_income": monthly_income,
+        "monthly_billing": monthly_billing,
+        "billing_vs_collection": {
+            "invoiced": float(invoiced_total),
+            "collected": float(paid_total),
+        },
+    }
+
+
+def build_portfolio_by_client() -> dict:
+    """Cartera agrupada por cliente: contratos, facturado, cobrado y saldo."""
+
+    clients: dict[str, dict] = {}
+    for contract in Contract.objects.filter(is_active=True).select_related("contact", "company"):
+        key = str(contract.contact_id)
+        row = clients.setdefault(
+            key,
+            {
+                "contact_id": key,
+                "contact_name": f"{contract.contact.first_name} {contract.contact.last_name}".strip(),
+                "company_name": contract.company.name if contract.company_id else "",
+                "contracts_count": 0,
+                "contracts_value": Decimal("0"),
+                "invoiced_total": Decimal("0"),
+                "collected_total": Decimal("0"),
+                "balance_due": Decimal("0"),
+                "overdue_balance": Decimal("0"),
+                "open_invoices": 0,
+            },
+        )
+        row["contracts_count"] += 1
+        row["contracts_value"] += contract.total_value or Decimal("0")
+
+    for invoice in Invoice.objects.filter(is_active=True).select_related("contact", "company"):
+        key = str(invoice.contact_id)
+        row = clients.setdefault(
+            key,
+            {
+                "contact_id": key,
+                "contact_name": f"{invoice.contact.first_name} {invoice.contact.last_name}".strip(),
+                "company_name": invoice.company.name if invoice.company_id else "",
+                "contracts_count": 0,
+                "contracts_value": Decimal("0"),
+                "invoiced_total": Decimal("0"),
+                "collected_total": Decimal("0"),
+                "balance_due": Decimal("0"),
+                "overdue_balance": Decimal("0"),
+                "open_invoices": 0,
+            },
+        )
+        if invoice.status in {"sent", "paid", "partially_paid", "overdue"}:
+            row["invoiced_total"] += invoice.total_amount or Decimal("0")
+            row["collected_total"] += invoice.amount_paid or Decimal("0")
+        balance = invoice.balance_due
+        if invoice.status in {"sent", "partially_paid", "overdue"} and balance > 0:
+            row["balance_due"] += balance
+            row["open_invoices"] += 1
+            if invoice.status == "overdue" or invoice.due_date < timezone.localdate():
+                row["overdue_balance"] += balance
+
+    results = []
+    for row in clients.values():
+        results.append(
+            {
+                **row,
+                "contracts_value": float(row["contracts_value"]),
+                "invoiced_total": float(row["invoiced_total"]),
+                "collected_total": float(row["collected_total"]),
+                "balance_due": float(row["balance_due"]),
+                "overdue_balance": float(row["overdue_balance"]),
+            }
+        )
+    results.sort(key=lambda item: item["balance_due"], reverse=True)
+    return {
+        "results": results,
+        "metrics": {
+            "clients_count": len(results),
+            "total_balance_due": sum(item["balance_due"] for item in results),
+            "total_overdue": sum(item["overdue_balance"] for item in results),
+            "total_contracts_value": sum(item["contracts_value"] for item in results),
+        },
+    }
+
+
+def build_finance_dashboard(start: date, end: date) -> dict:
+    cash_flow = build_cash_flow_report(start, end)
+    contracts = Contract.objects.filter(is_active=True)
 
     contracts_by_status = (
         contracts.values("status")
@@ -150,7 +272,8 @@ def build_finance_dashboard(start: date, end: date) -> dict:
         .order_by("status")
     )
     top_clients = (
-        invoices.values("contact_id", "contact__first_name", "contact__last_name")
+        Invoice.objects.filter(is_active=True, issue_date__range=(start, end))
+        .values("contact_id", "contact__first_name", "contact__last_name")
         .annotate(total=Sum("total_amount"))
         .order_by("-total")[:10]
     )
@@ -162,14 +285,12 @@ def build_finance_dashboard(start: date, end: date) -> dict:
 
     return {
         "kpis": {
-            "invoiced_total": float(invoiced_total),
-            "paid_total": float(paid_total),
-            "receivables_total": float(receivables_total),
-            "overdue_total": float(overdue_total),
-            "collection_rate": collection_rate,
+            **cash_flow["kpis"],
+            "paid_total": cash_flow["kpis"]["collected_total"],
             "active_contracts": contracts.filter(status="active").count(),
         },
-        "monthly_income": monthly_incomes,
+        "monthly_income": cash_flow["monthly_income"],
+        "monthly_billing": cash_flow["monthly_billing"],
         "contracts_by_status": list(contracts_by_status),
         "aging": build_aging_report(),
         "top_clients": [
@@ -180,10 +301,7 @@ def build_finance_dashboard(start: date, end: date) -> dict:
             }
             for item in top_clients
         ],
-        "billing_vs_collection": {
-            "invoiced": float(invoiced_total),
-            "collected": float(paid_total),
-        },
+        "billing_vs_collection": cash_flow["billing_vs_collection"],
         "expiring_contracts": [
             {
                 "id": str(item["id"]),
@@ -194,4 +312,5 @@ def build_finance_dashboard(start: date, end: date) -> dict:
             }
             for item in expiring_contracts
         ],
+        "portfolio": build_portfolio_by_client(),
     }

@@ -194,6 +194,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "crm.tasks.advance_closed_whatsapp_conversations",
         "schedule": crontab(minute="*/10"),
     },
+    "finance-mark-overdue-invoices": {
+        "task": "apps.finance.tasks.mark_overdue_invoices_task",
+        "schedule": crontab(minute=15, hour="*/6"),
+    },
     "linkedin-execute-saved-searches": {
         "task": "apps.linkedin.tasks.linkedin_execute_saved_searches",
         "schedule": crontab(minute=0, hour="*/4"),

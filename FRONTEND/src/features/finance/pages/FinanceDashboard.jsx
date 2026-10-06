@@ -7,6 +7,7 @@ import ExpiringContractsTable from "../components/ExpiringContractsTable.jsx";
 import RevenueChart from "../components/RevenueChart.jsx";
 import TopClientsChart from "../components/TopClientsChart.jsx";
 import { useFinanceDashboard } from "../hooks/useFinanceDashboard.js";
+import { formatMoney } from "../utils/formatters.js";
 
 const FinanceDashboard = () => {
   const [period, setPeriod] = useState("year");
@@ -43,10 +44,10 @@ const FinanceDashboard = () => {
       {error && <p className="text-danger">{error}</p>}
       {data?.kpis && (
         <div className="app-kpi-grid mb-4">
-          <div className="app-kpi-tile"><span className="app-kpi-label">Facturado</span><strong className="app-kpi-value">{data.kpis.invoiced_total}</strong></div>
-          <div className="app-kpi-tile"><span className="app-kpi-label">Cobrado</span><strong className="app-kpi-value">{data.kpis.paid_total}</strong></div>
-          <div className="app-kpi-tile"><span className="app-kpi-label">Cartera</span><strong className="app-kpi-value">{data.kpis.receivables_total}</strong></div>
-          <div className="app-kpi-tile"><span className="app-kpi-label">Vencida</span><strong className="app-kpi-value">{data.kpis.overdue_total}</strong></div>
+          <div className="app-kpi-tile"><span className="app-kpi-label">Facturado</span><strong className="app-kpi-value">{formatMoney(data.kpis.invoiced_total)}</strong></div>
+          <div className="app-kpi-tile"><span className="app-kpi-label">Cobrado</span><strong className="app-kpi-value">{formatMoney(data.kpis.paid_total || data.kpis.collected_total)}</strong></div>
+          <div className="app-kpi-tile"><span className="app-kpi-label">Cartera</span><strong className="app-kpi-value">{formatMoney(data.kpis.receivables_total)}</strong></div>
+          <div className="app-kpi-tile"><span className="app-kpi-label">Vencida</span><strong className="app-kpi-value">{formatMoney(data.kpis.overdue_total)}</strong></div>
           <div className="app-kpi-tile"><span className="app-kpi-label">Tasa cobro</span><strong className="app-kpi-value">{(data.kpis.collection_rate || 0).toFixed(2)}%</strong></div>
           <div className="app-kpi-tile"><span className="app-kpi-label">Contratos activos</span><strong className="app-kpi-value">{data.kpis.active_contracts}</strong></div>
         </div>
@@ -55,8 +56,14 @@ const FinanceDashboard = () => {
       <Row className="g-3">
         <Col lg={6}>
           <section className="app-surface app-surface-padded h-100">
-            <div className="app-surface-header"><h2 className="h6 mb-0">Ingresos mensuales</h2></div>
+            <div className="app-surface-header"><h2 className="h6 mb-0">Ingresos mensuales (pagos)</h2></div>
             <RevenueChart rows={data?.monthly_income || []} />
+          </section>
+        </Col>
+        <Col lg={6}>
+          <section className="app-surface app-surface-padded h-100">
+            <div className="app-surface-header"><h2 className="h6 mb-0">Facturación mensual</h2></div>
+            <RevenueChart rows={data?.monthly_billing || []} />
           </section>
         </Col>
         <Col lg={6}>

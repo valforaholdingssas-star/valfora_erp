@@ -6,9 +6,14 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.common.audit import write_audit_log
 from apps.finance.filters import ContractFilter, InvoiceFilter, PaymentFilter
-from apps.finance.models import Contract, Invoice, Payment
+from apps.finance.models import Contract, ContractDocument, Invoice, Payment
 from apps.finance.permissions import IsFinanceWriteAdmin
-from apps.finance.serializers import ContractSerializer, InvoiceSerializer, PaymentSerializer
+from apps.finance.serializers import (
+    ContractDocumentSerializer,
+    ContractSerializer,
+    InvoiceSerializer,
+    PaymentSerializer,
+)
 from apps.finance.services import (
     compute_invoice_amounts,
     next_contract_number,
@@ -79,7 +84,12 @@ class InvoiceViewSet(FinanceBaseViewSet):
 
 
 class PaymentViewSet(FinanceBaseViewSet):
-    queryset = Payment.objects.filter(is_active=True).select_related("invoice", "recorded_by")
+    queryset = Payment.objects.filter(is_active=True).select_related(
+        "invoice",
+        "invoice__contact",
+        "invoice__contract",
+        "recorded_by",
+    )
     serializer_class = PaymentSerializer
     filterset_class = PaymentFilter
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
@@ -91,4 +101,17 @@ class PaymentViewSet(FinanceBaseViewSet):
             payment_number=next_payment_number(),
             recorded_by=self.request.user,
         )
+        write_audit_log(user=self.request.user, action="create", instance=instance, request=self.request)
+
+
+class ContractDocumentViewSet(FinanceBaseViewSet):
+    queryset = ContractDocument.objects.filter(is_active=True).select_related("contract", "uploaded_by")
+    serializer_class = ContractDocumentSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ("contract", "document_type")
+    search_fields = ("name", "contract__contract_number")
+    ordering_fields = ("created_at", "name")
+
+    def perform_create(self, serializer):
+        instance = serializer.save(uploaded_by=self.request.user)
         write_audit_log(user=self.request.user, action="create", instance=instance, request=self.request)

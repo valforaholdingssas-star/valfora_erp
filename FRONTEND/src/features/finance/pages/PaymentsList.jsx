@@ -3,6 +3,15 @@ import { Button, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 
 import { fetchPayments } from "../../../api/finance.js";
+import { formatDate, formatMoney } from "../utils/formatters.js";
+
+const METHOD_LABELS = {
+  bank_transfer: "Transferencia",
+  cash: "Efectivo",
+  credit_card: "Tarjeta",
+  check: "Cheque",
+  other: "Otro",
+};
 
 const PaymentsList = () => {
   const [data, setData] = useState({ results: [], count: 0 });
@@ -21,7 +30,7 @@ const PaymentsList = () => {
         <div>
           <div className="app-eyebrow">Finanzas</div>
           <h1 className="h3 mb-1">Pagos</h1>
-          <p className="text-muted mb-0">Monitorea recaudos, métodos de pago y trazabilidad de los movimientos registrados.</p>
+          <p className="text-muted mb-0">Ingresos de cartera aplicados a facturas, con cliente y método de pago.</p>
         </div>
         <Button as={Link} to="/finance/payments/new" size="sm">Registrar pago</Button>
       </div>
@@ -45,6 +54,8 @@ const PaymentsList = () => {
                 <tr>
                   <th>Número</th>
                   <th>Factura</th>
+                  <th>Cliente</th>
+                  <th>Contrato</th>
                   <th>Monto</th>
                   <th>Fecha</th>
                   <th>Método</th>
@@ -54,10 +65,16 @@ const PaymentsList = () => {
                 {(data.results || []).map((row) => (
                   <tr key={row.id}>
                     <td>{row.payment_number}</td>
-                    <td>{row.invoice}</td>
-                    <td>{row.amount}</td>
-                    <td>{row.payment_date}</td>
-                    <td>{row.payment_method}</td>
+                    <td>
+                      {row.invoice ? (
+                        <Link to={`/finance/invoices/${row.invoice}`}>{row.invoice_number || row.invoice}</Link>
+                      ) : "—"}
+                    </td>
+                    <td>{row.contact_name || "—"}</td>
+                    <td>{row.contract_number || "—"}</td>
+                    <td>{formatMoney(row.amount)}</td>
+                    <td>{formatDate(row.payment_date)}</td>
+                    <td>{METHOD_LABELS[row.payment_method] || row.payment_method}</td>
                   </tr>
                 ))}
               </tbody>
